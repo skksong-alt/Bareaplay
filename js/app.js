@@ -1,6 +1,6 @@
 // js/app.js
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
-import { getFirestore, collection, doc, onSnapshot, getDocs, setDoc, deleteDoc, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+import { getFirestore, collection, doc, onSnapshot, getDocs } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 import { state, setAdmin } from './store.js';
 import * as playerMgmt from './modules/playerManagement.js';
 import * as balancer from './modules/teamBalancer.js';
@@ -121,9 +121,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     modalCancelBtn = document.getElementById('modal-cancel-btn');
 
     const modules = { playerMgmt, balancer, lineup, accounting, shareMgmt };
-    // ▼▼▼ [오류 수정] dependencies 객체에서 pages 속성 삭제 ▼▼▼
     const dependencies = { db, state };
-
+    
+    // ▼▼▼ [오류 수정] 모듈 초기화 방식 변경 ▼▼▼
     for (const moduleName in modules) {
         if (modules[moduleName].init) {
             modules[moduleName].init(dependencies);
@@ -133,11 +133,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     modalConfirmBtn.addEventListener('click', () => {
         if (passwordInput.value === state.ADMIN_PASSWORD) {
             setAdmin(true);
-            window.showNotification('관리자 인증에 성공했습니다.', 'success');
+            showNotification('관리자 인증에 성공했습니다.', 'success');
             updateAdminUI();
             adminModal.classList.add('hidden');
         } else {
-            window.showNotification('승인번호가 올바르지 않습니다.', 'error');
+            showNotification('승인번호가 올바르지 않습니다.', 'error');
         }
     });
     modalCancelBtn.addEventListener('click', () => adminModal.classList.add('hidden'));
@@ -172,6 +172,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             const memoArea = document.getElementById('memo-area');
             if (doc.exists() && memoArea) { memoArea.value = doc.data().content; }
         });
+        
+        // 모든 데이터 로딩 후 UI 렌더링
+        playerMgmt.renderPlayerTable();
+        accounting.renderForDate();
+        shareMgmt.populateLocations();
 
     } catch (error) {
         console.error("초기 데이터 로딩 실패:", error);
@@ -181,8 +186,5 @@ document.addEventListener('DOMContentLoaded', async () => {
         setTimeout(() => loadingOverlay.style.display = 'none', 300);
         updateAdminUI();
         switchTab('balancer', true);
-        accounting.renderForDate();
-        playerMgmt.renderPlayerTable();
-        shareMgmt.populateLocations();
     }
 });
