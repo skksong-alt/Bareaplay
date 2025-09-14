@@ -188,11 +188,12 @@ function executeLineupGeneration() {
             bestScore = score;
         }
     }
-    if (!bestLineup) {
+if (!bestLineup) {
         window.showNotification('최적의 라인업을 찾지 못했습니다.', 'error');
     } else {
         state.lineupResults = bestLineup;
         state.lineupResults.formations = formations;
+        state.lineupResults.posCellMap = posCellMap; // ✨ state에 posCellMap 정보 추가
         lineupDisplay.classList.remove('hidden');
         placeholderLineup.classList.add('hidden');
         currentQuarter = 0;

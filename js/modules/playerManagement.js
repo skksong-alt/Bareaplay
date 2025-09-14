@@ -1,5 +1,5 @@
 // js/modules/playerManagement.js
-import { doc, setDoc, deleteDoc } from "https-://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+import { doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 
 let db, state;
 let tableBody, form, formTitle, cancelBtn, playerIdInput;

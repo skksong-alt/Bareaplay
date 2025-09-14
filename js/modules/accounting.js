@@ -1,5 +1,5 @@
 // js/modules/accounting.js
-import { doc, getDocs, collection, setDoc, deleteDoc, addDoc, serverTimestamp } from "https-://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+import { doc, getDocs, collection, setDoc, deleteDoc, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 let db, state;
 let attendanceDate, checklistContainer, recordBtn, logBody, logFoot, memoArea, adminLoginBtn, accountingChart;
 let incomeTabBtn, expenseTabBtn, incomeLogSection, expenseLogSection, expenseForm, expenseLogBody, expenseLogFoot;

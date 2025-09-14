@@ -85,7 +85,7 @@ function printContent() {
     printHtml += `<p><strong>일시:</strong> ${dateVal || '미정'}</p>`;
     printHtml += `<p><strong>시간:</strong> ${timeVal || '미정'}</p>`;
     printHtml += `<p><strong>장소:</strong> ${locationVal || '미정'}</p>`;
-    if (mapLinkVal) printHtml += `<p><strong>지도:</strong> <a href="${mapLinkVal}">${mapLinkVal}</a></p>`;
+    if (mapLinkVal) printHtml += `<p><strong>지도:</strong> <a href="${mapLinkVal}" target="_blank">${mapLinkVal}</a></p>`;
     printHtml += `</div>`;
     
     if (state.teams && state.teams.length > 0) {
@@ -98,34 +98,35 @@ function printContent() {
         });
         printHtml += `</div>`;
     }
-    printHtml += `</div>`; // End of Page 1
+    printHtml += `</div>`;
 
-    // Page 2 onwards: Lineups
     if (state.lineupResults && state.lineupResults.lineups) {
-        const teamsWithLineups = state.teams.map(team => team.map(p => p.name.replace(' (?)', '')));
-        
-        teamsWithLineups.forEach((team, teamIndex) => {
+        // lineupResults.members를 기준으로 팀을 찾아서 순서대로 출력
+        const lineupTeamMembers = state.lineupResults.members;
+        const lineupTeamIndex = state.teams.findIndex(team => 
+            team.map(p => p.name.replace(' (?)', '')).toString() === lineupTeamMembers.toString()
+        );
+
+        if(lineupTeamIndex > -1) {
             printHtml += `<div class="print-page">`;
-            printHtml += `<div class="print-section"><h2>팀 ${teamIndex + 1} 라인업</h2></div>`;
+            printHtml += `<div class="print-section"><h2>팀 ${lineupTeamIndex + 1} 라인업</h2></div>`;
             
             state.lineupResults.lineups.forEach((lineup, qIndex) => {
-                if(state.lineupResults.members.toString() !== team.toString()) return; // 해당 팀의 라인업이 아니면 건너뛰기
-
                 printHtml += `<div class="print-team-card">`;
                 printHtml += `<h3>${qIndex+1}쿼터 (${state.lineupResults.formations[qIndex]})</h3>`;
                 printHtml += `<div class="print-lineup-container">`;
                 
-                // Pitch
                 printHtml += `<div class="print-pitch">`;
+                const posCellMap = state.lineupResults.posCellMap; // state에서 posCellMap을 가져옴
                 const formationLayout = posCellMap[state.lineupResults.formations[qIndex]] || [];
                 let counters = {};
-                formationLayout.forEach((fc, index) => {
+                formationLayout.forEach((fc) => {
                     const pos = fc.pos;
                     counters[pos] = (counters[pos] || 0);
                     let name = (lineup[pos] || [])[counters[pos]] || '';
                     counters[pos]++;
                     if (name) {
-                        let icon = '❓', bgColor = '#78909C';
+                        let icon = '❓', bgColor = '#B0BEC5';
                         if (pos === "GK") { icon = "🧤"; bgColor = "#a5d6a7"; } 
                         else if (["LB", "RB", "CB", "DF"].includes(pos)) { icon = "🛡"; bgColor = "#90caf9"; } 
                         else if (["MF", "CM"].includes(pos)) { icon = "⚙"; bgColor = "#fff59d"; } 
@@ -135,7 +136,6 @@ function printContent() {
                 });
                 printHtml += `</div>`;
 
-                // Resters
                 const resters = state.lineupResults.resters[qIndex] || [];
                 printHtml += `<div class="print-rester-list"><h4>휴식 선수</h4><ul>`;
                 resters.forEach(r => { printHtml += `<li>${r}</li>` });
@@ -143,13 +143,14 @@ function printContent() {
 
                 printHtml += `</div></div>`;
             });
-            printHtml += `</div>`; // End of Team Page
-        });
+            printHtml += `</div>`;
+        }
     }
     
     printArea.innerHTML = printHtml;
     window.print();
 }
+
 
 export function init(firestoreDB, globalState) {
     db = firestoreDB;
