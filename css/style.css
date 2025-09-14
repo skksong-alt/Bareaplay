@@ -53,12 +53,13 @@ body {
     .print-team-card h3 { font-size: 18px; font-weight: bold; margin-bottom: 12px; color: #000; }
     .print-team-card ul { list-style-type: none; padding-left: 0; margin: 0; }
     .print-team-card li { padding: 4px 0; color: #333; }
-    .print-lineup-container { display: flex; gap: 20px; align-items: flex-start; }
+    .print-lineup-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+    .print-lineup-container { display: flex; flex-direction: column; gap: 20px; align-items: center; }
     .print-pitch { flex-shrink: 0; width: 350px; height: 500px; background-color: #e9f5e9; border: 2px solid #999; position: relative; }
     .print-player-marker { position: absolute; transform: translate(-50%, -50%); text-align: center; font-size: 12px; color: #000; }
     .print-player-icon { margin: 0 auto; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; border: 1px solid #333; }
     .print-player-name { margin-top: 2px; background-color: rgba(255, 255, 255, 0.7); padding: 1px 3px; border-radius: 3px; }
-    .print-rester-list { list-style-type: none; padding: 0; }
-    .print-rester-list h4 { font-size: 16px; font-weight: bold; }
+    .print-rester-list { list-style-type: none; padding: 0; text-align: center; }
+    .print-rester-list h4 { font-size: 16px; font-weight: bold; margin-top: 10px; }
     a { color: #000; text-decoration: none; }
 }

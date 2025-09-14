@@ -91,7 +91,7 @@ function renderResults(teams) {
             const playerTag = document.createElement('div');
             playerTag.className = 'player-tag flex justify-between items-center bg-white/20 p-2 rounded-lg mb-2 cursor-grab';
             playerTag.draggable = true;
-            playerTag.innerHTML = `<span class="font-semibold">${player.name}</span><div class="flex items-center"><span class="text-sm opacity-90 mr-2">${posIcons}</span><span class="text-sm font-bold bg-white/30 px-2 py-0.5 rounded-full">${player.s1 || 0}</span></div>`;
+            playerTag.innerHTML = `<span class="font-semibold">${player.name}</span><div class="flex items-center"><span class="text-sm opacity-90 mr-2">${posIcons}</span></div>`;
             playerTag.addEventListener('dragstart', (e) => handlePlayerDragStart(e, player.name, index));
             playersHtml += playerTag.outerHTML;
         });
@@ -110,29 +110,27 @@ function executeTeamAssignment() {
     attendNames.forEach(name => { (state.playerDB[name]) ? known.push({ ...state.playerDB[name] }) : unknown.push(name); });
     
     let bestTeams = null, bestScore = Infinity;
-    const trialCount = 2000;
+    const trialCount = 5000;
     
     for (let trial = 0; trial < trialCount; trial++) {
-        let pool = [...known].reverse(); // Reverse for last-in, first-out logic
+        let pool = [...known];
+        if (trial === 0) {
+            pool.reverse();
+        } else {
+            window.shuffleLocal(pool);
+        }
         let tempTeams = Array.from({ length: teamCount }, () => []);
         
-        // Custom distribution logic from original code
         let teamIdx = 0;
         let forward = true;
         pool.forEach(player => {
             tempTeams[teamIdx].push(player);
             if(forward) {
                 teamIdx++;
-                if (teamIdx === teamCount) {
-                    teamIdx = teamCount - 1;
-                    forward = false;
-                }
+                if (teamIdx === teamCount) { teamIdx = teamCount - 1; forward = false; }
             } else {
                 teamIdx--;
-                if (teamIdx < 0) {
-                    teamIdx = 0;
-                    forward = true;
-                }
+                if (teamIdx < 0) { teamIdx = 0; forward = true; }
             }
         });
 

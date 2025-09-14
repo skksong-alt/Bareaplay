@@ -1,6 +1,6 @@
 // js/app.js
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
-import { getFirestore, collection, doc, onSnapshot, getDocs } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+import { getFirestore, collection, doc, onSnapshot, getDocs, setDoc, deleteDoc, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 import { state, setAdmin } from './store.js';
 import * as playerMgmt from './modules/playerManagement.js';
 import * as balancer from './modules/teamBalancer.js';

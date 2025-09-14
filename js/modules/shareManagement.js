@@ -1,5 +1,5 @@
 // js/modules/shareManagement.js
-import { collection, onSnapshot, addDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+import { collection, onSnapshot, addDoc, doc, setDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 let state, db;
 let generateBtn, printBtn, shareContentArea, addLocationBtn;
 let shareDate, shareTime, shareLocationSelect, printArea;
@@ -92,8 +92,7 @@ function printContent() {
     printHtml += `<div class="print-info">`;
     printHtml += `<p><strong>일시:</strong> ${dateVal || '미정'}</p>`;
     printHtml += `<p><strong>시간:</strong> ${timeVal || '미정'}</p>`;
-    printHtml += `<p><strong>장소:</strong> ${locationVal || '미정'}</p>`;
-    if (mapLinkVal) printHtml += `<p><strong>지도:</strong> <a href="${mapLinkVal}" target="_blank">${mapLinkVal}</a></p>`;
+    printHtml += `<p><strong>장소:</strong> ${locationVal ? (mapLinkVal ? `<a href="${mapLinkVal}" target="_blank">${locationVal}</a>` : locationVal) : '미정'}</p>`;
     printHtml += `</div>`;
     if (state.teams && state.teams.length > 0) {
         printHtml += `<div class="print-section"><h2>팀 배정 결과</h2></div>`;
@@ -114,8 +113,9 @@ function printContent() {
             if (JSON.stringify(currentTeamMembers) === JSON.stringify(state.lineupResults.members.sort())) {
                 printHtml += `<div class="print-page">`;
                 printHtml += `<div class="print-section"><h2>팀 ${teamCounter} 라인업</h2></div>`;
+                printHtml += `<div class="print-lineup-grid">`;
                 state.lineupResults.lineups.forEach((lineup, qIndex) => {
-                    printHtml += `<div class="print-team-card">`;
+                    printHtml += `<div>`;
                     printHtml += `<h3>${qIndex+1}쿼터 (${state.lineupResults.formations[qIndex]})</h3>`;
                     printHtml += `<div class="print-lineup-container">`;
                     printHtml += `<div class="print-pitch">`;
@@ -143,11 +143,12 @@ function printContent() {
                     printHtml += `</ul></div>`;
                     printHtml += `</div></div>`;
                 });
-                printHtml += `</div>`;
+                printHtml += `</div></div>`;
             }
             teamCounter++;
         });
     }
+    
     printArea.innerHTML = printHtml;
     window.print();
 }
@@ -187,8 +188,10 @@ export function init(dependencies) {
 export function updateTeamData(teams) {
     state.teams = teams;
 }
+
 export function updateLineupData(lineupData, formations) {
     state.lineupResults = lineupData;
     state.lineupResults.formations = formations;
 }
+
 export { populateLocations };

@@ -1,5 +1,5 @@
 // sw.js
-const CACHE_NAME = 'bareaplay-cache-v2';
+const CACHE_NAME = 'bareaplay-cache-v3'; // 캐시 버전 업데이트
 const urlsToCache = [
     '.',
     'css/style.css',
@@ -11,6 +11,7 @@ const urlsToCache = [
     'js/modules/accounting.js',
     'js/modules/shareManagement.js',
     'manifest.json',
+    'favicon.ico',
     'assets/icon-512.png'
 ];
 

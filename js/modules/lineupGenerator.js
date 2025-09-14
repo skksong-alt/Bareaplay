@@ -125,7 +125,7 @@ function executeLineupGeneration() {
     const hasFixedGk = members.includes(fixedGk) && (localPlayerDB[fixedGk]?.pos1.includes('GK'));
 
     let bestLineup = null, bestScore = Infinity;
-    const TRIAL = 800, BETA = 7;
+    const TRIAL = 1000, BETA = 5; 
     for (let tr = 0; tr < TRIAL; tr++) {
         const assignHist = {}, lineups = [];
         let allResterInQ = [];
@@ -145,7 +145,10 @@ function executeLineupGeneration() {
 
             for(const n of resterCandidates) {
                 if(resters.length >= requiredRestCount) break;
+                const playerInfo = localPlayerDB[n];
+                const isGk = playerInfo && (playerInfo.pos1.includes('GK'));
                 if(hasFixedGk && n === fixedGk) continue;
+                if(isGk) continue;
                 
                 const fairRestCount = Math.floor((requiredRestCount * 4) / members.length);
                 if(qCounts[n] < fairRestCount) {
@@ -157,11 +160,20 @@ function executeLineupGeneration() {
             
             let safety = 0;
             while(resters.length < requiredRestCount && safety < members.length * 2) {
-                const nextCandidate = reversedAttendees.find(n => !resters.includes(n) && (!hasFixedGk || n !== fixedGk));
+                const nextCandidate = reversedAttendees.find(n => {
+                    const playerInfo = localPlayerDB[n];
+                    const isGk = playerInfo && (playerInfo.pos1.includes('GK'));
+                    return !resters.includes(n) && (!hasFixedGk || n !== fixedGk) && !isGk;
+                });
+                
                 if(nextCandidate) {
                     resters.push(nextCandidate);
                 } else {
-                     const anyCandidate = members.find(n => !resters.includes(n) && (!hasFixedGk || n !== fixedGk));
+                     const anyCandidate = members.find(n => {
+                         const playerInfo = localPlayerDB[n];
+                         const isGk = playerInfo && (playerInfo.pos1.includes('GK'));
+                         return !resters.includes(n) && (!hasFixedGk || n !== fixedGk) && !isGk;
+                     });
                      if(anyCandidate) resters.push(anyCandidate);
                      else break;
                 }
@@ -186,7 +198,7 @@ function executeLineupGeneration() {
 
             let candidates = available.map(n => ({ name: n, ...localPlayerDB[n] }));
             
-            let assignedCount = (hasFixedGk && slots.includes('GK')) ? 1 : 0;
+            let assignedCount = (hasFixedGk && slots.includes('GK') && slots.includes('GK')) ? 1 : 0;
             const onFieldNeeded = formCells.length;
             while(assignedCount < onFieldNeeded && candidates.length > 0) {
                  let bestFitScore = Infinity, bestPlayerIdx = -1, bestSlotPos = null, bestSlotIdx = -1;
