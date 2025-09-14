@@ -4,6 +4,7 @@ const urlsToCache = [
     '.',
     'css/style.css',
     'js/app.js',
+    'js/store.js',
     'js/modules/playerManagement.js',
     'js/modules/teamBalancer.js',
     'js/modules/lineupGenerator.js',

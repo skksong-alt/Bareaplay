@@ -128,11 +128,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             modules[moduleName].init(dependencies);
         }
     }
-
-    // [오류 수정] 모든 모듈이 초기화 된 후 window 객체에 할당
+    
     window.playerMgmt = playerMgmt;
     window.accounting = accounting;
     window.lineup = lineup;
+    window.shareMgmt = shareMgmt;
 
     modalConfirmBtn.addEventListener('click', () => {
         if (passwordInput.value === state.ADMIN_PASSWORD) {

@@ -1,6 +1,6 @@
 // js/modules/shareManagement.js
 import { collection, onSnapshot, addDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
-let state, db, showNotification;
+let state, db;
 let generateBtn, printBtn, shareContentArea, addLocationBtn;
 let shareDate, shareTime, shareLocationSelect, printArea;
 
@@ -22,7 +22,7 @@ function populateLocations() {
 
 async function addNewLocation() {
     if (!state.isAdmin) {
-        showNotification("관리자만 장소를 추가할 수 있습니다.", "error");
+        window.showNotification("관리자만 장소를 추가할 수 있습니다.", "error");
         return;
     }
     const name = prompt("새로운 장소의 이름을 입력하세요:");
@@ -30,10 +30,10 @@ async function addNewLocation() {
     const url = prompt("해당 장소의 Google Maps URL을 입력하세요 (선택사항):");
     try {
         await addDoc(collection(db, "locations"), { name: name.trim(), url: url || '' });
-        showNotification("새로운 장소가 추가되었습니다.");
+        window.showNotification("새로운 장소가 추가되었습니다.");
     } catch (e) {
         console.error("장소 추가 실패: ", e);
-        showNotification("장소 추가에 실패했습니다.", "error");
+        window.showNotification("장소 추가에 실패했습니다.", "error");
     }
 }
 
@@ -61,7 +61,7 @@ function generateContent() {
     if (state.lineupResults && state.lineupResults.lineups) {
         const lineupTeamMembers = state.lineupResults.members;
         const lineupTeam = state.teams.find(team => 
-            JSON.stringify(team.map(p => p.name.replace(' (?)', ''))) === JSON.stringify(lineupTeamMembers)
+            JSON.stringify(team.map(p => p.name.replace(' (신규)', '')).sort()) === JSON.stringify(lineupTeamMembers.sort())
         );
         if (lineupTeam) {
             state.lineupResults.lineups.forEach((lineup, index) => {
@@ -76,7 +76,7 @@ function generateContent() {
         }
     } else { content += "생성된 라인업이 없습니다.\n"; }
     shareContentArea.value = content;
-    showNotification("공지 내용이 생성되었습니다.");
+    window.showNotification("공지 내용이 생성되었습니다.");
 }
 
 function printContent() {
@@ -110,8 +110,8 @@ function printContent() {
     if (state.lineupResults && state.lineupResults.lineups) {
         let teamCounter = 1;
         state.teams.forEach(team => {
-            const currentTeamMembers = team.map(p => p.name.replace(' (?)', ''));
-            if (JSON.stringify(currentTeamMembers) === JSON.stringify(state.lineupResults.members)) {
+            const currentTeamMembers = team.map(p => p.name.replace(' (신규)', '')).sort();
+            if (JSON.stringify(currentTeamMembers) === JSON.stringify(state.lineupResults.members.sort())) {
                 printHtml += `<div class="print-page">`;
                 printHtml += `<div class="print-section"><h2>팀 ${teamCounter} 라인업</h2></div>`;
                 state.lineupResults.lineups.forEach((lineup, qIndex) => {
@@ -155,10 +155,9 @@ function printContent() {
 export function init(dependencies) {
     db = dependencies.db;
     state = dependencies.state;
-    showNotification = dependencies.showNotification;
     
     const pageElement = document.getElementById('page-share');
-    pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-2 gap-8"><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">모임 정보 입력</h2><div class="space-y-4"><div><label for="share-date" class="block text-sm font-medium">날짜</label><input type="date" id="share-date" class="mt-1 w-full p-2 border rounded-lg"></div><div><label for="share-time" class="block text-sm font-medium">시간</label><input type="time" id="share-time" class="mt-1 w-full p-2 border rounded-lg"></div><div><label for="share-location-select" class="block text-sm font-medium">장소 선택</label><div class="flex items-center gap-2 mt-1"><select id="share-location-select" class="w-full p-2 border rounded-lg bg-white"></select><button id="add-location-btn" class="p-2 bg-gray-200 rounded-lg hover:bg-gray-300 text-lg admin-control" disabled>➕</button></div></div></div><div class="flex space-x-2 mt-6"><button id="generate-share-content-btn" class="w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700">공지 생성</button><button id="print-btn" class="w-full bg-gray-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-600">인쇄/PDF 저장</button></div></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">미리보기 및 복사</h2><textarea id="share-content" readonly class="w-full h-96 p-3 border rounded-lg bg-gray-50" placeholder="'공지 생성' 버튼을 누르면 팀 배정 및 라인업 결과가 여기에 표시됩니다."></textarea></div></div>`;
+    pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-2 gap-8"><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">모임 정보 입력</h2><div class="space-y-4"><div><label for="share-date" class="block text-sm font-medium">날짜</label><input type="date" id="share-date" class="mt-1 w-full p-2 border rounded-lg"></div><div><label for="share-time" class="block text-sm font-medium">시간</label><input type="time" id="share-time" class="mt-1 w-full p-2 border rounded-lg"></div><div><label for="share-location-select" class="block text-sm font-medium">장소 선택</label><div class="flex items-center gap-2 mt-1"><select id="share-location-select" class="w-full p-2 border rounded-lg bg-white"></select><button id="add-location-btn" class="p-2 bg-gray-200 rounded-lg hover:bg-gray-300 text-lg admin-control" disabled>➕</button></div></div></div><div class="flex space-x-2 mt-6"><button id="generate-share-content-btn" class="w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700">공지 생성</button><button id="print-btn" class="w-full bg-gray-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-600">인쇄/PDF 저장</button></div></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">미리보기 및 복사</h2><textarea id="share-content" class="w-full h-96 p-3 border rounded-lg bg-gray-50" placeholder="'공지 생성' 버튼을 누르면 팀 배정 및 라인업 결과가 여기에 표시됩니다."></textarea></div></div>`;
 
     generateBtn = document.getElementById('generate-share-content-btn');
     printBtn = document.getElementById('print-btn');
@@ -185,4 +184,11 @@ export function init(dependencies) {
     addLocationBtn.addEventListener('click', addNewLocation);
 }
 
+export function updateTeamData(teams) {
+    state.teams = teams;
+}
+export function updateLineupData(lineupData, formations) {
+    state.lineupResults = lineupData;
+    state.lineupResults.formations = formations;
+}
 export { populateLocations };

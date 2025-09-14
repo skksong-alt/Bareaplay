@@ -94,12 +94,14 @@ export function init(dependencies) {
 
 export function renderPlayerTable() {
     if(!tableBody) return;
+
     const uniqueDates = new Set(state.attendanceLog.map(log => log.date));
     const totalMeetings = uniqueDates.size > 0 ? uniqueDates.size : 1;
     const playerAttendance = {};
     state.attendanceLog.forEach(log => {
         playerAttendance[log.name] = (playerAttendance[log.name] || 0) + 1;
     });
+
     tableBody.innerHTML = '';
     const playerNames = Object.keys(state.playerDB).sort((a, b) => a.localeCompare(b, 'ko-KR'));
     if (playerNames.length === 0) {
