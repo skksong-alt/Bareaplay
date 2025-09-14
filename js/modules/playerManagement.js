@@ -45,6 +45,7 @@ async function handleFormSubmit(e) {
     if (id && id !== name) await deleteDoc(doc(db, "players", id));
     resetForm();
     window.showNotification(id ? '선수 정보가 수정되었습니다.' : '새로운 선수가 추가되었습니다.');
+    window.refreshData('players');
 }
 
 async function handleTableClick(e) {
@@ -68,6 +69,7 @@ async function handleTableClick(e) {
         if (confirm(`'${playerName}' 선수를 정말 삭제하시겠습니까?`)) {
             await deleteDoc(doc(db, "players", playerName));
             window.showNotification('선수가 삭제되었습니다.');
+            window.refreshData('players');
         }
     }
 }
@@ -76,18 +78,15 @@ export function init(dependencies) {
     db = dependencies.db;
     state = dependencies.state;
 
-    // ▼▼▼ [오류 수정] 모듈이 자신의 HTML을 직접 렌더링 ▼▼▼
     const pageElement = document.getElementById('page-players');
     pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">선수 목록</h2><div class="overflow-x-auto"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr><th scope="col" class="py-3 px-6">이름</th><th scope="col" class="py-3 px-6">주 포지션 / 능력치</th><th scope="col" class="py-3 px-6">부 포지션 / 능력치</th><th scope="col" class="py-3 px-6">출석률</th><th scope="col" class="py-3 px-6">관리</th></tr></thead><tbody id="player-table-body"></tbody></table></div></div><div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg"><h2 id="player-form-title" class="text-2xl font-bold mb-4">새 선수 추가</h2><form id="player-form" class="space-y-4"><input type="hidden" id="player-id"><div><label for="player-name" class="block mb-2 text-sm font-medium">이름</label><input type="text" id="player-name" class="bg-gray-50 border border-gray-300 text-sm rounded-lg block w-full p-2.5" required></div><div><label for="player-pos1" class="block mb-2 text-sm font-medium">주 포지션 (쉼표로 구분)</label><input type="text" id="player-pos1" placeholder="예: FW, LW" class="bg-gray-50 border border-gray-300 text-sm rounded-lg block w-full p-2.5"></div><div><label for="player-s1" class="block mb-2 text-sm font-medium">주 능력치</label><input type="number" id="player-s1" min="0" max="100" class="bg-gray-50 border border-gray-300 text-sm rounded-lg block w-full p-2.5"></div><div><label for="player-pos2" class="block mb-2 text-sm font-medium">부 포지션</label><input type="text" id="player-pos2" placeholder="예: MF" class="bg-gray-50 border border-gray-300 text-sm rounded-lg block w-full p-2.5"></div><div><label for="player-s2" class="block mb-2 text-sm font-medium">부 능력치</label><input type="number" id="player-s2" min="0" max="100" class="bg-gray-50 border border-gray-300 text-sm rounded-lg block w-full p-2.5"></div><div class="flex space-x-2"><button type="submit" class="w-full text-white bg-indigo-600 hover:bg-indigo-700 font-medium rounded-lg text-sm px-5 py-2.5 text-center">저장</button><button type="button" id="cancel-edit-btn" class="w-full text-gray-900 bg-white border border-gray-300 hover:bg-gray-100 font-medium rounded-lg text-sm px-5 py-2.5 text-center hidden">취소</button></div></form></div></div>`;
     
-    // HTML이 렌더링 된 후 DOM 요소 찾기
     tableBody = document.getElementById('player-table-body');
     form = document.getElementById('player-form');
     formTitle = document.getElementById('player-form-title');
     cancelBtn = document.getElementById('cancel-edit-btn');
     playerIdInput = document.getElementById('player-id');
 
-    // 이벤트 리스너 등록
     form.addEventListener('submit', handleFormSubmit);
     tableBody.addEventListener('click', handleTableClick);
     cancelBtn.addEventListener('click', resetForm);
@@ -95,14 +94,12 @@ export function init(dependencies) {
 
 export function renderPlayerTable() {
     if(!tableBody) return;
-
     const uniqueDates = new Set(state.attendanceLog.map(log => log.date));
     const totalMeetings = uniqueDates.size > 0 ? uniqueDates.size : 1;
     const playerAttendance = {};
     state.attendanceLog.forEach(log => {
         playerAttendance[log.name] = (playerAttendance[log.name] || 0) + 1;
     });
-
     tableBody.innerHTML = '';
     const playerNames = Object.keys(state.playerDB).sort((a, b) => a.localeCompare(b, 'ko-KR'));
     if (playerNames.length === 0) {

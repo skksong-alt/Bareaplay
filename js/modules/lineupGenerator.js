@@ -1,5 +1,5 @@
 // js/modules/lineupGenerator.js
-let state, showNotification, pages;
+let state, showNotification;
 let generateLineupButton, lineupDisplay, pitchContainer, restersPanel, unassignedPanel, loadingLineupSpinner, placeholderLineup;
 let teamSelectTabsContainer, lineupMembersTextarea;
 let currentQuarter = 0;
@@ -123,17 +123,15 @@ function executeLineupGeneration() {
 
     const fixedGk = '강석영';
     const hasFixedGk = members.includes(fixedGk) && (localPlayerDB[fixedGk]?.pos1.includes('GK') || localPlayerDB[fixedGk]?.pos2.includes('GK'));
-
+    
     let bestLineup = null, bestScore = Infinity;
     const TRIAL = 800, BETA = 7;
     for (let tr = 0; tr < TRIAL; tr++) {
         const assignHist = {}, lineups = [];
-        let restCount = {};
-        members.forEach(n => restCount[n] = 0);
         let allResterInQ = [];
         
+        // ▼▼▼ [로직 복원] 휴식자 선정 로직 ▼▼▼
         const reversedAttendees = [...members].reverse();
-
         for (let qIdx = 0; qIdx < 4; qIdx++) {
             let resters = [];
             const onFieldNeeded = (posCellMap[formations[qIdx]] || []).length;
@@ -143,18 +141,21 @@ function executeLineupGeneration() {
             
             for(const n of resterCandidates) {
                 if(resters.length >= requiredRestCount) break;
-                if(hasFixedGk && n === fixedGk) continue; // 강석영은 휴식자에서 제외
+                if(hasFixedGk && n === fixedGk) continue;
                 
                 const qCount = allResterInQ.filter(q => q.includes(n)).length;
-                if(qCount < Math.floor((requiredRestCount * 4) / members.length)) {
+                const fairRestCount = Math.floor((requiredRestCount * 4) / members.length);
+                if(qCount < fairRestCount) {
                     resters.push(n);
                 }
             }
             
-            while(resters.length < requiredRestCount) {
+            let safety = 0;
+            while(resters.length < requiredRestCount && safety < members.length) {
                 const extra = members.find(n => !resters.includes(n) && (!hasFixedGk || n !== fixedGk));
                 if(extra) resters.push(extra);
                 else break;
+                safety++;
             }
             allResterInQ[qIdx] = [...resters];
         }
@@ -168,6 +169,7 @@ function executeLineupGeneration() {
             const slots = formCells.map(c => c.pos);
             for(const pos of slots) { assignQ[pos] = assignQ[pos] || []; }
 
+            // ▼▼▼ [로직 복원] GK 고정 로직 ▼▼▼
             if(hasFixedGk && slots.includes('GK')) {
                 assignQ['GK'][0] = fixedGk;
                 available = available.filter(n => n !== fixedGk);
@@ -175,7 +177,7 @@ function executeLineupGeneration() {
 
             let candidates = available.map(n => ({ name: n, ...localPlayerDB[n] }));
             
-            let assignedCount = hasFixedGk && slots.includes('GK') ? 1 : 0;
+            let assignedCount = (hasFixedGk && slots.includes('GK')) ? 1 : 0;
             const onFieldNeeded = formCells.length;
             while(assignedCount < onFieldNeeded && candidates.length > 0) {
                  let bestFitScore = Infinity, bestPlayerIdx = -1, bestSlotPos = null, bestSlotIdx = -1;
@@ -231,9 +233,9 @@ function executeLineupGeneration() {
 export function init(dependencies) {
     state = dependencies.state;
     showNotification = dependencies.showNotification;
-    pages = dependencies.pages;
-
-    pages.lineup.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">라인업 조건</h2><div class="mb-4"><label class="block text-md font-semibold text-gray-700 mb-2">팀 선택</label><div id="team-select-tabs-container" class="flex flex-wrap gap-2"><p class="text-sm text-gray-500">팀 배정기에서 먼저 팀을 생성해주세요.</p></div><textarea id="lineup-members" class="hidden"></textarea></div><div class="grid grid-cols-2 gap-4 mb-6"><div><label for="formation-q1" class="block text-sm font-medium">1쿼터</label><select id="formation-q1" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q2" class="block text-sm font-medium">2쿼터</label><select id="formation-q2" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q3" class="block text-sm font-medium">3쿼터</label><select id="formation-q3" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q4" class="block text-sm font-medium">4쿼터</label><select id="formation-q4" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div></div><div class="mt-8"><button id="generateLineupButton" class="w-full bg-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-teal-700 transition-transform transform hover:scale-105 shadow-lg">라인업 생성!</button></div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">라인업 결과</h2><div id="loading-lineup" class="hidden"><svg class="animate-spin h-6 w-6 text-teal-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div></div><div id="result-container-lineup"><div id="placeholder-lineup" class="flex items-center justify-center text-gray-400 min-h-[60vh]"><p>조건을 입력하고 라인업 생성을 눌러주세요.</p></div><div id="lineup-display" class="hidden"><div class="flex space-x-2 border-b mb-4"><button class="lineup-q-tab active-q-tab py-2 px-4 font-semibold" data-q="0">1쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="1">2쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="2">3쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="3">4쿼터</button></div><div class="grid grid-cols-1 md:grid-cols-3 gap-4"><div class="md:col-span-2"><div id="pitch-container"></div></div><div id="lineup-sidebar" class="md:col-span-1 p-4 bg-gray-50 rounded-lg space-y-4"><div id="resters-panel"></div><div id="unassigned-panel"></div></div></div></div></div></div></div>`;
+    
+    const pageElement = document.getElementById('page-lineup');
+    pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">라인업 조건</h2><div class="mb-4"><label class="block text-md font-semibold text-gray-700 mb-2">팀 선택</label><div id="team-select-tabs-container" class="flex flex-wrap gap-2"><p class="text-sm text-gray-500">팀 배정기에서 먼저 팀을 생성해주세요.</p></div><textarea id="lineup-members" class="hidden"></textarea></div><div class="grid grid-cols-2 gap-4 mb-6"><div><label for="formation-q1" class="block text-sm font-medium">1쿼터</label><select id="formation-q1" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q2" class="block text-sm font-medium">2쿼터</label><select id="formation-q2" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q3" class="block text-sm font-medium">3쿼터</label><select id="formation-q3" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q4" class="block text-sm font-medium">4쿼터</label><select id="formation-q4" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div></div><div class="mt-8"><button id="generateLineupButton" class="w-full bg-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-teal-700 transition-transform transform hover:scale-105 shadow-lg">라인업 생성!</button></div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">라인업 결과</h2><div id="loading-lineup" class="hidden"><svg class="animate-spin h-6 w-6 text-teal-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div></div><div id="result-container-lineup"><div id="placeholder-lineup" class="flex items-center justify-center text-gray-400 min-h-[60vh]"><p>조건을 입력하고 라인업 생성을 눌러주세요.</p></div><div id="lineup-display" class="hidden"><div class="flex space-x-2 border-b mb-4"><button class="lineup-q-tab active-q-tab py-2 px-4 font-semibold" data-q="0">1쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="1">2쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="2">3쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="3">4쿼터</button></div><div class="grid grid-cols-1 md:grid-cols-3 gap-4"><div class="md:col-span-2"><div id="pitch-container"></div></div><div id="lineup-sidebar" class="md:col-span-1 p-4 bg-gray-50 rounded-lg space-y-4"><div id="resters-panel"></div><div id="unassigned-panel"></div></div></div></div></div></div></div>`;
     
     generateLineupButton = document.getElementById('generateLineupButton');
     lineupDisplay = document.getElementById('lineup-display');
@@ -263,4 +265,8 @@ export function init(dependencies) {
             renderQuarter(currentQuarter);
         }
     });
+}
+
+export function getPosCellMap() {
+    return posCellMap;
 }

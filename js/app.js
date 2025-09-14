@@ -122,22 +122,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const modules = { playerMgmt, balancer, lineup, accounting, shareMgmt };
     const dependencies = { db, state };
-    
-    // ▼▼▼ [오류 수정] 모듈 초기화 방식 변경 ▼▼▼
+
     for (const moduleName in modules) {
         if (modules[moduleName].init) {
             modules[moduleName].init(dependencies);
         }
     }
 
+    // [오류 수정] 모든 모듈이 초기화 된 후 window 객체에 할당
+    window.playerMgmt = playerMgmt;
+    window.accounting = accounting;
+    window.lineup = lineup;
+
     modalConfirmBtn.addEventListener('click', () => {
         if (passwordInput.value === state.ADMIN_PASSWORD) {
             setAdmin(true);
-            showNotification('관리자 인증에 성공했습니다.', 'success');
+            window.showNotification('관리자 인증에 성공했습니다.', 'success');
             updateAdminUI();
             adminModal.classList.add('hidden');
         } else {
-            showNotification('승인번호가 올바르지 않습니다.', 'error');
+            window.showNotification('승인번호가 올바르지 않습니다.', 'error');
         }
     });
     modalCancelBtn.addEventListener('click', () => adminModal.classList.add('hidden'));
@@ -173,7 +177,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (doc.exists() && memoArea) { memoArea.value = doc.data().content; }
         });
         
-        // 모든 데이터 로딩 후 UI 렌더링
         playerMgmt.renderPlayerTable();
         accounting.renderForDate();
         shareMgmt.populateLocations();
