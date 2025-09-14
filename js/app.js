@@ -32,10 +32,10 @@ const state = {
 };
 
 let adminModal, passwordInput, modalConfirmBtn, modalCancelBtn;
-
 const pages = {};
 const tabs = {};
 
+// ▼▼▼ [오류 수정] 헬퍼 함수들을 파일 상단으로 이동 ▼▼▼
 function showNotification(message, type = 'success') {
     const notificationEl = document.getElementById('notification');
     notificationEl.textContent = message;
@@ -46,6 +46,15 @@ function showNotification(message, type = 'success') {
         notificationEl.classList.remove('show');
     }, 3000);
 }
+
+function debounce(func, delay) {
+    let timeout;
+    return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), delay);
+    };
+}
+// ▲▲▲ [오류 수정] 여기까지 이동 ▲▲▲
 
 function updateAdminUI() {
     document.querySelectorAll('.admin-control').forEach(el => {
@@ -107,21 +116,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     modalConfirmBtn = document.getElementById('modal-confirm-btn');
     modalCancelBtn = document.getElementById('modal-cancel-btn');
 
-    const modules = {
-        playerManagement,
-        teamBalancer,
-        lineupGenerator,
-        accounting,
-        shareManagement
-    };
-
-    const dependencies = {
-        db,
-        state,
-        showNotification,
-        switchTab,
-        pages
-    };
+    const modules = { playerManagement, teamBalancer, lineupGenerator, accounting, shareManagement };
+    const dependencies = { db, state, showNotification, switchTab, pages, debounce };
 
     for (const moduleName in modules) {
         if (modules[moduleName].init) {
@@ -149,25 +145,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
         const collectionsToFetch = ['players', 'attendance', 'expenses', 'locations'];
-        const snapshots = await Promise.all(
-            collectionsToFetch.map(c => getDocs(collection(db, c)))
-        );
-
-        state.playerDB = {};
-        snapshots[0].forEach(doc => { state.playerDB[doc.id] = doc.data(); });
-
+        const snapshots = await Promise.all(collectionsToFetch.map(c => getDocs(collection(db, c))));
+        state.playerDB = {}; snapshots[0].forEach(doc => { state.playerDB[doc.id] = doc.data(); });
         state.attendanceLog = snapshots[1].docs.map(doc => ({ id: doc.id, ...doc.data() }));
         state.expenseLog = snapshots[2].docs.map(doc => ({ id: doc.id, ...doc.data() }));
         state.locations = snapshots[3].docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
         onSnapshot(doc(db, "memos", "accounting_memo"), (doc) => {
             const memoArea = document.getElementById('memo-area');
-            if (doc.exists()) {
-                state.memoContent = doc.data().content;
-                if(memoArea) memoArea.value = state.memoContent;
-            }
+            if (doc.exists() && memoArea) { memoArea.value = doc.data().content; }
         });
-
     } catch (error) {
         console.error("초기 데이터 로딩 실패:", error);
         showNotification('데이터 로딩에 실패했습니다.', 'error');
