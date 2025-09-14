@@ -199,7 +199,8 @@ export function init(firestoreDB, globalState) {
     expenseForm = document.getElementById('expense-form');
     expenseLogBody = document.getElementById('expense-log-body');
     expenseLogFoot = document.getElementById('expense-log-foot');
-    
+    const checkAllBtn = document.getElementById('check-all-btn');
+    const uncheckAllBtn = document.getElementById('uncheck-all-btn');
     const today = new Date().toISOString().split('T')[0];
     if(attendanceDate) attendanceDate.value = today;
 
@@ -209,6 +210,12 @@ export function init(firestoreDB, globalState) {
     if(incomeTabBtn) incomeTabBtn.addEventListener('click', () => switchAccountingTab(incomeTabBtn));
     if(expenseTabBtn) expenseTabBtn.addEventListener('click', () => switchAccountingTab(expenseTabBtn));
     if(expenseForm) expenseForm.addEventListener('submit', handleExpenseSubmit);
+    if(checkAllBtn) checkAllBtn.addEventListener('click', () => {
+        checklistContainer.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = true);
+    });
+    if(uncheckAllBtn) uncheckAllBtn.addEventListener('click', () => {
+        checklistContainer.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = false);
+    });
 
     if(expenseLogBody) {
         expenseLogBody.addEventListener('click', async (e) => {
@@ -234,7 +241,7 @@ export function init(firestoreDB, globalState) {
         currentlyCheckedNames.forEach(name => {
             if (!alreadyLoggedNames.has(name)) {
                 const docId = `${date}_${name}`;
-                const newLog = { date, name, paymentStatus: '✕', paymentAmount: '5000', note: '' };
+                const newLog = { date, name, paymentStatus: '●', paymentAmount: '5000', note: '' };
                 promises.push(setDoc(doc(db, "attendance", docId), newLog));
             }
         });

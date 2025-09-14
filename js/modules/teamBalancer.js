@@ -116,7 +116,6 @@ function copyToLineup(e, teamIndex) {
 }
 
 function executeTeamAssignment() {
-    // ... 기존 executeTeamAssignment 로직은 그대로 ...
     const attendNames = attendeesTextarea.value.split('\n').map(name => name.trim()).filter(Boolean);
     if (attendNames.length === 0) { window.showNotification("참가자 명단을 입력해주세요.", 'error'); resetUI(); return; }
     const teamCount = parseInt(teamCountSelect.value, 10);
@@ -139,6 +138,7 @@ function executeTeamAssignment() {
     });
     renderResults(bestTeams);
     window.accounting.autoFillAttendees(attendNames);
+    window.lineup.renderTeamSelectTabs(bestTeams);
     resetUI();
 }
 

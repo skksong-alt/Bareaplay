@@ -7,7 +7,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     
     <link rel="stylesheet" href="css/style.css">
     <link rel="manifest" href="manifest.json">
@@ -50,6 +49,7 @@
                 <button id="tab-balancer" class="tab-button active text-lg font-semibold py-4 px-6 border-b-2 border-transparent">⚖️ 팀 배정기</button>
                 <button id="tab-lineup" class="tab-button text-lg font-semibold py-4 px-6 border-b-2 border-transparent">📋 라인업 생성기</button>
                 <button id="tab-accounting" class="tab-button text-lg font-semibold py-4 px-6 border-b-2 border-transparent">📈 출석 & 회계</button>
+                <button id="tab-share" class="tab-button text-lg font-semibold py-4 px-6 border-b-2 border-transparent">📢 모임 & 배포</button>
             </nav>
         </div>
 
@@ -118,7 +118,13 @@
                  <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     <div class="lg:col-span-1 bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg">
                         <h2 class="text-2xl font-bold mb-4 border-b pb-2 text-gray-900 dark:text-gray-100 dark:border-gray-700">라인업 조건</h2>
-                        <div class="mb-6"><label for="lineup-members" class="block text-md font-semibold text-gray-700 dark:text-gray-300 mb-2">팀 멤버 명단</label><textarea id="lineup-members" rows="12" class="w-full p-3 border border-gray-300 rounded-lg text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-700 dark:border-gray-600" placeholder="팀 배정 결과에서 생성된 팀을 클릭하면 자동으로 채워집니다."></textarea></div>
+                        <div class="mb-4">
+                            <label class="block text-md font-semibold text-gray-700 dark:text-gray-300 mb-2">팀 선택</label>
+                            <div id="team-select-tabs-container" class="flex flex-wrap gap-2">
+                                <p class="text-sm text-gray-500 dark:text-gray-400">팀 배정기에서 먼저 팀을 생성해주세요.</p>
+                            </div>
+                            <textarea id="lineup-members" class="hidden"></textarea>
+                        </div>
                         <div class="grid grid-cols-2 gap-4 mb-6">
                             <div><label for="formation-q1" class="block text-sm font-medium text-gray-700 dark:text-gray-300">1쿼터</label><select id="formation-q1" class="mt-1 w-full p-2 border border-gray-300 rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div>
                             <div><label for="formation-q2" class="block text-sm font-medium text-gray-700 dark:text-gray-300">2쿼터</label><select id="formation-q2" class="mt-1 w-full p-2 border border-gray-300 rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div>
@@ -130,7 +136,6 @@
                     <div class="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg">
                         <div class="flex justify-between items-center mb-4 border-b pb-2 dark:border-gray-700">
                             <h2 class="text-2xl font-bold text-gray-900 dark:text-gray-100">라인업 결과</h2>
-                             <button id="share-lineup-btn" class="hidden bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg text-sm">이미지로 저장</button>
                             <div id="loading-lineup" class="hidden"><svg class="animate-spin h-6 w-6 text-teal-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>
                         </div>
                         <div id="result-container-lineup">
@@ -152,7 +157,16 @@
                         <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg">
                             <div class="flex justify-between items-center mb-4 border-b pb-2 dark:border-gray-700"><h2 class="text-2xl font-bold text-gray-900 dark:text-gray-100">출석 기록 관리</h2><button id="admin-login-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1 px-3 rounded-lg">관리자 로그인</button></div>
                             <div class="mb-4"><label for="attendance-date" class="block text-md font-semibold text-gray-700 dark:text-gray-300 mb-2">날짜 선택</label><input type="date" id="attendance-date" class="w-full p-2 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600"></div>
-                            <div class="mb-4"><label class="block text-md font-semibold text-gray-700 dark:text-gray-300 mb-2">참석자 선택</label><div id="attendance-checklist" class="max-h-60 overflow-y-auto border rounded-lg p-3 space-y-2 dark:border-gray-600"></div></div>
+                            <div class="mb-4">
+                                <div class="flex justify-between items-center mb-2">
+                                    <label class="block text-md font-semibold text-gray-700 dark:text-gray-300">참석자 선택</label>
+                                    <div class="space-x-2">
+                                        <button id="check-all-btn" class="text-xs text-indigo-600 hover:underline admin-control" disabled>모두 선택</button>
+                                        <button id="uncheck-all-btn" class="text-xs text-gray-500 hover:underline admin-control" disabled>모두 해제</button>
+                                    </div>
+                                </div>
+                                <div id="attendance-checklist" class="max-h-60 overflow-y-auto border rounded-lg p-3 space-y-2 dark:border-gray-600"></div>
+                            </div>
                             <button id="record-attendance-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition-transform transform hover:scale-105 shadow-lg admin-control" disabled>선택한 날짜 출석 저장</button>
                         </div>
                          <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg">
@@ -174,14 +188,12 @@
                                 <button id="expense-tab-btn" class="accounting-tab text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💸 지출</button>
                             </nav>
                         </div>
-
                         <div id="income-log-section">
                             <h2 class="text-2xl font-bold mb-4 text-gray-900 dark:text-gray-100">회비 로그</h2>
                             <div class="overflow-x-auto max-h-[70vh]">
                                 <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400"><thead class="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-50 dark:bg-gray-700 sticky top-0"><tr><th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">이름</th><th scope="col" class="py-3 px-4">납부 상태</th><th scope="col" class="py-3 px-4">납부액</th><th scope="col" class="py-3 px-4">비고</th></tr></thead><tbody id="accounting-log-body"></tbody><tfoot id="accounting-log-foot" class="bg-gray-100 dark:bg-gray-700 font-bold"></tfoot></table>
                             </div>
                         </div>
-
                         <div id="expense-log-section" class="hidden">
                             <h2 class="text-2xl font-bold mb-4 text-gray-900 dark:text-gray-100">지출 로그</h2>
                             <form id="expense-form" class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6 items-end">
@@ -199,13 +211,38 @@
                                 <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400"><thead class="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-50 dark:bg-gray-700 sticky top-0"><tr><th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">항목</th><th scope="col" class="py-3 px-4">금액</th><th scope="col" class="py-3 px-4">관리</th></tr></thead><tbody id="expense-log-body"></tbody><tfoot id="expense-log-foot" class="bg-gray-100 dark:bg-gray-700 font-bold"></tfoot></table>
                             </div>
                         </div>
-
                     </div>
+                </div>
+            </div>
+            <div id="page-share" class="hidden">
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg">
+                    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 border-b pb-2 dark:border-gray-700">
+                        <h2 class="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2 sm:mb-0">모임 공지 생성</h2>
+                        <div class="flex space-x-2">
+                            <button id="generate-share-content-btn" class="w-full sm:w-auto bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700">공지 생성</button>
+                            <button id="print-btn" class="w-full sm:w-auto bg-gray-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-600">인쇄</button>
+                        </div>
+                    </div>
+                    <textarea id="share-content" readonly class="w-full h-96 p-3 border border-gray-300 rounded-lg text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-700 dark:border-gray-600" placeholder="'공지 생성' 버튼을 누르면 팀 배정 및 라인업 결과가 여기에 표시됩니다."></textarea>
                 </div>
             </div>
         </main>
     </div>
 
     <script type="module" src="js/app.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => {
+                        console.log('Service Worker registered: ', registration);
+                    })
+                    .catch(registrationError => {
+                        console.log('Service Worker registration failed: ', registrationError);
+                    });
+            });
+        }
+    </script>
 </body>
 </html>
+}

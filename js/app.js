@@ -4,12 +4,13 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
 import { getFirestore, collection, doc, onSnapshot, getDocs } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 
-// 중앙 스토어와 각 기능 모듈들 import
+// 중앙 스토어와 각 기능 모듈들 import (중복 제거)
 import { state, setAdmin } from './store.js';
 import * as playerMgmt from './modules/playerManagement.js';
 import * as balancer from './modules/teamBalancer.js';
 import * as lineup from './modules/lineupGenerator.js';
 import * as accounting from './modules/accounting.js';
+import * as shareMgmt from './modules/shareManagement.js';
 
 // --- Firebase 초기화 ---
 const firebaseConfig = {
@@ -33,19 +34,18 @@ window.shuffleLocal = function(arr) {
         const j = Math.floor(Math.random() * (i + 1));
         [arr[i], arr[j]] = [arr[j], arr[i]];
     }
-}
+};
 
 window.showNotification = function(message, type = 'success') {
     const notificationEl = document.getElementById('notification');
     notificationEl.textContent = message;
-    notificationEl.className = ''; // 기존 클래스 초기화
+    notificationEl.className = '';
     notificationEl.classList.add(type === 'success' ? 'notification-success' : 'notification-error');
     notificationEl.classList.add('show');
-    
     setTimeout(() => {
         notificationEl.classList.remove('show');
     }, 3000);
-}
+};
 
 window.debounce = function(func, delay) {
     let timeout;
@@ -53,7 +53,7 @@ window.debounce = function(func, delay) {
         clearTimeout(timeout);
         timeout = setTimeout(() => func.apply(this, args), delay);
     };
-}
+};
 
 // --- UI 컨트롤 ---
 const pages = {};
@@ -84,7 +84,7 @@ window.promptForAdminPassword = function() {
     passwordInput.value = '';
     adminModal.classList.remove('hidden');
     passwordInput.focus();
-}
+};
 
 window.switchTab = function(activeKey, force = false) {
     if (activeKey === 'players' && !state.isAdmin && !force) {
@@ -92,23 +92,33 @@ window.switchTab = function(activeKey, force = false) {
         if (!state.isAdmin) return;
     }
     Object.keys(pages).forEach(key => {
-        pages[key].classList.toggle('hidden', key !== activeKey);
-        tabs[key].classList.toggle('active', key === activeKey);
+        if (pages[key]) pages[key].classList.toggle('hidden', key !== activeKey);
+        if (tabs[key]) tabs[key].classList.toggle('active', key === activeKey);
     });
     if (activeKey === 'accounting') {
         accounting.renderForDate();
     }
-}
-
+};
 
 // --- 앱 메인 실행 로직 ---
 document.addEventListener('DOMContentLoaded', async () => {
-    // 전역에서 사용할 DOM 요소 할당
-    Object.assign(pages, { players: document.getElementById('page-players'), balancer: document.getElementById('page-balancer'), lineup: document.getElementById('page-lineup'), accounting: document.getElementById('page-accounting') });
-    Object.assign(tabs, { players: document.getElementById('tab-players'), balancer: document.getElementById('tab-balancer'), lineup: document.getElementById('tab-lineup'), accounting: document.getElementById('tab-accounting') });
+    // 전역에서 사용할 DOM 요소 할당 (정리된 버전)
+    Object.assign(pages, { 
+        players: document.getElementById('page-players'), 
+        balancer: document.getElementById('page-balancer'), 
+        lineup: document.getElementById('page-lineup'), 
+        accounting: document.getElementById('page-accounting'),
+        share: document.getElementById('page-share')
+    });
+    Object.assign(tabs, { 
+        players: document.getElementById('tab-players'), 
+        balancer: document.getElementById('tab-balancer'), 
+        lineup: document.getElementById('tab-lineup'), 
+        accounting: document.getElementById('tab-accounting'),
+        share: document.getElementById('tab-share')
+    });
     const loadingOverlay = document.getElementById('loading-overlay');
     
-    // 모달 관련 DOM 요소 할당
     adminModal = document.getElementById('admin-modal');
     passwordInput = document.getElementById('admin-password-input');
     modalConfirmBtn = document.getElementById('modal-confirm-btn');
@@ -119,8 +129,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     balancer.init(db, state);
     lineup.init(db, state);
     accounting.init(db, state);
-    
-    // 모달 제어 이벤트 리스너
+    shareMgmt.init(db, state); 
+
     modalConfirmBtn.addEventListener('click', () => {
         if (passwordInput.value === state.ADMIN_PASSWORD) {
             setAdmin(true);
@@ -135,10 +145,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     adminModal.addEventListener('click', (e) => { if (e.target === adminModal) adminModal.classList.add('hidden'); });
     passwordInput.addEventListener('keyup', (e) => { if (e.key === 'Enter') modalConfirmBtn.click(); });
 
-    // 탭 클릭 이벤트 연결
-    Object.keys(tabs).forEach(key => tabs[key].addEventListener('click', () => switchTab(key)));
+    Object.keys(tabs).forEach(key => {
+        if (tabs[key]) tabs[key].addEventListener('click', () => switchTab(key));
+    });
 
-    // Firestore 데이터 로딩
     try {
         const playersSnapshot = await getDocs(collection(db, "players"));
         playersSnapshot.forEach(doc => { state.playerDB[doc.id] = doc.data(); });
@@ -157,7 +167,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         setTimeout(() => loadingOverlay.style.display = 'none', 300);
     }
     
-    // 실시간 업데이트 리스너
     onSnapshot(collection(db, "expenses"), (snapshot) => {
         state.expenseLog = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         if(!pages.accounting.classList.contains('hidden')) {
@@ -173,14 +182,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // 초기 상태 설정
     updateAdminUI();
     switchTab('balancer', true);
 });
 
 // 다른 모듈에서 호출할 수 있도록 window 객체에 할당
 window.accounting = accounting;
-window.teamBalancer = balancer; // teamBalancer도 HTML에서 호출하므로 추가
+window.teamBalancer = balancer;
+window.lineup = lineup;
 
 // --- 다크 모드 컨트롤 로직 ---
 const themeToggleBtn = document.getElementById('dark-mode-toggle');
@@ -188,7 +197,7 @@ const moonIcon = document.getElementById('theme-icon-moon');
 const sunIcon = document.getElementById('theme-icon-sun');
 
 const updateIcons = (isDarkMode) => {
-    state.isDarkMode = isDarkMode; // 현재 테마 상태를 중앙 스토어에 저장
+    state.isDarkMode = isDarkMode;
     if (isDarkMode) {
         moonIcon.classList.add('hidden');
         sunIcon.classList.remove('hidden');
@@ -196,7 +205,6 @@ const updateIcons = (isDarkMode) => {
         moonIcon.classList.remove('hidden');
         sunIcon.classList.add('hidden');
     }
-    // 차트가 그려진 상태라면 테마 변경 후 다시 그리기
     if (pages.accounting && !pages.accounting.classList.contains('hidden')) {
         accounting.renderForDate();
     }
@@ -227,16 +235,3 @@ themeToggleBtn.addEventListener('click', () => {
     localStorage.setItem('theme', newTheme);
     updateIcons(isDarkMode);
 });
-
-// --- PWA 서비스 워커 등록 ---
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-            .then(registration => {
-                console.log('Service Worker registered: ', registration);
-            })
-            .catch(registrationError => {
-                console.log('Service Worker registration failed: ', registrationError);
-            });
-    });
-}

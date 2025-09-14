@@ -1,4 +1,4 @@
-// sw.js (최종 버전)
+// sw.js
 
 const CACHE_NAME = 'bareaplay-cache-v1';
 // 오프라인 시에도 필요한 최소한의 파일 목록
@@ -11,8 +11,9 @@ const urlsToCache = [
     'js/modules/teamBalancer.js',
     'js/modules/lineupGenerator.js',
     'js/modules/accounting.js',
+    'js/modules/shareManagement.js', // shareManagement 모듈 추가
     'manifest.json',
-  'assets/icon-512.png' // 로컬 앱 아이콘
+    'assets/icon-512.png' // 로컬 앱 아이콘
 ];
 
 // 1. 서비스 워커 설치
