@@ -1,6 +1,6 @@
 // js/modules/accounting.js
-import { doc, getDocs, collection, setDoc, deleteDoc, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
-let db, state;
+import { doc, getDocs, collection, setDoc, deleteDoc, addDoc, serverTimestamp, onSnapshot } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+let db, state, showNotification, pages;
 let attendanceDate, checklistContainer, recordBtn, logBody, logFoot, memoArea, adminLoginBtn, accountingChart;
 let incomeTabBtn, expenseTabBtn, incomeLogSection, expenseLogSection, expenseForm, expenseLogBody, expenseLogFoot;
 let totalBalanceEl, filterStartDateEl, filterEndDateEl, filterPeriodSelectEl, excelDownloadBtn;
@@ -61,7 +61,7 @@ function renderExpenseLog(logs) {
     expenseLogBody.innerHTML = '';
     expenseLogFoot.innerHTML = '';
     
-    const sortedLogs = logs.sort((a, b) => new Date(b.date) - new Date(a.date));
+    const sortedLogs = logs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 
     if (sortedLogs.length === 0) {
         expenseLogBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-gray-500">해당 기간의 지출 로그가 없습니다.</td></tr>`;
@@ -98,7 +98,7 @@ async function handleExpenseSubmit(e) {
     const amount = amountEl.value;
 
     if (!item || !amount) {
-        window.showNotification('항목과 금액을 모두 입력해주세요.', 'error');
+        showNotification('항목과 금액을 모두 입력해주세요.', 'error');
         return;
     }
 
@@ -109,11 +109,11 @@ async function handleExpenseSubmit(e) {
             date: new Date().toISOString().split('T')[0],
             createdAt: serverTimestamp()
         });
-        window.showNotification('지출 내역이 추가되었습니다.');
+        showNotification('지출 내역이 추가되었습니다.');
         expenseForm.reset();
     } catch (error) {
         console.error("Error adding expense: ", error);
-        window.showNotification('지출 내역 추가에 실패했습니다.', 'error');
+        showNotification('지출 내역 추가에 실패했습니다.', 'error');
     }
 }
 
@@ -177,7 +177,7 @@ function downloadExcel(incomeLogs, expenseLogs) {
     XLSX.utils.book_append_sheet(wb, expenseSheet, "지출 내역");
 
     XLSX.writeFile(wb, `BareaPlay_회계_${new Date().toISOString().split('T')[0]}.xlsx`);
-    window.showNotification("엑셀 파일이 다운로드되었습니다.");
+    showNotification("엑셀 파일이 다운로드되었습니다.");
 }
 
 export function renderForDate() {
@@ -209,9 +209,13 @@ export function autoFillAttendees(names) {
     renderAttendanceLogTable(state.attendanceLog.filter(log => log.date === today));
 }
 
-export function init(firestoreDB, globalState) {
-    db = firestoreDB;
-    state = globalState;
+export function init(dependencies) {
+    db = dependencies.db;
+    state = dependencies.state;
+    showNotification = dependencies.showNotification;
+    pages = dependencies.pages;
+    
+    pages.accounting.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 space-y-8"><div class="bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">출석 기록 관리</h2><button id="admin-login-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1 px-3 rounded-lg">관리자 로그인</button></div><div class="mb-4"><label for="attendance-date" class="block text-md font-semibold text-gray-700 mb-2">날짜 선택</label><input type="date" id="attendance-date" class="w-full p-2 border rounded-lg"></div><div class="mb-4"><div class="flex justify-between items-center mb-2"><label class="block text-md font-semibold text-gray-700">참석자 선택</label><div class="space-x-2"><button id="check-all-btn" class="text-xs text-indigo-600 hover:underline admin-control" disabled>모두 선택</button><button id="uncheck-all-btn" class="text-xs text-gray-500 hover:underline admin-control" disabled>모두 해제</button></div></div><div id="attendance-checklist" class="max-h-60 overflow-y-auto border rounded-lg p-3 space-y-2"></div></div><button id="record-attendance-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition-transform transform hover:scale-105 shadow-lg admin-control" disabled>선택한 날짜 출석 저장</button></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">💰 총 잔액</h2><p id="total-balance" class="text-4xl font-bold text-indigo-600">0 Dhs</p></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">📊 월별 요약</h2><div class="w-full"><canvas id="accountingChart"></canvas></div></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">Remark / 특정 메모</h2><textarea id="memo-area" class="w-full p-3 border rounded-lg admin-control bg-gray-50" rows="5" placeholder="미납자 정보, 주요 공지 등..." disabled></textarea><p class="text-xs text-gray-500 mt-2">메모는 자동으로 저장됩니다.</p><button id="excel-download-btn" class="mt-4 w-full bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700">현재 조회 내역 엑셀 다운로드</button></div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="border-b border-gray-200 mb-4"><nav class="flex -mb-px space-x-6" aria-label="Tabs"><button id="income-tab-btn" class="accounting-tab active text-indigo-600 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💰 회비 (수입)</button><button id="expense-tab-btn" class="accounting-tab text-gray-500 hover:text-gray-700 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💸 지출</button></nav></div><div class="flex flex-wrap items-end gap-4 mb-4 p-4 bg-gray-50 rounded-lg"><div class="flex-grow"><label for="filter-start-date" class="block text-sm font-medium text-gray-700">조회 기간</label><div class="flex items-center mt-1"><input type="date" id="filter-start-date" class="p-2 border rounded-l-md"><span class="p-2 bg-gray-200 border-y">~</span><input type="date" id="filter-end-date" class="p-2 border rounded-r-md"></div></div><div class="flex gap-2"><select id="filter-period-select" class="p-2 border rounded-md bg-white"><option value="all">전체</option><option value="1m">1개월</option><option value="3m">3개월</option><option value="6m">6개월</option></select></div></div><div id="income-log-section"><h2 class="text-2xl font-bold mb-4">회비 로그</h2><div class="overflow-x-auto max-h-[70vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">이름</th><th scope="col" class="py-3 px-4">납부 상태</th><th scope="col" class="py-3 px-4">납부액</th><th scope="col" class="py-3 px-4">비고</th></tr></thead><tbody id="accounting-log-body"></tbody><tfoot id="accounting-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div><div id="expense-log-section" class="hidden"><h2 class="text-2xl font-bold mb-4">지출 로그</h2><form id="expense-form" class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6 items-end"><div class="sm:col-span-2"><label for="expense-item" class="block text-sm font-medium">항목</label><input type="text" id="expense-item" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><div><label for="expense-amount" class="block text-sm font-medium">금액</label><input type="number" id="expense-amount" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><button type="submit" class="w-full bg-red-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600 admin-control" disabled>지출 추가</button></form><div class="overflow-x-auto max-h-[60vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">항목</th><th scope="col" class="py-3 px-4">금액</th><th scope="col" class="py-3 px-4">관리</th></tr></thead><tbody id="expense-log-body"></tbody><tfoot id="expense-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div></div></div>`;
 
     attendanceDate = document.getElementById('attendance-date');
     checklistContainer = document.getElementById('attendance-checklist');
@@ -282,7 +286,7 @@ export function init(firestoreDB, globalState) {
                 const docId = e.target.dataset.id;
                 if (confirm('이 지출 내역을 정말 삭제하시겠습니까?')) {
                     await deleteDoc(doc(db, 'expenses', docId));
-                    window.showNotification('지출 내역이 삭제되었습니다.');
+                    showNotification('지출 내역이 삭제되었습니다.');
                 }
             }
         });
@@ -290,7 +294,7 @@ export function init(firestoreDB, globalState) {
 
     if(recordBtn) recordBtn.addEventListener('click', async () => {
         const date = attendanceDate.value;
-        if (!date) { window.showNotification('날짜를 선택해주세요.', 'error'); return; }
+        if (!date) { showNotification('날짜를 선택해주세요.', 'error'); return; }
         const checkedBoxes = checklistContainer.querySelectorAll('input[type=checkbox]:checked');
         const currentlyCheckedNames = new Set(Array.from(checkedBoxes).map(cb => cb.value));
         const alreadyLoggedNames = new Set(state.attendanceLog.filter(log => log.date === date).map(log => log.name));
@@ -308,11 +312,7 @@ export function init(firestoreDB, globalState) {
             }
         });
         await Promise.all(promises);
-        window.showNotification(`${date} 출석 현황이 저장되었습니다.`);
-        
-        const attendanceSnapshot = await getDocs(collection(db, "attendance"));
-        state.attendanceLog = attendanceSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        renderForDate();
+        showNotification(`${date} 출석 현황이 저장되었습니다.`);
     });
 
     const debouncedUpdate = window.debounce(async (docId, updatedField) => {
@@ -338,7 +338,7 @@ export function init(firestoreDB, globalState) {
 
     const debouncedMemoSave = window.debounce(async (content) => {
         await setDoc(memoDoc, { content });
-        window.showNotification('메모가 저장되었습니다.', 'success');
+        showNotification('메모가 저장되었습니다.', 'success');
     }, 1000);
     
     if(memoArea) memoArea.addEventListener('input', () => debouncedMemoSave(memoArea.value));

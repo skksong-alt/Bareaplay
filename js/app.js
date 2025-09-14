@@ -1,12 +1,11 @@
 // js/app.js
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
-import { getFirestore, collection, doc, onSnapshot, getDocs } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
-import { state, setAdmin } from './store.js';
-import * as playerMgmt from './modules/playerManagement.js';
-import * as balancer from './modules/teamBalancer.js';
-import * as lineup from './modules/lineupGenerator.js';
+import { getFirestore, collection, doc, onSnapshot, getDocs, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+import * as playerManagement from './modules/playerManagement.js';
+import * as teamBalancer from './modules/teamBalancer.js';
+import * as lineupGenerator from './modules/lineupGenerator.js';
 import * as accounting from './modules/accounting.js';
-import * as shareMgmt from './modules/shareManagement.js';
+import * as shareManagement from './modules/shareManagement.js';
 
 const firebaseConfig = {
     apiKey: "YOUR_API_KEY",
@@ -20,16 +19,24 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-let adminModal, passwordInput, modalConfirmBtn, modalCancelBtn;
-
-window.shuffleLocal = function(arr) {
-    for (let i = arr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
+const state = {
+    playerDB: {},
+    attendanceLog: [],
+    expenseLog: [],
+    locations: [],
+    teams: [],
+    lineupResults: null,
+    memoContent: "",
+    isAdmin: false,
+    ADMIN_PASSWORD: "0000"
 };
 
-window.showNotification = function(message, type = 'success') {
+let adminModal, passwordInput, modalConfirmBtn, modalCancelBtn;
+
+const pages = {};
+const tabs = {};
+
+function showNotification(message, type = 'success') {
     const notificationEl = document.getElementById('notification');
     notificationEl.textContent = message;
     notificationEl.className = '';
@@ -38,18 +45,7 @@ window.showNotification = function(message, type = 'success') {
     setTimeout(() => {
         notificationEl.classList.remove('show');
     }, 3000);
-};
-
-window.debounce = function(func, delay) {
-    let timeout;
-    return function(...args) {
-        clearTimeout(timeout);
-        timeout = setTimeout(() => func.apply(this, args), delay);
-    };
-};
-
-const pages = {};
-const tabs = {};
+}
 
 function updateAdminUI() {
     document.querySelectorAll('.admin-control').forEach(el => {
@@ -63,22 +59,19 @@ function updateAdminUI() {
         adminLoginBtn.classList.toggle('bg-red-500', !state.isAdmin);
         adminLoginBtn.classList.toggle('hover:bg-red-600', !state.isAdmin);
     }
-    if (pages.accounting && !pages.accounting.classList.contains('hidden')) {
-        accounting.renderForDate();
-    }
 }
 
-window.promptForAdminPassword = function() {
+function promptForAdminPassword() {
     if (state.isAdmin) {
-        window.showNotification('이미 관리자 권한으로 로그인되어 있습니다.');
+        showNotification('이미 관리자 권한으로 로그인되어 있습니다.');
         return;
     }
     passwordInput.value = '';
     adminModal.classList.remove('hidden');
     passwordInput.focus();
-};
+}
 
-window.switchTab = function(activeKey, force = false) {
+function switchTab(activeKey, force = false) {
     if (activeKey === 'players' && !state.isAdmin && !force) {
         promptForAdminPassword();
         if (!state.isAdmin) return;
@@ -90,17 +83,6 @@ window.switchTab = function(activeKey, force = false) {
     if (activeKey === 'accounting') {
         accounting.renderForDate();
     }
-};
-
-window.refreshData = async function(collectionName) {
-    const snapshot = await getDocs(collection(db, collectionName));
-    if (collectionName === 'players') {
-        const data = {};
-        snapshot.forEach(doc => { data[doc.id] = doc.data(); });
-        state.playerDB = data;
-        playerMgmt.renderPlayerTable();
-    }
-    // 다른 컬렉션도 필요 시 추가
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -124,21 +106,37 @@ document.addEventListener('DOMContentLoaded', async () => {
     passwordInput = document.getElementById('admin-password-input');
     modalConfirmBtn = document.getElementById('modal-confirm-btn');
     modalCancelBtn = document.getElementById('modal-cancel-btn');
-    
-    playerMgmt.init(db, state);
-    balancer.init(db, state);
-    lineup.init(db, state);
-    accounting.init(db, state);
-    shareMgmt.init(db, state); 
+
+    const modules = {
+        playerManagement,
+        teamBalancer,
+        lineupGenerator,
+        accounting,
+        shareManagement
+    };
+
+    const dependencies = {
+        db,
+        state,
+        showNotification,
+        switchTab,
+        pages
+    };
+
+    for (const moduleName in modules) {
+        if (modules[moduleName].init) {
+            modules[moduleName].init(dependencies);
+        }
+    }
 
     modalConfirmBtn.addEventListener('click', () => {
         if (passwordInput.value === state.ADMIN_PASSWORD) {
-            setAdmin(true);
-            window.showNotification('관리자 인증에 성공했습니다.', 'success');
+            state.isAdmin = true;
+            showNotification('관리자 인증에 성공했습니다.', 'success');
             updateAdminUI();
             adminModal.classList.add('hidden');
         } else {
-            window.showNotification('승인번호가 올바르지 않습니다.', 'error');
+            showNotification('승인번호가 올바르지 않습니다.', 'error');
         }
     });
     modalCancelBtn.addEventListener('click', () => adminModal.classList.add('hidden'));
@@ -150,42 +148,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     try {
-        const playersSnapshot = await getDocs(collection(db, "players"));
-        playersSnapshot.forEach(doc => { state.playerDB[doc.id] = doc.data(); });
+        const collectionsToFetch = ['players', 'attendance', 'expenses', 'locations'];
+        const snapshots = await Promise.all(
+            collectionsToFetch.map(c => getDocs(collection(db, c)))
+        );
 
-        const attendanceSnapshot = await getDocs(collection(db, "attendance"));
-        state.attendanceLog = attendanceSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        
-        playerMgmt.renderPlayerTable();
-        accounting.renderForDate();
+        state.playerDB = {};
+        snapshots[0].forEach(doc => { state.playerDB[doc.id] = doc.data(); });
+
+        state.attendanceLog = snapshots[1].docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        state.expenseLog = snapshots[2].docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        state.locations = snapshots[3].docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        onSnapshot(doc(db, "memos", "accounting_memo"), (doc) => {
+            const memoArea = document.getElementById('memo-area');
+            if (doc.exists()) {
+                state.memoContent = doc.data().content;
+                if(memoArea) memoArea.value = state.memoContent;
+            }
+        });
 
     } catch (error) {
         console.error("초기 데이터 로딩 실패:", error);
-        window.showNotification('데이터 로딩에 실패했습니다.', 'error');
+        showNotification('데이터 로딩에 실패했습니다.', 'error');
     } finally {
         loadingOverlay.style.opacity = 0;
         setTimeout(() => loadingOverlay.style.display = 'none', 300);
+        updateAdminUI();
+        switchTab('balancer', true);
+        accounting.renderForDate();
+        playerManagement.renderPlayerTable();
+        shareManagement.populateLocations();
     }
-    
-    onSnapshot(collection(db, "expenses"), (snapshot) => {
-        state.expenseLog = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        if(!pages.accounting.classList.contains('hidden')) {
-            accounting.renderForDate();
-        }
-    });
-
-    onSnapshot(doc(db, "memos", "accounting_memo"), (doc) => {
-        const memoArea = document.getElementById('memo-area');
-        if (doc.exists()) {
-            state.memoContent = doc.data().content;
-            if(memoArea) memoArea.value = state.memoContent;
-        }
-    });
-
-    updateAdminUI();
-    switchTab('balancer', true);
 });
-
-window.accounting = accounting;
-window.teamBalancer = balancer;
-window.lineup = lineup;

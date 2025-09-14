@@ -1,5 +1,5 @@
 // js/modules/lineupGenerator.js
-let state;
+let state, showNotification, pages;
 let generateLineupButton, lineupDisplay, pitchContainer, restersPanel, unassignedPanel, loadingLineupSpinner, placeholderLineup;
 let teamSelectTabsContainer, lineupMembersTextarea;
 let currentQuarter = 0;
@@ -57,7 +57,7 @@ function addDragAndDropHandlers() {
                 if (emptySlot) { const emptyIndex = emptySlot[1].indexOf(null); lineup[emptySlot[0]][emptyIndex] = targetName; }
             }
             renderQuarter(currentQuarter);
-            window.showNotification(`${draggingName} ↔ ${targetName} 위치 변경!`);
+            showNotification(`${draggingName} ↔ ${targetName} 위치 변경!`);
         });
     });
 }
@@ -81,8 +81,8 @@ function renderQuarter(qIndex) {
         marker.style.top = `${fc.y}%`;
         pitch.appendChild(marker);
     });
-    const resters = (state.lineupResults.resters[qIndex] || []).sort((a, b) => a.localeCompare(b, 'ko-KR'));
-    const unassigned = state.lineupResults.members.filter(m => !assignedPlayers.has(m) && !resters.includes(m)).sort((a, b) => a.localeCompare(b, 'ko-KR'));
+    const resters = (state.lineupResults.resters[qIndex] || []).sort((a,b) => a.localeCompare(b, 'ko-KR'));
+    const unassigned = state.lineupResults.members.filter(m => !assignedPlayers.has(m) && !resters.includes(m)).sort((a,b) => a.localeCompare(b, 'ko-KR'));
     restersPanel.innerHTML = `<h4 class="font-bold text-lg mb-2 text-gray-800">🛑 휴식 선수</h4><div id="resters-list" class="space-y-2">${resters.length > 0 ? resters.map(r => `<div class="bg-gray-200 p-2 rounded text-gray-800">🛌 ${r}</div>`).join('') : '<p class="text-gray-500">휴식 인원 없음</p>'}</div>`;
     unassignedPanel.innerHTML = `<h4 class="font-bold text-lg mb-2 text-gray-800">🤔 미배정 선수</h4><div id="unassigned-list" class="space-y-2">${unassigned.length > 0 ? unassigned.map((name, index) => createPlayerMarker(name, 'sub', index).outerHTML).join('') : '<p class="text-gray-500">미배정 인원 없음</p>'}</div>`;
     addDragAndDropHandlers();
@@ -99,7 +99,7 @@ export function renderTeamSelectTabs(teams) {
             document.querySelectorAll('.team-tab-btn').forEach(btn => btn.classList.remove('active'));
             teamButton.classList.add('active');
             lineupMembersTextarea.value = team.map(p => p.name.replace(' (?)', '')).join('\n');
-            window.showNotification(`팀 ${index + 1}이 선택되었습니다.`);
+            showNotification(`팀 ${index + 1}이 선택되었습니다.`);
         });
         teamSelectTabsContainer.appendChild(teamButton);
     });
@@ -111,7 +111,7 @@ export function renderTeamSelectTabs(teams) {
 function executeLineupGeneration() {
     const members = lineupMembersTextarea.value.split('\n').map(name => name.trim()).filter(Boolean);
     if (members.length === 0) {
-        window.showNotification("팀 선택 탭에서 팀을 먼저 선택해주세요.", 'error');
+        showNotification("팀 선택 탭에서 팀을 먼저 선택해주세요.", 'error');
         resetLineupUI();
         return;
     }
@@ -121,6 +121,9 @@ function executeLineupGeneration() {
         localPlayerDB[name] = state.playerDB[name] || { name, pos1: [], s1: 65, pos2: [], s2: 0 };
     });
 
+    const fixedGk = '강석영';
+    const hasFixedGk = members.includes(fixedGk) && (localPlayerDB[fixedGk]?.pos1.includes('GK') || localPlayerDB[fixedGk]?.pos2.includes('GK'));
+
     let bestLineup = null, bestScore = Infinity;
     const TRIAL = 800, BETA = 7;
     for (let tr = 0; tr < TRIAL; tr++) {
@@ -128,35 +131,58 @@ function executeLineupGeneration() {
         let restCount = {};
         members.forEach(n => restCount[n] = 0);
         let allResterInQ = [];
+        
+        const reversedAttendees = [...members].reverse();
+
         for (let qIdx = 0; qIdx < 4; qIdx++) {
             let resters = [];
             const onFieldNeeded = (posCellMap[formations[qIdx]] || []).length;
             const requiredRestCount = Math.max(0, members.length - onFieldNeeded);
-            const candidates = members.filter(n => restCount[n] < 1);
-            window.shuffleLocal(candidates);
-            for (const n of candidates) {
-                if (resters.length >= requiredRestCount) break;
-                resters.push(n);
-                restCount[n]++;
+            
+            let resterCandidates = reversedAttendees.filter(n => !resters.includes(n));
+            
+            for(const n of resterCandidates) {
+                if(resters.length >= requiredRestCount) break;
+                if(hasFixedGk && n === fixedGk) continue; // 강석영은 휴식자에서 제외
+                
+                const qCount = allResterInQ.filter(q => q.includes(n)).length;
+                if(qCount < Math.floor((requiredRestCount * 4) / members.length)) {
+                    resters.push(n);
+                }
+            }
+            
+            while(resters.length < requiredRestCount) {
+                const extra = members.find(n => !resters.includes(n) && (!hasFixedGk || n !== fixedGk));
+                if(extra) resters.push(extra);
+                else break;
             }
             allResterInQ[qIdx] = [...resters];
         }
+        
         for (let qIdx = 0; qIdx < 4; qIdx++) {
             const formCells = posCellMap[formations[qIdx]];
-            if (!formCells) { lineups.push({}); continue; }
+            if(!formCells) { lineups.push({}); continue; }
             let assignQ = {}, resters = allResterInQ[qIdx] || [];
             let available = members.filter(n => !resters.includes(n) && localPlayerDB[n]);
+            
             const slots = formCells.map(c => c.pos);
-            for (const pos of slots) { assignQ[pos] = assignQ[pos] || []; }
+            for(const pos of slots) { assignQ[pos] = assignQ[pos] || []; }
+
+            if(hasFixedGk && slots.includes('GK')) {
+                assignQ['GK'][0] = fixedGk;
+                available = available.filter(n => n !== fixedGk);
+            }
+
             let candidates = available.map(n => ({ name: n, ...localPlayerDB[n] }));
-            let assignedCount = 0;
+            
+            let assignedCount = hasFixedGk && slots.includes('GK') ? 1 : 0;
             const onFieldNeeded = formCells.length;
-            while (assignedCount < onFieldNeeded && candidates.length > 0) {
-                let bestFitScore = Infinity, bestPlayerIdx = -1, bestSlotPos = null, bestSlotIdx = -1;
-                for (let p_idx = 0; p_idx < candidates.length; p_idx++) {
-                    const player = candidates[p_idx];
-                    for (const pos in assignQ) {
-                        for (let s_idx = 0; s_idx < formCells.filter(c => c.pos === pos).length; s_idx++) {
+            while(assignedCount < onFieldNeeded && candidates.length > 0) {
+                 let bestFitScore = Infinity, bestPlayerIdx = -1, bestSlotPos = null, bestSlotIdx = -1;
+                 for(let p_idx = 0; p_idx < candidates.length; p_idx++) {
+                     const player = candidates[p_idx];
+                     for(const pos in assignQ) {
+                         for(let s_idx = 0; s_idx < formCells.filter(c=>c.pos === pos).length; s_idx++) {
                             if (assignQ[pos].length > s_idx && assignQ[pos][s_idx]) continue;
                             let fitScore = 3;
                             if ((player.pos1 || []).includes(pos)) fitScore = 0;
@@ -167,9 +193,9 @@ function executeLineupGeneration() {
                             if (totalScore < bestFitScore) {
                                 bestFitScore = totalScore; bestPlayerIdx = p_idx; bestSlotPos = pos; bestSlotIdx = s_idx;
                             }
-                        }
-                    }
-                }
+                         }
+                     }
+                 }
                 if (bestPlayerIdx !== -1) {
                     const playerToAssign = candidates[bestPlayerIdx];
                     assignQ[bestSlotPos][bestSlotIdx] = playerToAssign.name;
@@ -188,23 +214,27 @@ function executeLineupGeneration() {
             bestScore = score;
         }
     }
-if (!bestLineup) {
-        window.showNotification('최적의 라인업을 찾지 못했습니다.', 'error');
+    if (!bestLineup) {
+        showNotification('최적의 라인업을 찾지 못했습니다.', 'error');
     } else {
         state.lineupResults = bestLineup;
         state.lineupResults.formations = formations;
-        state.lineupResults.posCellMap = posCellMap; // ✨ state에 posCellMap 정보 추가
         lineupDisplay.classList.remove('hidden');
         placeholderLineup.classList.add('hidden');
         currentQuarter = 0;
         document.querySelector('.lineup-q-tab[data-q="0"]').click();
-        window.showNotification(`라인업 생성 완료! (실력차: ${bestScore.toFixed(1)})`);
+        showNotification(`라인업 생성 완료! (실력차: ${bestScore.toFixed(1)})`);
     }
     resetLineupUI();
 }
 
-export function init(firestoreDB, globalState) {
-    state = globalState;
+export function init(dependencies) {
+    state = dependencies.state;
+    showNotification = dependencies.showNotification;
+    pages = dependencies.pages;
+
+    pages.lineup.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">라인업 조건</h2><div class="mb-4"><label class="block text-md font-semibold text-gray-700 mb-2">팀 선택</label><div id="team-select-tabs-container" class="flex flex-wrap gap-2"><p class="text-sm text-gray-500">팀 배정기에서 먼저 팀을 생성해주세요.</p></div><textarea id="lineup-members" class="hidden"></textarea></div><div class="grid grid-cols-2 gap-4 mb-6"><div><label for="formation-q1" class="block text-sm font-medium">1쿼터</label><select id="formation-q1" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q2" class="block text-sm font-medium">2쿼터</label><select id="formation-q2" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q3" class="block text-sm font-medium">3쿼터</label><select id="formation-q3" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q4" class="block text-sm font-medium">4쿼터</label><select id="formation-q4" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div></div><div class="mt-8"><button id="generateLineupButton" class="w-full bg-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-teal-700 transition-transform transform hover:scale-105 shadow-lg">라인업 생성!</button></div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">라인업 결과</h2><div id="loading-lineup" class="hidden"><svg class="animate-spin h-6 w-6 text-teal-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div></div><div id="result-container-lineup"><div id="placeholder-lineup" class="flex items-center justify-center text-gray-400 min-h-[60vh]"><p>조건을 입력하고 라인업 생성을 눌러주세요.</p></div><div id="lineup-display" class="hidden"><div class="flex space-x-2 border-b mb-4"><button class="lineup-q-tab active-q-tab py-2 px-4 font-semibold" data-q="0">1쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="1">2쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="2">3쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="3">4쿼터</button></div><div class="grid grid-cols-1 md:grid-cols-3 gap-4"><div class="md:col-span-2"><div id="pitch-container"></div></div><div id="lineup-sidebar" class="md:col-span-1 p-4 bg-gray-50 rounded-lg space-y-4"><div id="resters-panel"></div><div id="unassigned-panel"></div></div></div></div></div></div></div>`;
+    
     generateLineupButton = document.getElementById('generateLineupButton');
     lineupDisplay = document.getElementById('lineup-display');
     pitchContainer = document.getElementById('pitch-container');

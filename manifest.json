@@ -4,7 +4,7 @@
   "start_url": ".",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#4f46e5",
+  "theme_color": "#ffffff",
   "description": "Barea팀 선수 관리 및 팀 밸런싱 앱",
   "icons": [
     {

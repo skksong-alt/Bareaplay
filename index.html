@@ -51,214 +51,29 @@
         </div>
 
         <main>
-            <div id="page-players" class="hidden">
-                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg">
-                        <h2 class="text-2xl font-bold mb-4">선수 목록</h2>
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-sm text-left text-gray-500">
-                                <thead class="text-xs text-gray-700 uppercase bg-gray-50">
-                                    <tr>
-                                        <th scope="col" class="py-3 px-6">이름</th><th scope="col" class="py-3 px-6">주 포지션 / 능력치</th><th scope="col" class="py-3 px-6">부 포지션 / 능력치</th><th scope="col" class="py-3 px-6">출석률</th><th scope="col" class="py-3 px-6">관리</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="player-table-body"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                    <div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg">
-                        <h2 id="player-form-title" class="text-2xl font-bold mb-4">새 선수 추가</h2>
-                        <form id="player-form" class="space-y-4">
-                            <input type="hidden" id="player-id">
-                            <div><label for="player-name" class="block mb-2 text-sm font-medium">이름</label><input type="text" id="player-name" class="bg-gray-50 border border-gray-300 text-sm rounded-lg block w-full p-2.5" required></div>
-                            <div><label for="player-pos1" class="block mb-2 text-sm font-medium">주 포지션 (쉼표로 구분)</label><input type="text" id="player-pos1" placeholder="예: FW, LW" class="bg-gray-50 border border-gray-300 text-sm rounded-lg block w-full p-2.5"></div>
-                            <div><label for="player-s1" class="block mb-2 text-sm font-medium">주 능력치</label><input type="number" id="player-s1" min="0" max="100" class="bg-gray-50 border border-gray-300 text-sm rounded-lg block w-full p-2.5"></div>
-                            <div><label for="player-pos2" class="block mb-2 text-sm font-medium">부 포지션</label><input type="text" id="player-pos2" placeholder="예: MF" class="bg-gray-50 border border-gray-300 text-sm rounded-lg block w-full p-2.5"></div>
-                            <div><label for="player-s2" class="block mb-2 text-sm font-medium">부 능력치</label><input type="number" id="player-s2" min="0" max="100" class="bg-gray-50 border border-gray-300 text-sm rounded-lg block w-full p-2.5"></div>
-                            <div class="flex space-x-2"><button type="submit" class="w-full text-white bg-indigo-600 hover:bg-indigo-700 font-medium rounded-lg text-sm px-5 py-2.5 text-center">저장</button><button type="button" id="cancel-edit-btn" class="w-full text-gray-900 bg-white border border-gray-300 hover:bg-gray-100 font-medium rounded-lg text-sm px-5 py-2.5 text-center hidden">취소</button></div>
-                        </form>
-                    </div>
-                </div>
-            </div>
-            <div id="page-balancer">
-                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg">
-                        <h2 class="text-2xl font-bold mb-4 border-b pb-2">입력 정보</h2>
-                        <div class="mb-4">
-                            <div class="flex justify-between items-center mb-2"><label for="attendees" class="block text-md font-semibold text-gray-700">참가자 명단</label><button id="load-all-players-btn" class="text-sm text-indigo-600 hover:underline">모든 선수 불러오기</button></div>
-                            <textarea id="attendees" rows="12" class="w-full p-3 border border-gray-300 rounded-lg bg-gray-50" placeholder="선수 이름을 한 줄에 한 명씩 입력하세요."></textarea>
-                        </div>
-                        <div class="mb-6"><label for="teamCount" class="block text-md font-semibold text-gray-700 mb-2">생성할 팀 수</label><select id="teamCount" class="w-full p-3 border border-gray-300 rounded-lg bg-white"><option value="2" selected>2팀</option><option value="3">3팀</option><option value="4">4팀</option><option value="5">5팀</option></select></div>
-                        <div>
-                            <h3 class="text-lg font-semibold text-gray-700 mb-3">밸런스 가중치</h3>
-                            <div class="space-y-4">
-                                <div><label for="w_skill" class="flex justify-between items-center text-sm font-medium"><span>⚡ 능력치</span><span id="w_skill_val" class="font-bold text-indigo-600">100</span></label><input id="w_skill" type="range" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"></div>
-                                <div><label for="w_pos" class="flex justify-between items-center text-sm font-medium"><span>🛡️ 포지션</span><span id="w_pos_val" class="font-bold text-indigo-600">100</span></label><input id="w_pos" type="range" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"></div>
-                                <div><label for="w_size" class="flex justify-between items-center text-sm font-medium"><span>👥 인원수</span><span id="w_size_val" class="font-bold text-indigo-600">100</span></label><input id="w_size" type="range" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"></div>
-                            </div>
-                        </div>
-                        <div class="mt-8"><button id="generateButton" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition-transform transform hover:scale-105 shadow-lg">팀 생성하기!</button></div>
-                    </div>
-                    <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg">
-                        <div class="flex justify-between items-center mb-4 border-b pb-2">
-                            <h2 class="text-2xl font-bold">팀 배정 결과</h2>
-                            <div id="loading-balancer" class="hidden"><svg class="animate-spin h-6 w-6 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>
-                        </div>
-                        <p class="text-sm text-gray-500 mb-4 -mt-2">💡 생성된 팀 간에 선수를 드래그하여 수동으로 조정할 수 있습니다.</p>
-                        <div id="result-container-balancer" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 min-h-[60vh]">
-                            <div id="placeholder-balancer" class="col-span-full flex items-center justify-center text-gray-400"><p>팀 생성 버튼을 눌러주세요.</p></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div id="page-lineup" class="hidden">
-                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg">
-                        <h2 class="text-2xl font-bold mb-4 border-b pb-2">라인업 조건</h2>
-                        <div class="mb-4">
-                            <label class="block text-md font-semibold text-gray-700 mb-2">팀 선택</label>
-                            <div id="team-select-tabs-container" class="flex flex-wrap gap-2">
-                                <p class="text-sm text-gray-500">팀 배정기에서 먼저 팀을 생성해주세요.</p>
-                            </div>
-                            <textarea id="lineup-members" class="hidden"></textarea>
-                        </div>
-                        <div class="grid grid-cols-2 gap-4 mb-6">
-                            <div><label for="formation-q1" class="block text-sm font-medium">1쿼터</label><select id="formation-q1" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div>
-                            <div><label for="formation-q2" class="block text-sm font-medium">2쿼터</label><select id="formation-q2" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div>
-                            <div><label for="formation-q3" class="block text-sm font-medium">3쿼터</label><select id="formation-q3" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div>
-                            <div><label for="formation-q4" class="block text-sm font-medium">4쿼터</label><select id="formation-q4" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div>
-                        </div>
-                        <div class="mt-8"><button id="generateLineupButton" class="w-full bg-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-teal-700 transition-transform transform hover:scale-105 shadow-lg">라인업 생성!</button></div>
-                    </div>
-                    <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg">
-                        <div class="flex justify-between items-center mb-4 border-b pb-2">
-                            <h2 class="text-2xl font-bold">라인업 결과</h2>
-                            <div id="loading-lineup" class="hidden"><svg class="animate-spin h-6 w-6 text-teal-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>
-                        </div>
-                        <div id="result-container-lineup">
-                            <div id="placeholder-lineup" class="flex items-center justify-center text-gray-400 min-h-[60vh]"><p>조건을 입력하고 라인업 생성을 눌러주세요.</p></div>
-                            <div id="lineup-display" class="hidden">
-                                <div class="flex space-x-2 border-b mb-4"><button class="lineup-q-tab active-q-tab py-2 px-4 font-semibold" data-q="0">1쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="1">2쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="2">3쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="3">4쿼터</button></div>
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div class="md:col-span-2"><div id="pitch-container"></div></div>
-                                    <div id="lineup-sidebar" class="md:col-span-1 p-4 bg-gray-50 rounded-lg space-y-4"><div id="resters-panel"></div><div id="unassigned-panel"></div></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div id="page-accounting" class="hidden">
-                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div class="lg:col-span-1 space-y-8">
-                        <div class="bg-white p-6 rounded-2xl shadow-lg">
-                            <div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">출석 기록 관리</h2><button id="admin-login-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1 px-3 rounded-lg">관리자 로그인</button></div>
-                            <div class="mb-4"><label for="attendance-date" class="block text-md font-semibold text-gray-700 mb-2">날짜 선택</label><input type="date" id="attendance-date" class="w-full p-2 border rounded-lg"></div>
-                            <div class="mb-4">
-                                <div class="flex justify-between items-center mb-2">
-                                    <label class="block text-md font-semibold text-gray-700">참석자 선택</label>
-                                    <div class="space-x-2">
-                                        <button id="check-all-btn" class="text-xs text-indigo-600 hover:underline admin-control" disabled>모두 선택</button>
-                                        <button id="uncheck-all-btn" class="text-xs text-gray-500 hover:underline admin-control" disabled>모두 해제</button>
-                                    </div>
-                                </div>
-                                <div id="attendance-checklist" class="max-h-60 overflow-y-auto border rounded-lg p-3 space-y-2"></div>
-                            </div>
-                            <button id="record-attendance-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition-transform transform hover:scale-105 shadow-lg admin-control" disabled>선택한 날짜 출석 저장</button>
-                        </div>
-                         <div class="bg-white p-6 rounded-2xl shadow-lg">
-                            <h2 class="text-2xl font-bold mb-4">💰 총 잔액</h2>
-                            <p id="total-balance" class="text-4xl font-bold text-indigo-600">0 Dhs</p>
-                        </div>
-                         <div class="bg-white p-6 rounded-2xl shadow-lg">
-                            <h2 class="text-2xl font-bold mb-4">📊 월별 요약</h2>
-                             <div class="w-full"><canvas id="accountingChart"></canvas></div>
-                        </div>
-                        <div class="bg-white p-6 rounded-2xl shadow-lg">
-                            <h2 class="text-2xl font-bold mb-4 border-b pb-2">Remark / 특정 메모</h2>
-                            <textarea id="memo-area" class="w-full p-3 border rounded-lg admin-control bg-gray-50" rows="5" placeholder="미납자 정보, 주요 공지 등..." disabled></textarea>
-                            <p class="text-xs text-gray-500 mt-2">메모는 자동으로 저장됩니다.</p>
-                            <button id="excel-download-btn" class="mt-4 w-full bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700">현재 조회 내역 엑셀 다운로드</button>
-                        </div>
-                    </div>
-                    <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg">
-                        <div class="border-b border-gray-200 mb-4">
-                            <nav class="flex -mb-px space-x-6" aria-label="Tabs">
-                                <button id="income-tab-btn" class="accounting-tab active text-indigo-600 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💰 회비 (수입)</button>
-                                <button id="expense-tab-btn" class="accounting-tab text-gray-500 hover:text-gray-700 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💸 지출</button>
-                            </nav>
-                        </div>
-                        <div class="flex flex-wrap items-end gap-4 mb-4 p-4 bg-gray-50 rounded-lg">
-                            <div class="flex-grow">
-                                <label for="filter-start-date" class="block text-sm font-medium text-gray-700">조회 기간</label>
-                                <div class="flex items-center mt-1">
-                                    <input type="date" id="filter-start-date" class="p-2 border rounded-l-md">
-                                    <span class="p-2 bg-gray-200 border-y">~</span>
-                                    <input type="date" id="filter-end-date" class="p-2 border rounded-r-md">
-                                </div>
-                            </div>
-                            <div class="flex gap-2">
-                                <select id="filter-period-select" class="p-2 border rounded-md bg-white">
-                                    <option value="all">전체</option><option value="1m">1개월</option><option value="3m">3개월</option><option value="6m">6개월</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div id="income-log-section">
-                            <h2 class="text-2xl font-bold mb-4">회비 로그</h2>
-                            <div class="overflow-x-auto max-h-[70vh]">
-                                <table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">이름</th><th scope="col" class="py-3 px-4">납부 상태</th><th scope="col" class="py-3 px-4">납부액</th><th scope="col" class="py-3 px-4">비고</th></tr></thead><tbody id="accounting-log-body"></tbody><tfoot id="accounting-log-foot" class="bg-gray-100 font-bold"></tfoot></table>
-                            </div>
-                        </div>
-                        <div id="expense-log-section" class="hidden">
-                            <h2 class="text-2xl font-bold mb-4">지출 로그</h2>
-                            <form id="expense-form" class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6 items-end">
-                                <div class="sm:col-span-2">
-                                    <label for="expense-item" class="block text-sm font-medium">항목</label>
-                                    <input type="text" id="expense-item" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required>
-                                </div>
-                                <div>
-                                    <label for="expense-amount" class="block text-sm font-medium">금액</label>
-                                    <input type="number" id="expense-amount" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required>
-                                </div>
-                                <button type="submit" class="w-full bg-red-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600 admin-control" disabled>지출 추가</button>
-                            </form>
-                            <div class="overflow-x-auto max-h-[60vh]">
-                                <table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">항목</th><th scope="col" class="py-3 px-4">금액</th><th scope="col" class="py-3 px-4">관리</th></tr></thead><tbody id="expense-log-body"></tbody><tfoot id="expense-log-foot" class="bg-gray-100 font-bold"></tfoot></table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div id="page-share" class="hidden">
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <div class="bg-white p-6 rounded-2xl shadow-lg">
-                        <h2 class="text-2xl font-bold mb-4">모임 정보 입력</h2>
-                        <div class="space-y-4">
-                            <div><label for="share-date" class="block text-sm font-medium">날짜</label><input type="date" id="share-date" class="mt-1 w-full p-2 border rounded-lg"></div>
-                            <div><label for="share-time" class="block text-sm font-medium">시간</label><input type="time" id="share-time" class="mt-1 w-full p-2 border rounded-lg"></div>
-                            <div>
-                                <label for="share-location-select" class="block text-sm font-medium">장소 선택</label>
-                                <div class="flex items-center gap-2 mt-1">
-                                    <select id="share-location-select" class="w-full p-2 border rounded-lg bg-white"></select>
-                                    <button id="add-location-btn" class="p-2 bg-gray-200 rounded-lg hover:bg-gray-300 text-lg admin-control" disabled>➕</button>
-                                </div>
-                            </div>
-                        </div>
-                         <div class="flex space-x-2 mt-6">
-                            <button id="generate-share-content-btn" class="w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700">공지 생성</button>
-                            <button id="print-btn" class="w-full bg-gray-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-600">인쇄/PDF 저장</button>
-                        </div>
-                    </div>
-                    <div class="bg-white p-6 rounded-2xl shadow-lg">
-                        <h2 class="text-2xl font-bold mb-4">미리보기 및 복사</h2>
-                        <textarea id="share-content" readonly class="w-full h-96 p-3 border rounded-lg bg-gray-50" placeholder="'공지 생성' 버튼을 누르면 팀 배정 및 라인업 결과가 여기에 표시됩니다."></textarea>
-                    </div>
-                </div>
-                <div id="print-area" class="hidden"></div>
-            </div>
+            <div id="page-players" class="hidden"></div>
+            <div id="page-balancer"></div>
+            <div id="page-lineup" class="hidden"></div>
+            <div id="page-accounting" class="hidden"></div>
+            <div id="page-share" class="hidden"></div>
         </main>
     </div>
 
+    <div id="print-area" class="hidden"></div>
+
     <script type="module" src="js/app.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => {
+                        console.log('Service Worker registered: ', registration);
+                    })
+                    .catch(registrationError => {
+                        console.log('Service Worker registration failed: ', registrationError);
+                    });
+            });
+        }
+    </script>
 </body>
 </html>

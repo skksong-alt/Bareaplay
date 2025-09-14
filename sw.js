@@ -1,11 +1,9 @@
 // sw.js
-
-const CACHE_NAME = 'bareaplay-cache-v2'; // 버전을 올려서 캐시를 갱신
+const CACHE_NAME = 'bareaplay-cache-v2';
 const urlsToCache = [
     '.',
     'css/style.css',
     'js/app.js',
-    'js/store.js',
     'js/modules/playerManagement.js',
     'js/modules/teamBalancer.js',
     'js/modules/lineupGenerator.js',
