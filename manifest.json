@@ -1,0 +1,21 @@
+{
+  "name": "BareaPlay",
+  "short_name": "BareaPlay",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4f46e5",
+  "description": "Barea팀 선수 관리 및 팀 밸런싱 앱",
+  "icons": [
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
