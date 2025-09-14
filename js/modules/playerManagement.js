@@ -89,7 +89,7 @@ export function init(firestoreDB, globalState) {
 }
 
 export function renderPlayerTable() {
-    if(!tableBody) return; // 페이지가 아직 로드되지 않았을 수 있음
+    if(!tableBody) return;
 
     const uniqueDates = new Set(state.attendanceLog.map(log => log.date));
     const totalMeetings = uniqueDates.size > 0 ? uniqueDates.size : 1;
@@ -101,7 +101,7 @@ export function renderPlayerTable() {
     tableBody.innerHTML = '';
     const playerNames = Object.keys(state.playerDB).sort((a, b) => a.localeCompare(b, 'ko-KR'));
     if (playerNames.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-4">등록된 선수가 없습니다.</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-gray-500 dark:text-gray-400">등록된 선수가 없습니다.</td></tr>`;
         return;
     }
     playerNames.forEach(name => {
@@ -109,8 +109,8 @@ export function renderPlayerTable() {
         const attendanceCount = playerAttendance[name] || 0;
         const attendanceRate = ((attendanceCount / totalMeetings) * 100).toFixed(1);
         const row = document.createElement('tr');
-        row.className = 'bg-white border-b';
-        row.innerHTML = `<td class="py-4 px-6 font-medium text-gray-900 whitespace-nowrap">${p.name}</td><td class="py-4 px-6">${(p.pos1 || []).join(', ')} (${p.s1 || 0})</td><td class="py-4 px-6">${(p.pos2 || []).join(', ')} (${p.s2 || 0})</td><td class="py-4 px-6">${attendanceRate}% (${attendanceCount}/${totalMeetings})</td><td class="py-4 px-6"><button class="edit-btn font-medium text-blue-600 hover:underline mr-3" data-name="${p.name}">수정</button><button class="delete-btn font-medium text-red-600 hover:underline" data-name="${p.name}">삭제</button></td>`;
+        row.className = 'bg-white dark:bg-gray-800 border-b dark:border-gray-700';
+        row.innerHTML = `<td class="py-4 px-6 font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">${p.name}</td><td class="py-4 px-6">${(p.pos1 || []).join(', ')} (${p.s1 || 0})</td><td class="py-4 px-6">${(p.pos2 || []).join(', ')} (${p.s2 || 0})</td><td class="py-4 px-6">${attendanceRate}% (${attendanceCount}/${totalMeetings})</td><td class="py-4 px-6"><button class="edit-btn font-medium text-blue-600 hover:underline mr-3" data-name="${p.name}">수정</button><button class="delete-btn font-medium text-red-600 hover:underline" data-name="${p.name}">삭제</button></td>`;
         tableBody.appendChild(row);
     });
 }
