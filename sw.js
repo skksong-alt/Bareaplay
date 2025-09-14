@@ -11,9 +11,9 @@ const urlsToCache = [
     'js/modules/teamBalancer.js',
     'js/modules/lineupGenerator.js',
     'js/modules/accounting.js',
-    'js/modules/shareManagement.js', // shareManagement 모듈 추가
+    'js/modules/shareManagement.js',
     'manifest.json',
-    'assets/icon-512.png' // 로컬 앱 아이콘
+    'assets/icon-512.png'
 ];
 
 // 1. 서비스 워커 설치
@@ -32,7 +32,6 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request)
       .then((response) => {
-        // 캐시에 파일이 있으면 바로 반환하고, 없으면 네트워크로 요청
         return response || fetch(event.request);
       })
   );

@@ -44,7 +44,6 @@ body {
 .active-q-tab { background-color: #e0e7ff; color: #3730a3; border-radius: 6px; }
 .dark .active-q-tab { background-color: #3730a3; color: #e0e7ff; }
 
-/* ▼▼▼ 업그레이드 추가 스타일 ▼▼▼ */
 .team-drop-target {
     outline: 3px dashed #f59e0b;
     outline-offset: -8px;
@@ -62,4 +61,83 @@ body {
 .dark .accounting-tab.active {
     color: #a5b4fc;
     border-color: #a5b4fc;
+}
+
+.team-tab-btn {
+    border-color: #d1d5db;
+}
+.dark .team-tab-btn {
+    border-color: #4b5563;
+}
+.team-tab-btn.active {
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+.team-tab-btn.team-tab-btn-1.active { background-color: #0D9488; border-color: #0D9488; }
+.team-tab-btn.team-tab-btn-2.active { background-color: #0288D1; border-color: #0288D1; }
+.team-tab-btn.team-tab-btn-3.active { background-color: #7B1FA2; border-color: #7B1FA2; }
+.team-tab-btn.team-tab-btn-4.active { background-color: #43A047; border-color: #43A047; }
+.team-tab-btn.team-tab-btn-5.active { background-color: #F4511E; border-color: #F4511E; }
+
+
+/* ▼▼▼ 인쇄 전용 스타일 (복원) ▼▼▼ */
+@media print {
+    body > .container, #admin-modal, #notification, #loading-overlay {
+        display: none !important;
+    }
+    #print-area {
+        display: block !important;
+    }
+    .print-title {
+        font-size: 24px;
+        font-weight: bold;
+        text-align: center;
+        margin-bottom: 20px;
+        color: #000;
+    }
+    .print-section {
+        margin-top: 30px;
+        border-top: 2px solid #ccc;
+        padding-top: 15px;
+        page-break-inside: avoid;
+    }
+    .print-section h2 {
+        font-size: 20px;
+        font-weight: bold;
+        margin-bottom: 15px;
+        color: #000;
+    }
+    .print-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 20px;
+    }
+    .print-team-card {
+        border: 1px solid #ddd;
+        padding: 15px;
+        border-radius: 8px;
+        page-break-inside: avoid;
+    }
+    .print-team-card h3 {
+        font-size: 16px;
+        font-weight: bold;
+        margin-bottom: 10px;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 5px;
+        color: #000;
+    }
+    .print-team-card ul {
+        list-style-type: none;
+        padding-left: 0;
+        margin: 0;
+    }
+    .print-team-card li {
+        padding: 4px 0;
+        color: #333;
+    }
+    a {
+        color: #000;
+        text-decoration: none;
+    }
 }

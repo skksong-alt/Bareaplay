@@ -3,6 +3,7 @@ import { doc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestor
 let db, state;
 let attendanceDate, checklistContainer, recordBtn, logBody, logFoot, memoArea, adminLoginBtn, accountingChart;
 let incomeTabBtn, expenseTabBtn, incomeLogSection, expenseLogSection, expenseForm, expenseLogBody, expenseLogFoot;
+let totalBalanceEl, filterStartDateEl, filterEndDateEl, filterPeriodSelectEl, excelDownloadBtn;
 let chartInstance = null;
 let memoDoc;
 

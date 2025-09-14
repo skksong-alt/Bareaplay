@@ -1,4 +1,5 @@
 // js/modules/playerManagement.js
+import { doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 
 let db, state;
 let tableBody, form, formTitle, cancelBtn, playerIdInput;
@@ -19,7 +20,6 @@ function resetForm() {
 
 async function handleFormSubmit(e) {
     e.preventDefault();
-    const { setDoc, doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js");
     const id = playerIdInput.value;
     const name = document.getElementById('player-name').value.trim();
     if (!name) {
@@ -45,10 +45,11 @@ async function handleFormSubmit(e) {
     if (id && id !== name) await deleteDoc(doc(db, "players", id));
     resetForm();
     window.showNotification(id ? '선수 정보가 수정되었습니다.' : '새로운 선수가 추가되었습니다.');
+    // 데이터 변경 후 수동 갱신
+    window.refreshData('players');
 }
 
 async function handleTableClick(e) {
-    const { deleteDoc, doc } = await import("https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js");
     const target = e.target;
     const playerName = target.dataset.name;
     if (!playerName) return;
@@ -69,6 +70,7 @@ async function handleTableClick(e) {
         if (confirm(`'${playerName}' 선수를 정말 삭제하시겠습니까?`)) {
             await deleteDoc(doc(db, "players", playerName));
             window.showNotification('선수가 삭제되었습니다.');
+            window.refreshData('players');
         }
     }
 }
@@ -110,7 +112,7 @@ export function renderPlayerTable() {
         const attendanceRate = ((attendanceCount / totalMeetings) * 100).toFixed(1);
         const row = document.createElement('tr');
         row.className = 'bg-white dark:bg-gray-800 border-b dark:border-gray-700';
-        row.innerHTML = `<td class="py-4 px-6 font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">${p.name}</td><td class="py-4 px-6">${(p.pos1 || []).join(', ')} (${p.s1 || 0})</td><td class="py-4 px-6">${(p.pos2 || []).join(', ')} (${p.s2 || 0})</td><td class="py-4 px-6">${attendanceRate}% (${attendanceCount}/${totalMeetings})</td><td class="py-4 px-6"><button class="edit-btn font-medium text-blue-600 hover:underline mr-3" data-name="${p.name}">수정</button><button class="delete-btn font-medium text-red-600 hover:underline" data-name="${p.name}">삭제</button></td>`;
+        row.innerHTML = `<td class="py-4 px-6 font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">${p.name}</td><td class="py-4 px-6 text-gray-700 dark:text-gray-300">${(p.pos1 || []).join(', ')} (${p.s1 || 0})</td><td class="py-4 px-6 text-gray-700 dark:text-gray-300">${(p.pos2 || []).join(', ')} (${p.s2 || 0})</td><td class="py-4 px-6 text-gray-700 dark:text-gray-300">${attendanceRate}% (${attendanceCount}/${totalMeetings})</td><td class="py-4 px-6"><button class="edit-btn font-medium text-blue-600 hover:underline mr-3" data-name="${p.name}">수정</button><button class="delete-btn font-medium text-red-600 hover:underline" data-name="${p.name}">삭제</button></td>`;
         tableBody.appendChild(row);
     });
 }

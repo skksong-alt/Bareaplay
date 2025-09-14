@@ -5,7 +5,6 @@ let generateButton, attendeesTextarea, teamCountSelect, resultContainer, loading
 let sliders = {};
 let sliderVals = {};
 
-// ▼▼▼ MAJOR UPGRADE: 팀 간 선수 이동 로직 ▼▼▼
 function handlePlayerDragStart(e, playerName, fromTeamIndex) {
     e.dataTransfer.setData("text/plain", JSON.stringify({ playerName, fromTeamIndex }));
     e.target.closest('.player-tag').classList.add('opacity-50');
@@ -18,20 +17,16 @@ function handleTeamDrop(e, toTeamIndex) {
 
     if (fromTeamIndex === toTeamIndex) return;
 
-    // 중앙 store의 teams 배열 직접 수정
     const fromTeam = state.teams[fromTeamIndex];
     const toTeam = state.teams[toTeamIndex];
     const playerIndex = fromTeam.findIndex(p => p.name === playerName);
     if (playerIndex > -1) {
         const [player] = fromTeam.splice(playerIndex, 1);
         toTeam.push(player);
-        
-        // 변경된 팀 정보로 즉시 다시 렌더링
         renderResults(state.teams);
         window.showNotification(`${playerName} 선수가 팀 ${fromTeamIndex + 1}에서 팀 ${toTeamIndex + 1}로 이동했습니다.`);
     }
 }
-// ▲▲▲ MAJOR UPGRADE END ▲▲▲
 
 function allPosGroup(posArr) {
     let out = new Set();
@@ -69,7 +64,7 @@ function renderResults(teams) {
     resultContainer.innerHTML = '';
     if (!teams || teams.length === 0) { return; }
 
-    state.teams = teams; // 결과를 중앙 store에 저장
+    state.teams = teams;
 
     teams.forEach((team, index) => {
         const teamSkillSum = team.reduce((acc, p) => acc + (p.s1 || 0), 0);
@@ -85,7 +80,6 @@ function renderResults(teams) {
         teamCard.className = `p-4 rounded-xl shadow-md text-white ${cardColorClass} flex flex-col transition-transform`;
         teamCard.dataset.teamMembers = team.map(p => p.name.replace(' (?)', '')).join('\n');
         
-        // ▼▼▼ MAJOR UPGRADE: 드래그 앤 드롭 이벤트 추가 ▼▼▼
         teamCard.addEventListener('dragover', (e) => { e.preventDefault(); e.currentTarget.classList.add('team-drop-target'); });
         teamCard.addEventListener('dragleave', (e) => { e.currentTarget.classList.remove('team-drop-target'); });
         teamCard.addEventListener('drop', (e) => handleTeamDrop(e, index));
@@ -96,23 +90,15 @@ function renderResults(teams) {
             let posIcons = '';
             if (posGroups.includes('GK')) posIcons += '🧤'; if (posGroups.includes('DF')) posIcons += '🛡️'; if (posGroups.includes('MF')) posIcons += '⚙️'; if (posGroups.includes('FW')) posIcons += '🎯';
             
-            // player-tag에 draggable 속성 및 이벤트 추가
             playersHtml += `<div class="player-tag flex justify-between items-center bg-white/20 p-2 rounded-lg mb-2 cursor-grab" draggable="true" ondragstart="window.teamBalancer.handlePlayerDragStart(event, '${player.name}', ${index})">
                 <span class="font-semibold">${player.name}</span>
                 <div class="flex items-center"><span class="text-sm opacity-90 mr-2">${posIcons}</span><span class="text-sm font-bold bg-white/30 px-2 py-0.5 rounded-full">${player.s1 || 0}</span></div>
             </div>`;
         });
         
-        teamCard.innerHTML = `<div class="mb-3 cursor-pointer" onclick="window.teamBalancer.copyToLineup(event, ${index})"><h3 class="text-2xl font-bold">팀 ${index + 1}</h3><div class="text-sm opacity-90 font-medium bg-black/20 inline-block px-2 py-1 rounded-md mt-1">총합: ${teamSkillSum} | 평균: ${teamSkillAvg} | 인원: ${team.length}명</div><div class="text-sm font-medium mt-2">🧤${posCounts.GK} 🛡️${posCounts.DF} ⚙️${posCounts.MF} 🎯${posCounts.FW}</div></div><div class="flex-grow overflow-y-auto pr-1">${playersHtml}</div>`;
+        teamCard.innerHTML = `<div class="mb-3"><h3 class="text-2xl font-bold">팀 ${index + 1}</h3><div class="text-sm opacity-90 font-medium bg-black/20 inline-block px-2 py-1 rounded-md mt-1">총합: ${teamSkillSum} | 평균: ${teamSkillAvg} | 인원: ${team.length}명</div><div class="text-sm font-medium mt-2">🧤${posCounts.GK} 🛡️${posCounts.DF} ⚙️${posCounts.MF} 🎯${posCounts.FW}</div></div><div class="flex-grow overflow-y-auto pr-1">${playersHtml}</div>`;
         resultContainer.appendChild(teamCard);
     });
-}
-
-function copyToLineup(e, teamIndex) {
-    const teamCard = e.currentTarget.parentElement;
-    document.getElementById('lineup-members').value = teamCard.dataset.teamMembers;
-    window.switchTab('lineup');
-    window.showNotification(`팀 ${teamIndex + 1} 명단이 라인업 생성기로 복사되었습니다.`);
 }
 
 function executeTeamAssignment() {
@@ -168,6 +154,5 @@ export function init(firestoreDB, globalState) {
         setTimeout(executeTeamAssignment, 100);
     });
 
-    // window 객체에 함수 할당하여 HTML에서 직접 호출 가능하게 함
-    window.teamBalancer = { handlePlayerDragStart, copyToLineup };
+    window.teamBalancer = { handlePlayerDragStart };
 }

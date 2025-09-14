@@ -3,11 +3,12 @@
 export const state = {
     playerDB: {},
     attendanceLog: [],
-    expenseLog: [], // 지출 내역
-    teams: [], // 팀 배정 결과 저장
+    expenseLog: [],
+    teams: [],
     lineupResults: null,
     memoContent: "",
     isAdmin: false,
+    isDarkMode: false,
     ADMIN_PASSWORD: "0000"
 };
 
