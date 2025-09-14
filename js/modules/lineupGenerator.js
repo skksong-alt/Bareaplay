@@ -128,7 +128,6 @@ function renderQuarter(qIndex) {
     addDragAndDropHandlers();
 }
 
-
 export function renderTeamSelectTabs(teams) {
     if (!teamSelectTabsContainer) return;
     teamSelectTabsContainer.innerHTML = '';
@@ -149,7 +148,6 @@ export function renderTeamSelectTabs(teams) {
     }
 }
 
-// [복원] 최초 index(1).html의 라인업 생성 알고리즘
 function executeLineupGeneration(members, formations, isSilent = false) {
     return new Promise(resolve => {
         if (members.length < 11 && !isSilent) {
@@ -158,7 +156,16 @@ function executeLineupGeneration(members, formations, isSilent = false) {
             return;
         }
 
-        let sortedMembers = [...members].sort((a, b) => (state.initialAttendeeOrder || []).indexOf(a) - (state.initialAttendeeOrder || []).indexOf(b));
+        // [수정] 휴식자 선정 로직 안정성 강화
+        const initialOrder = state.initialAttendeeOrder || [];
+        const sortedMembers = [...members].sort((a, b) => {
+            const indexA = initialOrder.indexOf(a);
+            const indexB = initialOrder.indexOf(b);
+            if (indexA === -1) return 1; // 명단에 없으면 뒤로
+            if (indexB === -1) return -1;
+            return indexA - indexB;
+        });
+
         const localPlayerDB = {};
         members.forEach(name => {
             localPlayerDB[name] = state.playerDB[name] || { name, pos1: [], s1: 65, pos2: [], s2: 0 };
@@ -234,7 +241,7 @@ function executeLineupGeneration(members, formations, isSilent = false) {
     });
 }
 
-export { executeLineupGeneration }; // Share Mgmt 모듈에서 호출할 수 있도록 export
+export { executeLineupGeneration };
 
 export function init(dependencies) {
     state = dependencies.state;
@@ -255,7 +262,7 @@ export function init(dependencies) {
     generateLineupButton.addEventListener('click', async () => {
         loadingLineupSpinner.classList.remove('hidden');
         lineupDisplay.classList.add('hidden');
-        placeholderLineup.classList.add('hidden'); // placeholder는 숨겨야 합니다
+        placeholderLineup.classList.add('hidden');
         generateLineupButton.disabled = true;
         generateLineupButton.textContent = '라인업 생성 중...';
 
@@ -268,9 +275,8 @@ export function init(dependencies) {
             state.lineupResults = result;
             window.shareMgmt.updateLineupData(result, formations);
             lineupDisplay.classList.remove('hidden');
-            placeholderLineup.classList.add('hidden'); // 여기도 확인
+            placeholderLineup.classList.add('hidden');
             currentQuarter = 0;
-            // 쿼터 탭을 클릭하는 효과를 줌
             const firstQuarterTab = document.querySelector('.lineup-q-tab[data-q="0"]');
             if (firstQuarterTab) {
                 document.querySelectorAll('.lineup-q-tab').forEach(t => t.classList.remove('active-q-tab'));

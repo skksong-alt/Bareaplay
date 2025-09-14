@@ -1,9 +1,12 @@
 // js/modules/shareManagement.js
-import { doc, setDoc, collection, onSnapshot, addDoc, getDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+import { doc, setDoc, collection, onSnapshot, addDoc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 
 let db, state;
 let addLocationBtn, shareDate, shareTime, shareLocationSelect;
 let generateShareBtn, shareLinkContainer, shareLinkAnchor;
+// [신규] 장소 관리 모달 UI 요소
+let locationModal, closeLocationModalBtn, addNewLocationBtn, locationListDiv, newLocationNameInput, newLocationUrlInput;
+
 
 function populateLocations() {
     const currentVal = shareLocationSelect.value;
@@ -21,22 +24,23 @@ function populateLocations() {
     }
 }
 
-async function addNewLocation() {
-    if (!state.isAdmin) {
-        window.showNotification("관리자만 장소를 추가할 수 있습니다.", "error");
-        return;
-    }
-    const name = prompt("새로운 장소의 이름을 입력하세요:");
-    if (!name || !name.trim()) return;
-    const url = prompt("해당 장소의 Google Maps URL을 입력하세요 (선택사항):");
-    try {
-        await addDoc(collection(db, "locations"), { name: name.trim(), url: url || '' });
-        window.showNotification("새로운 장소가 추가되었습니다.");
-    } catch (e) {
-        console.error("장소 추가 실패: ", e);
-        window.showNotification("장소 추가에 실패했습니다.", "error");
-    }
+// [신규] 장소 관리 목록 렌더링
+function renderLocationList() {
+    locationListDiv.innerHTML = '';
+    state.locations.forEach(loc => {
+        const div = document.createElement('div');
+        div.className = 'flex justify-between items-center bg-gray-100 p-2 rounded-lg';
+        div.innerHTML = `
+            <div>
+                <p class="font-semibold">${loc.name}</p>
+                <p class="text-xs text-gray-500">${loc.url || 'URL 없음'}</p>
+            </div>
+            <button data-id="${loc.id}" class="delete-location-btn text-red-500 hover:text-red-700 font-bold p-1">삭제</button>
+        `;
+        locationListDiv.appendChild(div);
+    });
 }
+
 
 async function generateShareableLink() {
     if (!state.isAdmin) {
@@ -64,13 +68,19 @@ async function generateShareableLink() {
             if (lineup) allTeamLineups[`team${i + 1}`] = lineup;
         });
 
+        // [수정] Firestore 중첩 배열 오류 해결을 위해 teams 데이터를 객체로 변환
+        const teamsObject = {};
+        state.teams.forEach((team, index) => {
+            teamsObject[`team${index + 1}`] = team;
+        });
+
         const shareData = {
             meetingInfo: {
                 time: `${shareDate.value} ${shareTime.value}`,
                 location: shareLocationSelect.value,
                 locationUrl: shareLocationSelect.options[shareLocationSelect.selectedIndex]?.dataset.url || ''
             },
-            teams: state.teams,
+            teams: teamsObject, // 객체로 저장
             lineups: allTeamLineups,
             createdAt: new Date().toISOString()
         };
@@ -99,7 +109,9 @@ async function generateShareableLink() {
 }
 
 export function generatePrintView(shareData) {
-    const { meetingInfo, teams, lineups } = shareData;
+    // [수정] teams 데이터를 객체에서 배열로 변환하여 사용
+    const teams = Object.values(shareData.teams || {});
+    const { meetingInfo, lineups } = shareData;
 
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
@@ -193,7 +205,8 @@ export function init(dependencies) {
     state = dependencies.state;
     
     const pageElement = document.getElementById('page-share');
-    pageElement.innerHTML = `<div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">📢 모임 정보 및 공유</h2><div class="space-y-4 max-w-lg mx-auto"><div><label for="share-date" class="block text-sm font-medium">날짜</label><input type="date" id="share-date" class="mt-1 w-full p-2 border rounded-lg"></div><div><label for="share-time" class="block text-sm font-medium">시간</label><input type="time" id="share-time" class="mt-1 w-full p-2 border rounded-lg"></div><div><label for="share-location-select" class="block text-sm font-medium">장소 선택</label><div class="flex items-center gap-2 mt-1"><select id="share-location-select" class="w-full p-2 border rounded-lg bg-white"></select><button id="add-location-btn" class="p-2 bg-gray-200 rounded-lg hover:bg-gray-300 text-lg admin-control" disabled>➕</button></div></div><div class="mt-6"><button id="generate-share-btn" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 admin-control" disabled>공유 링크 생성</button></div><div id="share-link-container" class="mt-4 p-4 bg-gray-100 rounded-lg hidden"><p class="text-sm font-semibold mb-2">생성된 링크:</p><a id="share-link-anchor" href="#" target="_blank" class="text-blue-600 break-all hover:underline"></a></div></div></div>`;
+    // [수정] '장소 관리' 버튼 추가
+    pageElement.innerHTML = `<div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">📢 모임 정보 및 공유</h2><div class="space-y-4 max-w-lg mx-auto"><div><label for="share-date" class="block text-sm font-medium">날짜</label><input type="date" id="share-date" class="mt-1 w-full p-2 border rounded-lg"></div><div><label for="share-time" class="block text-sm font-medium">시간</label><input type="time" id="share-time" class="mt-1 w-full p-2 border rounded-lg"></div><div><div class="flex justify-between items-center"><label for="share-location-select" class="block text-sm font-medium">장소 선택</label><button id="manage-locations-btn" class="text-sm text-indigo-600 hover:underline">장소 관리</button></div><select id="share-location-select" class="w-full p-2 border rounded-lg bg-white mt-1"></select></div><div class="mt-6"><button id="generate-share-btn" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 admin-control" disabled>공유 링크 생성</button></div><div id="share-link-container" class="mt-4 p-4 bg-gray-100 rounded-lg hidden"><p class="text-sm font-semibold mb-2">생성된 링크:</p><a id="share-link-anchor" href="#" target="_blank" class="text-blue-600 break-all hover:underline"></a></div></div></div>`;
 
     generateShareBtn = document.getElementById('generate-share-btn');
     shareLinkContainer = document.getElementById('share-link-container');
@@ -201,11 +214,43 @@ export function init(dependencies) {
     shareDate = document.getElementById('share-date');
     shareTime = document.getElementById('share-time');
     shareLocationSelect = document.getElementById('share-location-select');
-    addLocationBtn = document.getElementById('add-location-btn');
+
+    // [신규] 장소 관리 모달 로직 추가
+    locationModal = document.getElementById('location-modal');
+    closeLocationModalBtn = document.getElementById('close-location-modal-btn');
+    addNewLocationBtn = document.getElementById('add-location-btn');
+    locationListDiv = document.getElementById('location-list');
+    newLocationNameInput = document.getElementById('new-location-name');
+    newLocationUrlInput = document.getElementById('new-location-url');
+    document.getElementById('manage-locations-btn').addEventListener('click', () => locationModal.classList.remove('hidden'));
+    closeLocationModalBtn.addEventListener('click', () => locationModal.classList.add('hidden'));
+
+    addNewLocationBtn.addEventListener('click', async () => {
+        const name = newLocationNameInput.value.trim();
+        const url = newLocationUrlInput.value.trim();
+        if (name) {
+            await addDoc(collection(db, "locations"), { name, url });
+            newLocationNameInput.value = '';
+            newLocationUrlInput.value = '';
+            window.showNotification('새로운 장소가 추가되었습니다.');
+        }
+    });
+
+    locationListDiv.addEventListener('click', async (e) => {
+        if (e.target.classList.contains('delete-location-btn')) {
+            const id = e.target.dataset.id;
+            if (confirm('이 장소를 정말 삭제하시겠습니까?')) {
+                await deleteDoc(doc(db, "locations", id));
+                window.showNotification('장소가 삭제되었습니다.');
+            }
+        }
+    });
+
 
     onSnapshot(collection(db, "locations"), (snapshot) => {
         state.locations = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         populateLocations();
+        renderLocationList(); // 모달 내 목록도 갱신
     });
 
     const today = new Date();
@@ -215,7 +260,6 @@ export function init(dependencies) {
     shareTime.value = '20:00';
 
     generateShareBtn.addEventListener('click', generateShareableLink);
-    addLocationBtn.addEventListener('click', addNewLocation);
 }
 
 export function updateTeamData(teams) {

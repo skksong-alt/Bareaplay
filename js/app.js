@@ -8,9 +8,8 @@ import * as lineup from './modules/lineupGenerator.js';
 import * as accounting from './modules/accounting.js';
 import * as shareMgmt from './modules/shareManagement.js';
 
-// Firebase 구성 정보는 실제 프로젝트의 값으로 채워주세요.
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY", // 실제 API 키로 교체
+    apiKey: "YOUR_API_KEY",
     authDomain: "team-barea.firebaseapp.com",
     projectId: "team-barea",
     storageBucket: "team-barea.appspot.com",
@@ -28,7 +27,7 @@ const tabs = {};
 window.showNotification = function(message, type = 'success') {
     const notificationEl = document.getElementById('notification');
     notificationEl.textContent = message;
-    notificationEl.className = 'notification'; // 기존 클래스 초기화
+    notificationEl.className = 'notification';
     notificationEl.classList.add(type === 'success' ? 'notification-success' : 'notification-error');
     notificationEl.classList.add('show');
     setTimeout(() => {
@@ -102,7 +101,6 @@ window.refreshData = async function(collectionName) {
 document.addEventListener('DOMContentLoaded', async () => {
     const loadingOverlay = document.getElementById('loading-overlay');
     
-    // 모듈 및 전역 객체 초기화
     const modules = { playerMgmt, balancer, lineup, accounting, shareMgmt };
     const dependencies = { db, state };
 
@@ -117,36 +115,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
     
-    // URL에서 공유 ID 확인
     const urlParams = new URLSearchParams(window.location.search);
     const shareId = urlParams.get('shareId');
 
     if (shareId) {
-        // 공유 링크로 접속한 경우
         loadingOverlay.style.display = 'flex';
         loadingOverlay.style.opacity = 1;
-        document.body.innerHTML = ''; // 기존 UI 모두 제거
+        document.querySelector('.container').style.display = 'none';
+        
         try {
             const shareDoc = await getDoc(doc(db, "shares", shareId));
             if (shareDoc.exists()) {
                 const shareData = shareDoc.data();
-                document.body.className = "bg-gray-100"; // 배경색 유지
-                
-                // 인쇄 버튼 추가
                 const printButtonContainer = document.createElement('div');
                 printButtonContainer.className = 'text-center my-8';
                 printButtonContainer.innerHTML = `<button id="print-share-btn" class="bg-gray-700 text-white font-bold py-3 px-6 rounded-lg hover:bg-gray-800">결과 인쇄 / PDF 저장</button>`;
                 document.body.appendChild(printButtonContainer);
-
-                // 인쇄 버튼에 이벤트 리스너 추가
+                
                 document.getElementById('print-share-btn').addEventListener('click', () => {
                     shareMgmt.generatePrintView(shareData);
                 });
-
-                // 알림창 요소 추가
-                const notificationEl = document.createElement('div');
-                notificationEl.id = 'notification';
-                document.body.appendChild(notificationEl);
                 
                 window.showNotification("공유된 모임 정보입니다. 버튼을 눌러 확인하세요.");
 
@@ -160,7 +148,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             loadingOverlay.style.display = 'none';
         }
     } else {
-        // 일반 접속의 경우
         Object.assign(pages, { 
             players: document.getElementById('page-players'), 
             balancer: document.getElementById('page-balancer'), 
@@ -187,11 +174,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 window.showNotification('관리자 인증에 성공했습니다.', 'success');
                 updateAdminUI();
                 adminModal.classList.add('hidden');
-                // 인증 후 현재 탭 다시 로드 시도
                 const activeTabKey = Object.keys(tabs).find(key => tabs[key].classList.contains('active'));
                 if(activeTabKey) switchTab(activeTabKey, true);
             } else {
-                window.showNotification('승인번호가 올바르지 않습니다.', 'error');
+                window.showNotification('승인번호가 올바지 않습니다.', 'error');
             }
         });
         modalCancelBtn.addEventListener('click', () => adminModal.classList.add('hidden'));
@@ -229,7 +215,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             playerMgmt.renderPlayerTable();
             accounting.renderForDate();
-            shareMgmt.populateLocations();
+            // [수정] 불필요한 호출 제거
+            // shareMgmt.populateLocations(); 
 
         } catch (error) {
             console.error("초기 데이터 로딩 실패:", error);

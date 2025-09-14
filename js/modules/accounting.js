@@ -17,20 +17,28 @@ function getStatusColor(status) {
     }
 }
 
+// [수정] 참석자 명단이 있을 경우 해당 명단을 사용하도록 로직 변경
 function renderFullPlayerChecklist() {
     if (!checklistContainer) return;
     checklistContainer.innerHTML = '';
     const selectedDate = attendanceDate.value;
     const attendeesForDate = new Set(state.attendanceLog.filter(log => log.date === selectedDate).map(log => log.name));
-    const playerNames = Object.keys(state.playerDB).sort((a, b) => a.localeCompare(b, 'ko-KR'));
+    
+    // state.currentAttendees가 있으면 해당 명단을, 없으면 전체 선수 명단을 사용
+    const playerNames = state.currentAttendees && state.currentAttendees.length > 0
+        ? [...state.currentAttendees].sort((a, b) => a.localeCompare(b, 'ko-KR'))
+        : Object.keys(state.playerDB).sort((a, b) => a.localeCompare(b, 'ko-KR'));
+
     playerNames.forEach(name => {
-        const isChecked = attendeesForDate.has(name);
+        // 자동 채우기 시에는 모두 체크, 날짜 변경 시에는 기존 기록 따름
+        const isChecked = state.currentAttendees ? true : attendeesForDate.has(name);
         const div = document.createElement('div');
         div.className = 'flex items-center';
         div.innerHTML = `<input id="check-${name}" type="checkbox" value="${name}" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 admin-control" ${isChecked ? 'checked' : ''} ${!state.isAdmin ? 'disabled' : ''}><label for="check-${name}" class="ml-2 text-sm font-medium text-gray-900">${name}</label>`;
         checklistContainer.appendChild(div);
     });
 }
+
 
 function renderAttendanceLogTable(logs) {
     if(!logBody) return;
@@ -130,6 +138,7 @@ function renderAccountingChart() {
     
     const monthlyData = {};
     const processLog = (log, type) => {
+        if (!log.date) return;
         const month = log.date.substring(0, 7);
         monthlyData[month] = (monthlyData[month] || { income: 0, expense: 0 });
         if(type === 'income') monthlyData[month].income += Number(log.paymentAmount || 0);
@@ -196,22 +205,19 @@ export function renderForDate() {
     if(selectedDate) renderFullPlayerChecklist();
 }
 
+// [수정] 참석자 명단 state에 저장하고 UI 갱신
 export function autoFillAttendees(names) {
+    state.currentAttendees = names; // 현재 참석자 명단 저장
     const today = new Date().toISOString().split('T')[0];
     attendanceDate.value = today;
-    checklistContainer.innerHTML = '';
-    names.forEach(name => {
-        const div = document.createElement('div');
-        div.className = 'flex items-center';
-        div.innerHTML = `<input id="check-${name}" type="checkbox" value="${name}" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 admin-control" checked ${!state.isAdmin ? 'disabled' : ''}><label for="check-${name}" class="ml-2 text-sm font-medium text-gray-900">${name}</label>`;
-        checklistContainer.appendChild(div);
-    });
+    renderFullPlayerChecklist(); // UI 즉시 갱신
     renderAttendanceLogTable(state.attendanceLog.filter(log => log.date === today));
 }
 
 export function init(dependencies) {
     db = dependencies.db;
     state = dependencies.state;
+    state.currentAttendees = []; // 앱 시작 시 초기화
 
     const pageElement = document.getElementById('page-accounting');
     pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 space-y-8"><div class="bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">출석 기록 관리</h2><button id="admin-login-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1 px-3 rounded-lg">관리자 로그인</button></div><div class="mb-4"><label for="attendance-date" class="block text-md font-semibold text-gray-700 mb-2">날짜 선택</label><input type="date" id="attendance-date" class="w-full p-2 border rounded-lg"></div><div class="mb-4"><div class="flex justify-between items-center mb-2"><label class="block text-md font-semibold text-gray-700">참석자 선택</label><div class="space-x-2"><button id="check-all-btn" class="text-xs text-indigo-600 hover:underline admin-control" disabled>모두 선택</button><button id="uncheck-all-btn" class="text-xs text-gray-500 hover:underline admin-control" disabled>모두 해제</button></div></div><div id="attendance-checklist" class="max-h-60 overflow-y-auto border rounded-lg p-3 space-y-2"></div></div><button id="record-attendance-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition-transform transform hover:scale-105 shadow-lg admin-control" disabled>선택한 날짜 출석 저장</button></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">💰 총 잔액</h2><p id="total-balance" class="text-4xl font-bold text-indigo-600">0 Dhs</p></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">📊 월별 요약</h2><div class="w-full"><canvas id="accountingChart"></canvas></div></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">Remark / 특정 메모</h2><textarea id="memo-area" class="w-full p-3 border rounded-lg admin-control bg-gray-50" rows="5" placeholder="미납자 정보, 주요 공지 등..." disabled></textarea><p class="text-xs text-gray-500 mt-2">메모는 자동으로 저장됩니다.</p><div class="mt-4 p-4 bg-gray-50 rounded-lg"><div class="flex-grow"><label for="filter-start-date" class="block text-sm font-medium text-gray-700">조회 기간</label><div class="flex items-center mt-1"><input type="date" id="filter-start-date" class="p-2 border rounded-l-md w-full"><span class="p-2 bg-gray-200 border-y">~</span><input type="date" id="filter-end-date" class="p-2 border rounded-r-md w-full"></div></div><div class="flex gap-2 mt-2"><select id="filter-period-select" class="p-2 border rounded-md bg-white w-full"><option value="all">전체</option><option value="1m">1개월</option><option value="3m">3개월</option><option value="6m">6개월</option></select></div><button id="excel-download-btn" class="mt-2 w-full bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700">엑셀 다운로드</button></div></div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="border-b border-gray-200 mb-4"><nav class="flex -mb-px space-x-6" aria-label="Tabs"><button id="income-tab-btn" class="accounting-tab active text-indigo-600 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💰 회비 (수입)</button><button id="expense-tab-btn" class="accounting-tab text-gray-500 hover:text-gray-700 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💸 지출</button></nav></div><div id="income-log-section"><h2 class="text-2xl font-bold mb-4">회비 로그</h2><div class="overflow-x-auto max-h-[80vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">이름</th><th scope="col" class="py-3 px-4">납부 상태</th><th scope="col" class="py-3 px-4">납부액</th><th scope="col" class="py-3 px-4">비고</th></tr></thead><tbody id="accounting-log-body"></tbody><tfoot id="accounting-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div><div id="expense-log-section" class="hidden"><h2 class="text-2xl font-bold mb-4">지출 로그</h2><form id="expense-form" class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6 items-end"><div class="sm:col-span-2"><label for="expense-item" class="block text-sm font-medium">항목</label><input type="text" id="expense-item" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><div><label for="expense-amount" class="block text-sm font-medium">금액</label><input type="number" id="expense-amount" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><button type="submit" class="w-full bg-red-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600 admin-control" disabled>지출 추가</button></form><div class="overflow-x-auto max-h-[70vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">항목</th><th scope="col" class="py-3 px-4">금액</th><th scope="col" class="py-3 px-4">관리</th></tr></thead><tbody id="expense-log-body"></tbody><tfoot id="expense-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div></div></div>`;
@@ -244,8 +250,8 @@ export function init(dependencies) {
     if(attendanceDate) attendanceDate.value = today;
 
     if(attendanceDate) attendanceDate.addEventListener('change', () => {
-        renderFullPlayerChecklist();
-        renderAttendanceLogTable(state.attendanceLog.filter(log => log.date === attendanceDate.value))
+        state.currentAttendees = []; // 날짜 변경 시에는 특정 참석자 명단 초기화
+        renderForDate();
     });
     if(adminLoginBtn) adminLoginBtn.addEventListener('click', window.promptForAdminPassword);
     if(incomeTabBtn) incomeTabBtn.addEventListener('click', () => switchAccountingTab(incomeTabBtn));

@@ -4,9 +4,7 @@ let generateButton, attendeesTextarea, teamCountSelect, resultContainer, loading
 let sliders = {};
 let sliderVals = {};
 
-// [오류 수정] Drag & Drop 로직 강화
 function handlePlayerDragStart(e, playerName, fromTeamIndex) {
-    // application/json 타입을 명시하고 데이터를 저장합니다.
     const data = JSON.stringify({ playerName, fromTeamIndex });
     e.dataTransfer.setData("application/json", data);
     e.dataTransfer.effectAllowed = "move";
@@ -17,7 +15,6 @@ function handleTeamDrop(e, toTeamIndex) {
     e.preventDefault();
     e.currentTarget.classList.remove('team-drop-target');
     
-    // [수정] 데이터가 없을 경우를 대비한 방어 코드 추가
     const dataString = e.dataTransfer.getData("application/json");
     if (!dataString) return; 
 
@@ -32,14 +29,13 @@ function handleTeamDrop(e, toTeamIndex) {
         if (playerIndex > -1) {
             const [player] = fromTeam.splice(playerIndex, 1);
             toTeam.push(player);
-            renderResults(state.teams); // renderResults를 호출하여 UI를 다시 그림
+            renderResults(state.teams);
             window.showNotification(`${playerName} 선수가 팀 ${fromTeamIndex + 1}에서 팀 ${toTeamIndex + 1}로 이동했습니다.`);
         }
     } catch (err) {
         console.error("Drop Error: ", err);
     }
 }
-
 
 function allPosGroup(posArr) {
     let out = new Set();
@@ -76,7 +72,6 @@ function renderResults(teams) {
         teamCard.addEventListener('dragleave', (e) => { e.currentTarget.classList.remove('team-drop-target'); });
         teamCard.addEventListener('drop', (e) => handleTeamDrop(e, index));
 
-        let playersHtml = '';
         const playersContainer = document.createElement('div');
         playersContainer.className = 'flex-grow overflow-y-auto pr-1';
         
@@ -88,7 +83,8 @@ function renderResults(teams) {
             const playerTag = document.createElement('div');
             playerTag.className = 'player-tag flex justify-between items-center bg-white/20 p-2 rounded-lg mb-2 cursor-grab';
             playerTag.draggable = true;
-            playerTag.innerHTML = `<span class="font-semibold">${player.name}</span><div class="flex items-center"><span class="text-sm opacity-90 mr-2">${posIcons}</span><span class="text-sm font-bold bg-white/30 px-2 py-0.5 rounded-full">${player.s1 || 0}</span></div>`;
+            // [수정] 개인별 실력 점수 표시하는 span 태그 제거
+            playerTag.innerHTML = `<span class="font-semibold">${player.name}</span><div class="flex items-center"><span class="text-sm opacity-90 mr-2">${posIcons}</span></div>`;
             playerTag.addEventListener('dragstart', (e) => handlePlayerDragStart(e, player.name, index));
             playersContainer.appendChild(playerTag);
         });
@@ -103,8 +99,6 @@ function renderResults(teams) {
     });
 }
 
-
-// [복원] 최초 index(1).html의 유전 알고리즘 로직
 function calculateScore(teamArr, W) {
     if (teamArr.some(t => t.length === 0)) return Infinity;
     const sums = teamArr.map(t => t.reduce((acc, p) => acc + (p.s1 || 0), 0));
@@ -123,7 +117,6 @@ function calculateScore(teamArr, W) {
         const arr = posStats.map(c => c[pg]);
         if (arr.length > 1) { posDiffSum += (Math.max(...arr) - Math.min(...arr)); }
     });
-    // 인원수 가중치를 5배로 하여 더 중요하게 만듦 (기존 로직)
     return (sumMaxMin * W.SKILL) + (posDiffSum * W.POS) + (sizeMaxMin * W.SIZE * 5);
 }
 
@@ -165,12 +158,10 @@ function mutate(chromosome, rate) {
     }
 }
 
-// [수정] 기존 executeTeamAssignment 함수를 GA 알고리즘으로 교체
 function executeTeamAssignmentGA() {
     const attendNames = attendeesTextarea.value.split('\n').map(name => name.trim()).filter(Boolean);
     if (attendNames.length === 0) { window.showNotification("참가자 명단을 입력해주세요.", 'error'); resetUI(); return; }
 
-    // [추가] 라인업 생성을 위해 초기 명단 순서 저장
     state.initialAttendeeOrder = [...attendNames];
 
     const teamCount = parseInt(teamCountSelect.value, 10);
