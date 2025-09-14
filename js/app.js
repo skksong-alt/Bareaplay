@@ -1,10 +1,6 @@
 // js/app.js
-
-// Firebase 모듈 import
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
 import { getFirestore, collection, doc, onSnapshot, getDocs } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
-
-// 중앙 스토어와 각 기능 모듈들 import (중복 제거)
 import { state, setAdmin } from './store.js';
 import * as playerMgmt from './modules/playerManagement.js';
 import * as balancer from './modules/teamBalancer.js';
@@ -12,9 +8,8 @@ import * as lineup from './modules/lineupGenerator.js';
 import * as accounting from './modules/accounting.js';
 import * as shareMgmt from './modules/shareManagement.js';
 
-// --- Firebase 초기화 ---
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY", // 실제 키로 교체해주세요.
+    apiKey: "YOUR_API_KEY",
     authDomain: "team-barea.firebaseapp.com",
     projectId: "team-barea",
     storageBucket: "team-barea.appspot.com",
@@ -25,10 +20,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// 모달 제어 관련 변수 선언
 let adminModal, passwordInput, modalConfirmBtn, modalCancelBtn;
 
-// --- 글로벌 헬퍼 함수들 ---
 window.shuffleLocal = function(arr) {
     for (let i = arr.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -55,7 +48,6 @@ window.debounce = function(func, delay) {
     };
 };
 
-// --- UI 컨트롤 ---
 const pages = {};
 const tabs = {};
 
@@ -100,9 +92,18 @@ window.switchTab = function(activeKey, force = false) {
     }
 };
 
-// --- 앱 메인 실행 로직 ---
+window.refreshData = async function(collectionName) {
+    const snapshot = await getDocs(collection(db, collectionName));
+    if (collectionName === 'players') {
+        const data = {};
+        snapshot.forEach(doc => { data[doc.id] = doc.data(); });
+        state.playerDB = data;
+        playerMgmt.renderPlayerTable();
+    }
+    // 다른 컬렉션도 필요 시 추가
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
-    // 전역에서 사용할 DOM 요소 할당 (정리된 버전)
     Object.assign(pages, { 
         players: document.getElementById('page-players'), 
         balancer: document.getElementById('page-balancer'), 
@@ -124,7 +125,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     modalConfirmBtn = document.getElementById('modal-confirm-btn');
     modalCancelBtn = document.getElementById('modal-cancel-btn');
     
-    // 각 모듈 초기화
     playerMgmt.init(db, state);
     balancer.init(db, state);
     lineup.init(db, state);
@@ -186,52 +186,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     switchTab('balancer', true);
 });
 
-// 다른 모듈에서 호출할 수 있도록 window 객체에 할당
 window.accounting = accounting;
 window.teamBalancer = balancer;
 window.lineup = lineup;
-
-// --- 다크 모드 컨트롤 로직 ---
-const themeToggleBtn = document.getElementById('dark-mode-toggle');
-const moonIcon = document.getElementById('theme-icon-moon');
-const sunIcon = document.getElementById('theme-icon-sun');
-
-const updateIcons = (isDarkMode) => {
-    state.isDarkMode = isDarkMode;
-    if (isDarkMode) {
-        moonIcon.classList.add('hidden');
-        sunIcon.classList.remove('hidden');
-    } else {
-        moonIcon.classList.remove('hidden');
-        sunIcon.classList.add('hidden');
-    }
-    if (pages.accounting && !pages.accounting.classList.contains('hidden')) {
-        accounting.renderForDate();
-    }
-};
-
-const applyTheme = (theme) => {
-    if (theme === 'dark') {
-        document.documentElement.classList.add('dark');
-        updateIcons(true);
-    } else {
-        document.documentElement.classList.remove('dark');
-        updateIcons(false);
-    }
-};
-
-const savedTheme = localStorage.getItem('theme');
-const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-if (savedTheme) {
-    applyTheme(savedTheme);
-} else {
-    applyTheme(systemPrefersDark ? 'dark' : 'light');
-}
-
-themeToggleBtn.addEventListener('click', () => {
-    const isDarkMode = document.documentElement.classList.toggle('dark');
-    const newTheme = isDarkMode ? 'dark' : 'light';
-    localStorage.setItem('theme', newTheme);
-    updateIcons(isDarkMode);
-});

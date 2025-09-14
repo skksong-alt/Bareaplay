@@ -1,5 +1,4 @@
 // js/modules/teamBalancer.js
-
 let state;
 let generateButton, attendeesTextarea, teamCountSelect, resultContainer, loadingSpinner, placeholder, loadAllPlayersBtn;
 let sliders = {};
@@ -147,7 +146,7 @@ export function init(firestoreDB, globalState) {
     sliderVals = { skill: document.getElementById('w_skill_val'), pos: document.getElementById('w_pos_val'), size: document.getElementById('w_size_val') };
 
     Object.keys(sliders).forEach(key => { sliders[key].addEventListener('input', () => { sliderVals[key].textContent = sliders[key].value; }); });
-    loadAllPlayersBtn.addEventListener('click', () => { attendeesTextarea.value = Object.keys(state.playerDB).sort().join('\n'); });
+    loadAllPlayersBtn.addEventListener('click', () => { attendeesTextarea.value = Object.keys(state.playerDB).sort((a,b) => a.localeCompare(b, 'ko-KR')).join('\n'); });
     generateButton.addEventListener('click', () => {
         loadingSpinner.classList.remove('hidden'); resultContainer.innerHTML = ''; placeholder.classList.add('hidden');
         generateButton.disabled = true; generateButton.textContent = '팀 생성 중...';

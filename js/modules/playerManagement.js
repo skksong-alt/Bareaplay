@@ -1,5 +1,5 @@
 // js/modules/playerManagement.js
-import { doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+import { doc, setDoc, deleteDoc } from "https-://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 
 let db, state;
 let tableBody, form, formTitle, cancelBtn, playerIdInput;
@@ -45,7 +45,6 @@ async function handleFormSubmit(e) {
     if (id && id !== name) await deleteDoc(doc(db, "players", id));
     resetForm();
     window.showNotification(id ? '선수 정보가 수정되었습니다.' : '새로운 선수가 추가되었습니다.');
-    // 데이터 변경 후 수동 갱신
     window.refreshData('players');
 }
 
@@ -103,7 +102,7 @@ export function renderPlayerTable() {
     tableBody.innerHTML = '';
     const playerNames = Object.keys(state.playerDB).sort((a, b) => a.localeCompare(b, 'ko-KR'));
     if (playerNames.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-gray-500 dark:text-gray-400">등록된 선수가 없습니다.</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-gray-500">등록된 선수가 없습니다.</td></tr>`;
         return;
     }
     playerNames.forEach(name => {
@@ -111,8 +110,8 @@ export function renderPlayerTable() {
         const attendanceCount = playerAttendance[name] || 0;
         const attendanceRate = ((attendanceCount / totalMeetings) * 100).toFixed(1);
         const row = document.createElement('tr');
-        row.className = 'bg-white dark:bg-gray-800 border-b dark:border-gray-700';
-        row.innerHTML = `<td class="py-4 px-6 font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">${p.name}</td><td class="py-4 px-6 text-gray-700 dark:text-gray-300">${(p.pos1 || []).join(', ')} (${p.s1 || 0})</td><td class="py-4 px-6 text-gray-700 dark:text-gray-300">${(p.pos2 || []).join(', ')} (${p.s2 || 0})</td><td class="py-4 px-6 text-gray-700 dark:text-gray-300">${attendanceRate}% (${attendanceCount}/${totalMeetings})</td><td class="py-4 px-6"><button class="edit-btn font-medium text-blue-600 hover:underline mr-3" data-name="${p.name}">수정</button><button class="delete-btn font-medium text-red-600 hover:underline" data-name="${p.name}">삭제</button></td>`;
+        row.className = 'bg-white border-b';
+        row.innerHTML = `<td class="py-4 px-6 font-medium text-gray-900 whitespace-nowrap">${p.name}</td><td class="py-4 px-6 text-gray-700">${(p.pos1 || []).join(', ')} (${p.s1 || 0})</td><td class="py-4 px-6 text-gray-700">${(p.pos2 || []).join(', ')} (${p.s2 || 0})</td><td class="py-4 px-6 text-gray-700">${attendanceRate}% (${attendanceCount}/${totalMeetings})</td><td class="py-4 px-6"><button class="edit-btn font-medium text-blue-600 hover:underline mr-3" data-name="${p.name}">수정</button><button class="delete-btn font-medium text-red-600 hover:underline" data-name="${p.name}">삭제</button></td>`;
         tableBody.appendChild(row);
     });
 }

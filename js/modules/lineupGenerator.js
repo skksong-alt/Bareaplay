@@ -83,8 +83,8 @@ function renderQuarter(qIndex) {
     });
     const resters = (state.lineupResults.resters[qIndex] || []).sort((a, b) => a.localeCompare(b, 'ko-KR'));
     const unassigned = state.lineupResults.members.filter(m => !assignedPlayers.has(m) && !resters.includes(m)).sort((a, b) => a.localeCompare(b, 'ko-KR'));
-    restersPanel.innerHTML = `<h4 class="font-bold text-lg mb-2 text-gray-900 dark:text-gray-100">🛑 휴식 선수</h4><div id="resters-list" class="space-y-2">${resters.length > 0 ? resters.map(r => `<div class="bg-gray-200 dark:bg-gray-600 p-2 rounded text-gray-800 dark:text-gray-100">🛌 ${r}</div>`).join('') : '<p class="text-gray-500 dark:text-gray-400">휴식 인원 없음</p>'}</div>`;
-    unassignedPanel.innerHTML = `<h4 class="font-bold text-lg mb-2 text-gray-900 dark:text-gray-100">🤔 미배정 선수</h4><div id="unassigned-list" class="space-y-2">${unassigned.length > 0 ? unassigned.map((name, index) => createPlayerMarker(name, 'sub', index).outerHTML).join('') : '<p class="text-gray-500 dark:text-gray-400">미배정 인원 없음</p>'}</div>`;
+    restersPanel.innerHTML = `<h4 class="font-bold text-lg mb-2 text-gray-800">🛑 휴식 선수</h4><div id="resters-list" class="space-y-2">${resters.length > 0 ? resters.map(r => `<div class="bg-gray-200 p-2 rounded text-gray-800">🛌 ${r}</div>`).join('') : '<p class="text-gray-500">휴식 인원 없음</p>'}</div>`;
+    unassignedPanel.innerHTML = `<h4 class="font-bold text-lg mb-2 text-gray-800">🤔 미배정 선수</h4><div id="unassigned-list" class="space-y-2">${unassigned.length > 0 ? unassigned.map((name, index) => createPlayerMarker(name, 'sub', index).outerHTML).join('') : '<p class="text-gray-500">미배정 인원 없음</p>'}</div>`;
     addDragAndDropHandlers();
 }
 
@@ -182,7 +182,7 @@ function executeLineupGeneration() {
             lineups.push(JSON.parse(JSON.stringify(assignQ)));
         }
         let quarterSums = lineups.map(lineup => Object.values(lineup).flat().filter(Boolean).reduce((sum, name) => sum + (localPlayerDB[name]?.s1 || 65), 0));
-        const score = Math.max(...quarterSums) - Math.min(...quarterSums);
+        const score = quarterSums.length > 1 ? Math.max(...quarterSums) - Math.min(...quarterSums) : 0;
         if (score < bestScore) {
             bestLineup = { lineups, resters: allResterInQ, members };
             bestScore = score;

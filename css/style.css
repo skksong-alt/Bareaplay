@@ -1,20 +1,9 @@
-/* --- 1. @apply를 사용하는 방법 (권장) --- */
 body {
-    /* 라이트 모드 기본값 */
-    @apply bg-gray-100 text-gray-800;
     font-family: 'Inter', 'Noto Sans KR', sans-serif;
-    transition: background-color 0.3s ease, color 0.3s ease;
+    background-color: #f3f4f6;
 }
-
-.dark body {
-    /* 다크 모드가 켜졌을 때 적용될 값 */
-    @apply bg-gray-900 text-gray-200;
-}
-
 .tab-button { transition: all 0.3s ease; white-space: nowrap; }
-.tab-button.active { color: #4f46e5; border-bottom-color: #4f46e5; }
-.dark .tab-button.active { background-color: transparent; }
-
+.tab-button.active { color: #4f46e5; border-bottom-color: #4f46e5; background-color: #f0f2f5; }
 .card-gradient-1 { background-image: linear-gradient(to top right, #14B8A6, #0D9488); }
 .card-gradient-2 { background-image: linear-gradient(to top right, #0288D1, #03A9F4); }
 .card-gradient-3 { background-image: linear-gradient(to top right, #7B1FA2, #9C27B0); }
@@ -29,115 +18,46 @@ body {
 .player-marker.dragging { opacity: 0.5; z-index: 50; }
 .player-icon { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; font-weight: bold; color: white; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
 .player-name { background-color: rgba(0,0,0,0.6); color: white; font-size: 0.75rem; padding: 2px 6px; border-radius: 8px; margin-top: 4px; white-space: nowrap; }
-
 #notification { position: fixed; top: 20px; right: 20px; padding: 1rem 1.5rem; border-radius: 0.5rem; color: white; font-weight: bold; z-index: 10001; transform: translateX(120%); transition: transform 0.5s ease-in-out; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
 #notification.show { transform: translateX(0); }
 #notification.notification-success { background-color: #28a745; }
 #notification.notification-error { background-color: #dc3545; }
-
 .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); z-index: 10000; display: flex; align-items: center; justify-content: center; transition: opacity 0.3s; }
 .overlay.hidden { display: none; }
 .modal { background-color: white; padding: 2rem; border-radius: 1rem; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 90%; max-width: 400px; }
-.dark .modal { background-color: #1f2937; }
-
 .drop-target { border: 2px dashed rgba(255,255,255,0.7); background-color: rgba(0,0,0,0.2); }
 .active-q-tab { background-color: #e0e7ff; color: #3730a3; border-radius: 6px; }
-.dark .active-q-tab { background-color: #3730a3; color: #e0e7ff; }
-
-.team-drop-target {
-    outline: 3px dashed #f59e0b;
-    outline-offset: -8px;
-    transform: scale(1.02);
-    transition: transform 0.2s ease, outline 0.2s ease;
-}
-
-.accounting-tab {
-    border-color: transparent;
-}
-.accounting-tab.active {
-    border-color: #4f46e5;
-    color: #4f46e5;
-}
-.dark .accounting-tab.active {
-    color: #a5b4fc;
-    border-color: #a5b4fc;
-}
-
-.team-tab-btn {
-    border-color: #d1d5db;
-}
-.dark .team-tab-btn {
-    border-color: #4b5563;
-}
-.team-tab-btn.active {
-    color: white;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-}
+.team-drop-target { outline: 3px dashed #f59e0b; outline-offset: -8px; transform: scale(1.02); transition: transform 0.2s ease, outline 0.2s ease; }
+.accounting-tab { border-color: transparent; }
+.accounting-tab.active { border-color: #4f46e5; color: #4f46e5; }
+.team-tab-btn { border-color: #d1d5db; }
+.team-tab-btn.active { color: white; transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
 .team-tab-btn.team-tab-btn-1.active { background-color: #0D9488; border-color: #0D9488; }
 .team-tab-btn.team-tab-btn-2.active { background-color: #0288D1; border-color: #0288D1; }
 .team-tab-btn.team-tab-btn-3.active { background-color: #7B1FA2; border-color: #7B1FA2; }
 .team-tab-btn.team-tab-btn-4.active { background-color: #43A047; border-color: #43A047; }
 .team-tab-btn.team-tab-btn-5.active { background-color: #F4511E; border-color: #F4511E; }
 
-
-/* ▼▼▼ 인쇄 전용 스타일 (복원) ▼▼▼ */
 @media print {
-    body > .container, #admin-modal, #notification, #loading-overlay {
-        display: none !important;
-    }
-    #print-area {
-        display: block !important;
-    }
-    .print-title {
-        font-size: 24px;
-        font-weight: bold;
-        text-align: center;
-        margin-bottom: 20px;
-        color: #000;
-    }
-    .print-section {
-        margin-top: 30px;
-        border-top: 2px solid #ccc;
-        padding-top: 15px;
-        page-break-inside: avoid;
-    }
-    .print-section h2 {
-        font-size: 20px;
-        font-weight: bold;
-        margin-bottom: 15px;
-        color: #000;
-    }
-    .print-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-        gap: 20px;
-    }
-    .print-team-card {
-        border: 1px solid #ddd;
-        padding: 15px;
-        border-radius: 8px;
-        page-break-inside: avoid;
-    }
-    .print-team-card h3 {
-        font-size: 16px;
-        font-weight: bold;
-        margin-bottom: 10px;
-        border-bottom: 1px solid #eee;
-        padding-bottom: 5px;
-        color: #000;
-    }
-    .print-team-card ul {
-        list-style-type: none;
-        padding-left: 0;
-        margin: 0;
-    }
-    .print-team-card li {
-        padding: 4px 0;
-        color: #333;
-    }
-    a {
-        color: #000;
-        text-decoration: none;
-    }
+    body > .container, body > #admin-modal, body > #notification, body > #loading-overlay { display: none !important; }
+    #print-area { display: block !important; }
+    @page { size: A4; margin: 20mm; }
+    .print-page { page-break-after: always; }
+    .print-page:last-child { page-break-after: auto; }
+    .print-title { font-size: 28px; font-weight: bold; text-align: center; margin-bottom: 24px; color: #000; }
+    .print-info { margin-bottom: 24px; font-size: 16px; }
+    .print-section { margin-top: 32px; padding-top: 16px; page-break-inside: avoid; }
+    .print-section h2 { font-size: 22px; font-weight: bold; margin-bottom: 16px; color: #000; border-bottom: 2px solid #ccc; padding-bottom: 8px;}
+    .print-team-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+    .print-team-card { border: 1px solid #ddd; padding: 16px; border-radius: 8px; page-break-inside: avoid; }
+    .print-team-card h3 { font-size: 18px; font-weight: bold; margin-bottom: 12px; color: #000; }
+    .print-team-card ul { list-style-type: none; padding-left: 0; margin: 0; }
+    .print-team-card li { padding: 4px 0; color: #333; }
+    .print-lineup-container { display: flex; gap: 20px; align-items: flex-start; }
+    .print-pitch { flex-shrink: 0; width: 350px; height: 500px; background-color: #e9f5e9; border: 2px solid #999; position: relative; }
+    .print-player-marker { position: absolute; transform: translate(-50%, -50%); text-align: center; font-size: 12px; color: #000; }
+    .print-player-icon { margin: 0 auto; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; border: 1px solid #333; }
+    .print-player-name { margin-top: 2px; background-color: rgba(255, 255, 255, 0.7); padding: 1px 3px; border-radius: 3px; }
+    .print-rester-list { list-style-type: none; padding: 0; }
+    .print-rester-list h4 { font-size: 16px; font-weight: bold; }
 }

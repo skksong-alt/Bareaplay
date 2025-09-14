@@ -1,14 +1,13 @@
 // js/store.js
-
 export const state = {
     playerDB: {},
     attendanceLog: [],
     expenseLog: [],
+    locations: [],
     teams: [],
     lineupResults: null,
     memoContent: "",
     isAdmin: false,
-    isDarkMode: false,
     ADMIN_PASSWORD: "0000"
 };
 
