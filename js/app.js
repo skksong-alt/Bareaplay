@@ -24,7 +24,6 @@ let adminModal, passwordInput, modalConfirmBtn, modalCancelBtn;
 const pages = {};
 const tabs = {};
 
-// ▼▼▼ [오류 수정] 헬퍼 함수들을 파일 최상단으로 이동 ▼▼▼
 window.showNotification = function(message, type = 'success') {
     const notificationEl = document.getElementById('notification');
     notificationEl.textContent = message;
@@ -50,7 +49,6 @@ window.shuffleLocal = function(arr) {
         [arr[i], arr[j]] = [arr[j], arr[i]];
     }
 };
-// ▲▲▲ [오류 수정] 여기까지 이동 ▲▲▲
 
 function updateAdminUI() {
     document.querySelectorAll('.admin-control').forEach(el => {
@@ -123,6 +121,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     modalCancelBtn = document.getElementById('modal-cancel-btn');
 
     const modules = { playerMgmt, balancer, lineup, accounting, shareMgmt };
+    // ▼▼▼ [오류 수정] dependencies 객체에서 pages 속성 삭제 ▼▼▼
     const dependencies = { db, state };
 
     for (const moduleName in modules) {
