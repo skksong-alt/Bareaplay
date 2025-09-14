@@ -4,28 +4,42 @@ let generateButton, attendeesTextarea, teamCountSelect, resultContainer, loading
 let sliders = {};
 let sliderVals = {};
 
+// [오류 수정] Drag & Drop 로직 강화
 function handlePlayerDragStart(e, playerName, fromTeamIndex) {
-    e.dataTransfer.setData("text/plain", JSON.stringify({ playerName, fromTeamIndex }));
+    // application/json 타입을 명시하고 데이터를 저장합니다.
+    const data = JSON.stringify({ playerName, fromTeamIndex });
+    e.dataTransfer.setData("application/json", data);
+    e.dataTransfer.effectAllowed = "move";
     e.target.closest('.player-tag').classList.add('opacity-50');
 }
 
 function handleTeamDrop(e, toTeamIndex) {
     e.preventDefault();
-    const { playerName, fromTeamIndex } = JSON.parse(e.dataTransfer.getData("text/plain"));
     e.currentTarget.classList.remove('team-drop-target');
+    
+    // [수정] 데이터가 없을 경우를 대비한 방어 코드 추가
+    const dataString = e.dataTransfer.getData("application/json");
+    if (!dataString) return; 
 
-    if (fromTeamIndex === toTeamIndex) return;
+    try {
+        const { playerName, fromTeamIndex } = JSON.parse(dataString);
+        if (fromTeamIndex === toTeamIndex) return;
 
-    const fromTeam = state.teams[fromTeamIndex];
-    const toTeam = state.teams[toTeamIndex];
-    const playerIndex = fromTeam.findIndex(p => p.name === playerName);
-    if (playerIndex > -1) {
-        const [player] = fromTeam.splice(playerIndex, 1);
-        toTeam.push(player);
-        renderResults(state.teams);
-        window.showNotification(`${playerName} 선수가 팀 ${fromTeamIndex + 1}에서 팀 ${toTeamIndex + 1}로 이동했습니다.`);
+        const fromTeam = state.teams[fromTeamIndex];
+        const toTeam = state.teams[toTeamIndex];
+        const playerIndex = fromTeam.findIndex(p => p.name === playerName);
+        
+        if (playerIndex > -1) {
+            const [player] = fromTeam.splice(playerIndex, 1);
+            toTeam.push(player);
+            renderResults(state.teams); // renderResults를 호출하여 UI를 다시 그림
+            window.showNotification(`${playerName} 선수가 팀 ${fromTeamIndex + 1}에서 팀 ${toTeamIndex + 1}로 이동했습니다.`);
+        }
+    } catch (err) {
+        console.error("Drop Error: ", err);
     }
 }
+
 
 function allPosGroup(posArr) {
     let out = new Set();
@@ -37,26 +51,6 @@ function allPosGroup(posArr) {
         if (['FW'].includes(u)) out.add('FW');
     });
     return Array.from(out);
-}
-
-function calculateScore(teamArr, W) {
-    const sums = teamArr.map(t => t.reduce((acc, p) => acc + (p.s1 || 0), 0));
-    const posStats = teamArr.map(team => {
-        const c = { GK: 0, DF: 0, MF: 0, FW: 0 };
-        team.forEach(p => {
-            let gg = allPosGroup([...(p.pos1||[]), ...(p.pos2||[])]);
-            if (gg.includes('GK')) c.GK++; if (gg.includes('DF')) c.DF++; if (gg.includes('MF')) c.MF++; if (gg.includes('FW')) c.FW++;
-        });
-        return c;
-    });
-    const sumMaxMin = sums.length > 1 ? Math.max(...sums) - Math.min(...sums) : 0;
-    const sizeMaxMin = teamArr.length > 1 ? Math.max(...teamArr.map(t => t.length)) - Math.min(...teamArr.map(t => t.length)) : 0;
-    let posDiffSum = 0;
-    ['GK', 'DF', 'MF', 'FW'].forEach(pg => {
-        const arr = posStats.map(c => c[pg]);
-        if (arr.length > 1) { posDiffSum += (Math.max(...arr) - Math.min(...arr)); }
-    });
-    return (sumMaxMin * W.SKILL) + (posDiffSum * W.POS) + (sizeMaxMin * W.SIZE);
 }
 
 function renderResults(teams) {
@@ -83,6 +77,9 @@ function renderResults(teams) {
         teamCard.addEventListener('drop', (e) => handleTeamDrop(e, index));
 
         let playersHtml = '';
+        const playersContainer = document.createElement('div');
+        playersContainer.className = 'flex-grow overflow-y-auto pr-1';
+        
         team.sort((a,b) => (b.s1 || 0) - (a.s1 || 0)).forEach(player => {
             const posGroups = allPosGroup([...(player.pos1||[]), ...(player.pos2||[])]);
             let posIcons = '';
@@ -91,67 +88,140 @@ function renderResults(teams) {
             const playerTag = document.createElement('div');
             playerTag.className = 'player-tag flex justify-between items-center bg-white/20 p-2 rounded-lg mb-2 cursor-grab';
             playerTag.draggable = true;
-            playerTag.innerHTML = `<span class="font-semibold">${player.name}</span><div class="flex items-center"><span class="text-sm opacity-90 mr-2">${posIcons}</span></div>`;
+            playerTag.innerHTML = `<span class="font-semibold">${player.name}</span><div class="flex items-center"><span class="text-sm opacity-90 mr-2">${posIcons}</span><span class="text-sm font-bold bg-white/30 px-2 py-0.5 rounded-full">${player.s1 || 0}</span></div>`;
             playerTag.addEventListener('dragstart', (e) => handlePlayerDragStart(e, player.name, index));
-            playersHtml += playerTag.outerHTML;
+            playersContainer.appendChild(playerTag);
         });
         
-        teamCard.innerHTML = `<div class="mb-3"><h3 class="text-2xl font-bold">팀 ${index + 1}</h3><div class="text-sm opacity-90 font-medium bg-black/20 inline-block px-2 py-1 rounded-md mt-1">총합: ${teamSkillSum} | 평균: ${teamSkillAvg} | 인원: ${team.length}명</div><div class="text-sm font-medium mt-2">🧤${posCounts.GK} 🛡️${posCounts.DF} ⚙️${posCounts.MF} 🎯${posCounts.FW}</div></div><div class="flex-grow overflow-y-auto pr-1">${playersHtml}</div>`;
+        const header = document.createElement('div');
+        header.className = 'mb-3';
+        header.innerHTML = `<h3 class="text-2xl font-bold">팀 ${index + 1}</h3><div class="text-sm opacity-90 font-medium bg-black/20 inline-block px-2 py-1 rounded-md mt-1">총합: ${teamSkillSum} | 평균: ${teamSkillAvg} | 인원: ${team.length}명</div><div class="text-sm font-medium mt-2">🧤${posCounts.GK} 🛡️${posCounts.DF} ⚙️${posCounts.MF} 🎯${posCounts.FW}</div>`;
+
+        teamCard.appendChild(header);
+        teamCard.appendChild(playersContainer);
         resultContainer.appendChild(teamCard);
     });
 }
 
-function executeTeamAssignment() {
-    const attendNames = attendeesTextarea.value.split('\n').map(name => name.trim()).filter(Boolean);
-    if (attendNames.length === 0) { window.showNotification("참가자 명단을 입력해주세요.", 'error'); resetUI(); return; }
-    const teamCount = parseInt(teamCountSelect.value, 10);
-    const W = { SKILL: Number(sliders.skill.value), POS: Number(sliders.pos.value), SIZE: Number(sliders.size.value) };
-    let known = []; let unknown = [];
-    attendNames.forEach(name => { (state.playerDB[name]) ? known.push({ ...state.playerDB[name] }) : unknown.push(name); });
-    
-    let bestTeams = null, bestScore = Infinity;
-    const trialCount = 5000;
-    
-    for (let trial = 0; trial < trialCount; trial++) {
-        let pool = [...known];
-        if (trial === 0) {
-            pool.reverse();
-        } else {
-            window.shuffleLocal(pool);
-        }
-        let tempTeams = Array.from({ length: teamCount }, () => []);
-        
-        let teamIdx = 0;
-        let forward = true;
-        pool.forEach(player => {
-            tempTeams[teamIdx].push(player);
-            if(forward) {
-                teamIdx++;
-                if (teamIdx === teamCount) { teamIdx = teamCount - 1; forward = false; }
-            } else {
-                teamIdx--;
-                if (teamIdx < 0) { teamIdx = 0; forward = true; }
-            }
-        });
 
-        const score = calculateScore(tempTeams, W);
-        if (score < bestScore) {
-            bestScore = score;
-            bestTeams = JSON.parse(JSON.stringify(tempTeams));
+// [복원] 최초 index(1).html의 유전 알고리즘 로직
+function calculateScore(teamArr, W) {
+    if (teamArr.some(t => t.length === 0)) return Infinity;
+    const sums = teamArr.map(t => t.reduce((acc, p) => acc + (p.s1 || 0), 0));
+    const posStats = teamArr.map(team => {
+        const c = { GK: 0, DF: 0, MF: 0, FW: 0 };
+        team.forEach(p => {
+            let gg = allPosGroup([...(p.pos1 || []), ...(p.pos2 || [])]);
+            if (gg.includes('GK')) c.GK++; if (gg.includes('DF')) c.DF++; if (gg.includes('MF')) c.MF++; if (gg.includes('FW')) c.FW++;
+        });
+        return c;
+    });
+    const sumMaxMin = sums.length > 1 ? Math.max(...sums) - Math.min(...sums) : 0;
+    const sizeMaxMin = teamArr.length > 1 ? Math.max(...teamArr.map(t => t.length)) - Math.min(...teamArr.map(t => t.length)) : 0;
+    let posDiffSum = 0;
+    ['GK', 'DF', 'MF', 'FW'].forEach(pg => {
+        const arr = posStats.map(c => c[pg]);
+        if (arr.length > 1) { posDiffSum += (Math.max(...arr) - Math.min(...arr)); }
+    });
+    // 인원수 가중치를 5배로 하여 더 중요하게 만듦 (기존 로직)
+    return (sumMaxMin * W.SKILL) + (posDiffSum * W.POS) + (sizeMaxMin * W.SIZE * 5);
+}
+
+function tournamentSelection(rankedPop, k = 5) {
+    let best = null;
+    for (let i = 0; i < k; i++) {
+        let individual = rankedPop[Math.floor(Math.random() * rankedPop.length)];
+        if (best === null || individual.score < best.score) { best = individual; }
+    }
+    return best;
+}
+
+function orderedCrossover(parent1, parent2) {
+    const size = parent1.length;
+    const start = Math.floor(Math.random() * size);
+    const end = Math.floor(Math.random() * (size - start)) + start;
+    let child = Array(size).fill(null);
+    let parent1Slice = parent1.slice(start, end + 1);
+    let parent1Names = new Set(parent1Slice.map(p => p.name));
+    for (let i = start; i <= end; i++) { child[i] = parent1[i]; }
+    let childIndex = (end + 1) % size;
+    let parent2Index = (end + 1) % size;
+    while (child.includes(null)) {
+        if (!parent1Names.has(parent2[parent2Index].name)) {
+            child[childIndex] = parent2[parent2Index];
+            childIndex = (childIndex + 1) % size;
+        }
+        parent2Index = (parent2Index + 1) % size;
+    }
+    return child;
+}
+
+function mutate(chromosome, rate) {
+    for (let i = 0; i < chromosome.length; i++) {
+        if (Math.random() < rate) {
+            const j = Math.floor(Math.random() * chromosome.length);
+            [chromosome[i], chromosome[j]] = [chromosome[j], chromosome[i]];
         }
     }
+}
+
+// [수정] 기존 executeTeamAssignment 함수를 GA 알고리즘으로 교체
+function executeTeamAssignmentGA() {
+    const attendNames = attendeesTextarea.value.split('\n').map(name => name.trim()).filter(Boolean);
+    if (attendNames.length === 0) { window.showNotification("참가자 명단을 입력해주세요.", 'error'); resetUI(); return; }
+
+    // [추가] 라인업 생성을 위해 초기 명단 순서 저장
+    state.initialAttendeeOrder = [...attendNames];
+
+    const teamCount = parseInt(teamCountSelect.value, 10);
+    const W = { SKILL: Number(sliders.skill.value), POS: Number(sliders.pos.value), SIZE: Number(sliders.size.value) };
+    let knownPlayers = []; let unknownPlayers = [];
+    attendNames.forEach(name => { (state.playerDB[name]) ? knownPlayers.push({ ...state.playerDB[name] }) : unknownPlayers.push(name); });
     
-    let unknownPool = [...unknown];
-    window.shuffleLocal(unknownPool);
-    unknownPool.forEach(nm => {
-        let minIndex = bestTeams.reduce((minIndex, team, i, arr) => team.length < arr[minIndex].length ? i : minIndex, 0);
-        bestTeams[minIndex].push({ name: `${nm} (신규)`, s1: 65, pos1: [] });
+    const POPULATION_SIZE = 50; const GENERATIONS = 100; const MUTATION_RATE = 0.1; const ELITISM_COUNT = 2;
+    let population = [];
+    for (let i = 0; i < POPULATION_SIZE; i++) {
+        let chromosome = [...knownPlayers];
+        window.shuffleLocal(chromosome);
+        population.push(chromosome);
+    }
+
+    let bestOverallTeams = null; let bestOverallScore = Infinity;
+    for (let gen = 0; gen < GENERATIONS; gen++) {
+        let rankedPopulation = population.map(chromosome => {
+            let teams = Array.from({ length: teamCount }, () => []);
+            chromosome.forEach((player, index) => { teams[index % teamCount].push(player); });
+            const score = calculateScore(teams, W);
+            return { chromosome, teams, score };
+        }).sort((a, b) => a.score - b.score);
+
+        if (rankedPopulation[0].score < bestOverallScore) {
+            bestOverallScore = rankedPopulation[0].score;
+            bestOverallTeams = rankedPopulation[0].teams;
+        }
+
+        let newPopulation = [];
+        for (let i = 0; i < ELITISM_COUNT; i++) { newPopulation.push(rankedPopulation[i].chromosome); }
+
+        while (newPopulation.length < POPULATION_SIZE) {
+            const parent1 = tournamentSelection(rankedPopulation).chromosome;
+            const parent2 = tournamentSelection(rankedPopulation).chromosome;
+            const child = orderedCrossover(parent1, parent2);
+            mutate(child, MUTATION_RATE);
+            newPopulation.push(child);
+        }
+        population = newPopulation;
+    }
+    
+    unknownPlayers.forEach(nm => {
+        let minIndex = bestOverallTeams.reduce((minIdx, team, i, arr) => team.length < arr[minIdx].length ? i : minIdx, 0);
+        bestOverallTeams[minIndex].push({ name: `${nm} (신규)`, s1: 65, pos1: [] });
     });
 
-    renderResults(bestTeams);
+    renderResults(bestOverallTeams);
     window.accounting.autoFillAttendees(attendNames);
-    window.lineup.renderTeamSelectTabs(bestTeams);
-    window.shareMgmt.updateTeamData(bestTeams);
+    window.lineup.renderTeamSelectTabs(bestOverallTeams);
+    window.shareMgmt.updateTeamData(bestOverallTeams);
     resetUI();
 }
 
@@ -179,9 +249,10 @@ export function init(dependencies) {
 
     Object.keys(sliders).forEach(key => { sliders[key].addEventListener('input', () => { sliderVals[key].textContent = sliders[key].value; }); });
     loadAllPlayersBtn.addEventListener('click', () => { attendeesTextarea.value = Object.keys(state.playerDB).sort((a,b) => a.localeCompare(b, 'ko-KR')).join('\n'); });
+    
     generateButton.addEventListener('click', () => {
         loadingSpinner.classList.remove('hidden'); resultContainer.innerHTML = ''; placeholder.classList.add('hidden');
         generateButton.disabled = true; generateButton.textContent = '팀 생성 중...';
-        setTimeout(executeTeamAssignment, 100);
+        setTimeout(executeTeamAssignmentGA, 100);
     });
 }

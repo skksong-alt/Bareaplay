@@ -21,40 +21,77 @@ function createPlayerMarker(name, pos, id) {
     marker.dataset.pos = pos;
     marker.dataset.id = `${pos}-${id}`;
     marker.draggable = name !== '미배정';
+
     let icon = '❓', bgColor = '#78909C';
     if (pos === "GK") { icon = "🧤"; bgColor = "#00C853"; } 
     else if (["LB", "RB", "CB", "DF"].includes(pos)) { icon = "🛡"; bgColor = "#03A9F4"; } 
     else if (["MF", "CM"].includes(pos)) { icon = "⚙"; bgColor = "#FFEB3B"; } 
-    else if (["LW", "RW", "FW"].includes(pos)) { icon = "🎯"; bgColor = "#FF9800"; } 
-    else if (pos === 'sub') { icon = '🔄'; bgColor = '#607D8B'; marker.style.position = 'relative'; marker.style.transform = 'none'; }
+    else if (["LW", "RW", "FW"].includes(pos)) { icon = "🎯"; bgColor = "#FF9800"; }
+    else if (pos === 'sub' || pos === 'rest') { icon = (pos === 'sub' ? '🔄' : '🛌'); bgColor = (pos === 'sub' ? '#607D8B' : '#9E9E9E'); marker.style.position = 'relative'; marker.style.transform = 'none'; marker.style.cursor = 'grab'; }
+    
     marker.innerHTML = (name === '미배정') ? `<div class="player-icon" style="background-color: ${bgColor}; border-style: dashed;">${icon}</div><div class="player-name">미배정</div>` : `<div class="player-icon" style="background-color: ${bgColor};">${icon}</div><div class="player-name">${name}</div>`;
     return marker;
+}
+
+function findInLineup(lineup, name) {
+    for (const pos in lineup) {
+        const idx = lineup[pos].indexOf(name);
+        if (idx > -1) return { pos, idx };
+    }
+    return null;
 }
 
 function addDragAndDropHandlers() {
     const draggables = document.querySelectorAll('.player-marker[draggable="true"]');
     const targets = document.querySelectorAll('.player-marker');
+    
     draggables.forEach(d => {
         d.addEventListener('dragstart', () => d.classList.add('dragging'));
         d.addEventListener('dragend', () => d.classList.remove('dragging'));
     });
+
     targets.forEach(target => {
-        target.addEventListener('dragover', e => { e.preventDefault(); if (target !== document.querySelector('.dragging')) target.classList.add('drop-target'); });
+        target.addEventListener('dragover', e => { e.preventDefault(); if(target !== document.querySelector('.dragging')) target.classList.add('drop-target'); });
         target.addEventListener('dragleave', () => target.classList.remove('drop-target'));
         target.addEventListener('drop', e => {
-            e.preventDefault();
-            target.classList.remove('drop-target');
+            e.preventDefault(); target.classList.remove('drop-target');
             const dragging = document.querySelector('.dragging');
             if (!dragging || target === dragging) return;
-            const targetName = target.dataset.name; const draggingName = dragging.dataset.name;
-            const targetPos = target.dataset.pos; const draggingPos = dragging.dataset.pos;
+
             const lineup = state.lineupResults.lineups[currentQuarter];
-            const findAndReplace = (pos, oldName, newName) => { if (!lineup[pos]) return; const index = lineup[pos].indexOf(oldName); if (index > -1) lineup[pos][index] = newName; };
-            if (draggingPos !== 'sub') findAndReplace(draggingPos, draggingName, targetName === '미배정' ? null : targetName);
-            if (targetPos !== 'sub') findAndReplace(targetPos, targetName, draggingName);
-            else if (targetPos === 'sub') {
-                const emptySlot = Object.entries(lineup).find(([pos, players]) => players.includes(null));
-                if (emptySlot) { const emptyIndex = emptySlot[1].indexOf(null); lineup[emptySlot[0]][emptyIndex] = targetName; }
+            const resters = state.lineupResults.resters[currentQuarter];
+            const draggingName = dragging.dataset.name;
+            const targetName = target.dataset.name;
+            const draggingPosType = dragging.dataset.pos;
+            const targetPosType = target.dataset.pos;
+            
+            if (draggingPosType !== 'rest' && draggingPosType !== 'sub') {
+                const d_loc = findInLineup(lineup, draggingName);
+                if (!d_loc) return;
+
+                if (targetPosType === 'rest') {
+                    const t_idx = resters.indexOf(targetName);
+                    if (t_idx > -1) {
+                        resters[t_idx] = draggingName;
+                        lineup[d_loc.pos][d_loc.idx] = targetName;
+                    }
+                } else if (targetPosType !== 'sub') {
+                    const t_loc = findInLineup(lineup, targetName);
+                    if (t_loc) {
+                        lineup[d_loc.pos][d_loc.idx] = targetName;
+                        lineup[t_loc.pos][t_loc.idx] = draggingName;
+                    }
+                }
+            } 
+            else if (draggingPosType === 'rest') {
+                 const d_idx = resters.indexOf(draggingName);
+                 if (targetPosType !== 'rest' && targetPosType !== 'sub') {
+                    const t_loc = findInLineup(lineup, targetName);
+                    if (t_loc && d_idx > -1) {
+                        resters[d_idx] = targetName;
+                        lineup[t_loc.pos][t_loc.idx] = draggingName;
+                    }
+                 }
             }
             renderQuarter(currentQuarter);
             window.showNotification(`${draggingName} ↔ ${targetName} 위치 변경!`);
@@ -71,22 +108,26 @@ function renderQuarter(qIndex) {
     const formationLayout = posCellMap[formation] || [];
     let counters = {};
     let assignedPlayers = new Set(Object.values(lineup).flat().filter(Boolean));
+
     formationLayout.forEach((fc, index) => {
         const pos = fc.pos;
         counters[pos] = (counters[pos] || 0);
         let name = (lineup[pos] || [])[counters[pos]] || '미배정';
         counters[pos]++;
         const marker = createPlayerMarker(name, pos, index);
-        marker.style.left = `${fc.x}%`;
-        marker.style.top = `${fc.y}%`;
+        marker.style.left = `${fc.x}%`; marker.style.top = `${fc.y}%`;
         pitch.appendChild(marker);
     });
+
     const resters = (state.lineupResults.resters[qIndex] || []).sort((a,b) => a.localeCompare(b, 'ko-KR'));
     const unassigned = state.lineupResults.members.filter(m => !assignedPlayers.has(m) && !resters.includes(m)).sort((a,b) => a.localeCompare(b, 'ko-KR'));
-    restersPanel.innerHTML = `<h4 class="font-bold text-lg mb-2 text-gray-800">🛑 휴식 선수</h4><div id="resters-list" class="space-y-2">${resters.length > 0 ? resters.map(r => `<div class="bg-gray-200 p-2 rounded text-gray-800">🛌 ${r}</div>`).join('') : '<p class="text-gray-500">휴식 인원 없음</p>'}</div>`;
-    unassignedPanel.innerHTML = `<h4 class="font-bold text-lg mb-2 text-gray-800">🤔 미배정 선수</h4><div id="unassigned-list" class="space-y-2">${unassigned.length > 0 ? unassigned.map((name, index) => createPlayerMarker(name, 'sub', index).outerHTML).join('') : '<p class="text-gray-500">미배정 인원 없음</p>'}</div>`;
+
+    restersPanel.innerHTML = `<h4 class="font-bold text-lg mb-2">🛑 휴식 선수</h4><div class="space-y-2">${resters.length > 0 ? resters.map(r => createPlayerMarker(r, 'rest', r).outerHTML).join('') : '<p class="text-gray-500">휴식 인원 없음</p>'}</div>`;
+    unassignedPanel.innerHTML = `<h4 class="font-bold text-lg mb-2">🤔 미배정 선수</h4><div class="space-y-2">${unassigned.length > 0 ? unassigned.map((name, index) => createPlayerMarker(name, 'sub', `${name}-${index}`).outerHTML).join('') : '<p class="text-gray-500">미배정 인원 없음</p>'}</div>`;
+    
     addDragAndDropHandlers();
 }
+
 
 export function renderTeamSelectTabs(teams) {
     if (!teamSelectTabsContainer) return;
@@ -108,151 +149,92 @@ export function renderTeamSelectTabs(teams) {
     }
 }
 
-function executeLineupGeneration() {
-    const members = lineupMembersTextarea.value.split('\n').map(name => name.trim().replace(' (신규)', '')).filter(Boolean);
-    if (members.length === 0) {
-        window.showNotification("팀 선택 탭에서 팀을 먼저 선택해주세요.", 'error');
-        resetLineupUI();
-        return;
-    }
-    const formations = Array.from(document.querySelectorAll('#page-lineup select')).map(s => s.value);
-    const localPlayerDB = {};
-    members.forEach(name => {
-        localPlayerDB[name] = state.playerDB[name] || { name, pos1: [], s1: 65, pos2: [], s2: 0 };
-    });
+// [복원] 최초 index(1).html의 라인업 생성 알고리즘
+function executeLineupGeneration(members, formations, isSilent = false) {
+    return new Promise(resolve => {
+        if (members.length < 11 && !isSilent) {
+            window.showNotification("최소 11명의 선수가 필요합니다.", 'error');
+            resolve(null);
+            return;
+        }
 
-    const fixedGk = '강석영';
-    const hasFixedGk = members.includes(fixedGk) && (localPlayerDB[fixedGk]?.pos1.includes('GK'));
-
-    let bestLineup = null, bestScore = Infinity;
-    const TRIAL = 1000, BETA = 5; 
-    for (let tr = 0; tr < TRIAL; tr++) {
-        const assignHist = {}, lineups = [];
-        let allResterInQ = [];
+        let sortedMembers = [...members].sort((a, b) => (state.initialAttendeeOrder || []).indexOf(a) - (state.initialAttendeeOrder || []).indexOf(b));
+        const localPlayerDB = {};
+        members.forEach(name => {
+            localPlayerDB[name] = state.playerDB[name] || { name, pos1: [], s1: 65, pos2: [], s2: 0 };
+        });
         
-        const reversedAttendees = [...members].reverse();
-        for (let qIdx = 0; qIdx < 4; qIdx++) {
-            let resters = [];
-            const onFieldNeeded = (posCellMap[formations[qIdx]] || []).length;
-            const requiredRestCount = Math.max(0, members.length - onFieldNeeded);
-            
-            let resterCandidates = reversedAttendees.slice();
-            
-            let qCounts = {};
-            members.forEach(n => {
-                qCounts[n] = allResterInQ.flat().filter(p => p === n).length;
-            });
+        let bestLineup = null; let bestScore = Infinity;
+        const TRIAL = 300;
+        const FIXED_GK = "강석영";
 
-            for(const n of resterCandidates) {
-                if(resters.length >= requiredRestCount) break;
-                const playerInfo = localPlayerDB[n];
-                const isGk = playerInfo && (playerInfo.pos1.includes('GK'));
-                if(hasFixedGk && n === fixedGk) continue;
-                if(isGk) continue;
+        let restOrderQueue = sortedMembers.filter(m => m !== FIXED_GK).reverse();
+        let fullRestQueue = [];
+        let totalRestSlots = 0;
+        formations.forEach(f => {
+            const numOnField = posCellMap[f].length;
+            totalRestSlots += Math.max(0, members.length - numOnField);
+        });
+        while (fullRestQueue.length < totalRestSlots) { fullRestQueue.push(...restOrderQueue); }
+        fullRestQueue = fullRestQueue.slice(0, totalRestSlots);
+
+        for (let tr = 0; tr < TRIAL; tr++) {
+            const lineups = []; const resters = [];
+            let restQueuePointer = 0;
+            
+            for (let q = 0; q < 4; q++) {
+                const formation = formations[q];
+                const slots = posCellMap[formation].map(c => c.pos);
+                const numToRest = members.length - slots.length;
+
+                const quarterResters = [...new Set(fullRestQueue.slice(restQueuePointer, restQueuePointer + numToRest))];
+                restQueuePointer += numToRest;
+                resters.push(quarterResters);
                 
-                const fairRestCount = Math.floor((requiredRestCount * 4) / members.length);
-                if(qCounts[n] < fairRestCount) {
-                    if (!resters.includes(n)) {
-                        resters.push(n);
+                let onField = members.filter(m => !quarterResters.includes(m));
+                let assignment = {};
+                let availablePlayers = [...onField];
+                
+                if (slots.includes('GK') && availablePlayers.includes(FIXED_GK)) {
+                    assignment['GK'] = [FIXED_GK];
+                    availablePlayers.splice(availablePlayers.indexOf(FIXED_GK), 1);
+                }
+                
+                for (const pos of slots) {
+                    if (pos === 'GK' && assignment['GK']) continue;
+                    assignment[pos] = assignment[pos] || [];
+                    if (availablePlayers.length === 0) {
+                        assignment[pos].push(null); continue;
                     }
+
+                    let bestPlayer = availablePlayers[0], bestFit = -1;
+                    for (const playerName of availablePlayers) {
+                        const player = localPlayerDB[playerName];
+                        let fitScore = Math.random() * 0.1;
+                        if ((player.pos1 || []).includes(pos)) fitScore += 2;
+                        else if ((player.pos2 || []).includes(pos)) fitScore += 1;
+                        if (fitScore > bestFit) {
+                            bestFit = fitScore; bestPlayer = playerName;
+                        }
+                    }
+                    assignment[pos].push(bestPlayer);
+                    if (bestPlayer) availablePlayers.splice(availablePlayers.indexOf(bestPlayer), 1);
                 }
+                lineups.push(assignment);
             }
             
-            let safety = 0;
-            while(resters.length < requiredRestCount && safety < members.length * 2) {
-                const nextCandidate = reversedAttendees.find(n => {
-                    const playerInfo = localPlayerDB[n];
-                    const isGk = playerInfo && (playerInfo.pos1.includes('GK'));
-                    return !resters.includes(n) && (!hasFixedGk || n !== fixedGk) && !isGk;
-                });
-                
-                if(nextCandidate) {
-                    resters.push(nextCandidate);
-                } else {
-                     const anyCandidate = members.find(n => {
-                         const playerInfo = localPlayerDB[n];
-                         const isGk = playerInfo && (playerInfo.pos1.includes('GK'));
-                         return !resters.includes(n) && (!hasFixedGk || n !== fixedGk) && !isGk;
-                     });
-                     if(anyCandidate) resters.push(anyCandidate);
-                     else break;
-                }
-                safety++;
+            const qScores = lineups.map(l => Object.values(l).flat().filter(Boolean).reduce((sum, name) => sum + (localPlayerDB[name]?.s1 || 65), 0));
+            const score = qScores.length > 1 ? Math.max(...qScores) - Math.min(...qScores) : 0;
+            if (score < bestScore) {
+                bestScore = score;
+                bestLineup = { lineups, resters, members, formations, score };
             }
-            allResterInQ[qIdx] = [...resters];
         }
-        
-        for (let qIdx = 0; qIdx < 4; qIdx++) {
-            const formCells = posCellMap[formations[qIdx]];
-            if(!formCells) { lineups.push({}); continue; }
-            let assignQ = {}, resters = allResterInQ[qIdx] || [];
-            let available = members.filter(n => !resters.includes(n) && localPlayerDB[n]);
-            
-            const slots = formCells.map(c => c.pos);
-            for(const pos of slots) { assignQ[pos] = assignQ[pos] || []; }
-
-            if(hasFixedGk && slots.includes('GK')) {
-                assignQ['GK'][0] = fixedGk;
-                available = available.filter(n => n !== fixedGk);
-            }
-
-            let candidates = available.map(n => ({ name: n, ...localPlayerDB[n] }));
-            
-            let assignedCount = (hasFixedGk && slots.includes('GK') && slots.includes('GK')) ? 1 : 0;
-            const onFieldNeeded = formCells.length;
-            while(assignedCount < onFieldNeeded && candidates.length > 0) {
-                 let bestFitScore = Infinity, bestPlayerIdx = -1, bestSlotPos = null, bestSlotIdx = -1;
-                 for(let p_idx = 0; p_idx < candidates.length; p_idx++) {
-                     const player = candidates[p_idx];
-                     for(const pos in assignQ) {
-                         for(let s_idx = 0; s_idx < formCells.filter(c=>c.pos === pos).length; s_idx++) {
-                            if (assignQ[pos].length > s_idx && assignQ[pos][s_idx]) continue;
-                            let fitScore = 3;
-                            if ((player.pos1 || []).includes(pos)) fitScore = 0;
-                            else if ((player.pos2 || []).includes(pos)) fitScore = 0.5;
-                            fitScore -= ((player.s1 || 0) + (player.s2 || 0)) / 40;
-                            let rotPenalty = (assignHist[player.name] && assignHist[player.name][pos]) ? assignHist[player.name][pos] * BETA : 0;
-                            const totalScore = fitScore + rotPenalty + Math.random() * 0.1;
-                            if (totalScore < bestFitScore) {
-                                bestFitScore = totalScore; bestPlayerIdx = p_idx; bestSlotPos = pos; bestSlotIdx = s_idx;
-                            }
-                         }
-                     }
-                 }
-                if (bestPlayerIdx !== -1) {
-                    const playerToAssign = candidates[bestPlayerIdx];
-                    assignQ[bestSlotPos][bestSlotIdx] = playerToAssign.name;
-                    assignHist[playerToAssign.name] = assignHist[playerToAssign.name] || {};
-                    assignHist[playerToAssign.name][bestSlotPos] = (assignHist[playerToAssign.name][bestSlotPos] || 0) + 1;
-                    candidates.splice(bestPlayerIdx, 1);
-                    assignedCount++;
-                } else { break; }
-            }
-            lineups.push(JSON.parse(JSON.stringify(assignQ)));
-        }
-        let quarterSums = lineups.map(lineup => Object.values(lineup).flat().filter(Boolean).reduce((sum, name) => sum + (localPlayerDB[name]?.s1 || 65), 0));
-        const score = quarterSums.length > 1 ? Math.max(...quarterSums) - Math.min(...quarterSums) : 0;
-        if (score < bestScore) {
-            bestLineup = { lineups, resters: allResterInQ, members };
-            bestScore = score;
-        }
-    }
-
-    if (!bestLineup) {
-        window.showNotification('최적의 라인업을 찾지 못했습니다.', 'error');
-    } else {
-        state.lineupResults = bestLineup;
-        state.lineupResults.formations = formations;
-        window.shareMgmt.updateLineupData(bestLineup, formations);
-        
-        lineupDisplay.classList.remove('hidden');
-        placeholderLineup.classList.add('hidden');
-        currentQuarter = 0;
-        document.querySelector('.lineup-q-tab[data-q="0"]').click();
-        window.showNotification(`라인업 생성 완료! (실력차: ${bestScore.toFixed(1)})`);
-    }
-    resetLineupUI();
+        resolve(bestLineup);
+    });
 }
+
+export { executeLineupGeneration }; // Share Mgmt 모듈에서 호출할 수 있도록 export
 
 export function init(dependencies) {
     state = dependencies.state;
@@ -270,13 +252,34 @@ export function init(dependencies) {
     teamSelectTabsContainer = document.getElementById('team-select-tabs-container');
     lineupMembersTextarea = document.getElementById('lineup-members');
 
-    generateLineupButton.addEventListener('click', () => {
+    generateLineupButton.addEventListener('click', async () => {
         loadingLineupSpinner.classList.remove('hidden');
         lineupDisplay.classList.add('hidden');
-        placeholderLineup.classList.remove('hidden');
+        placeholderLineup.classList.add('hidden'); // placeholder는 숨겨야 합니다
         generateLineupButton.disabled = true;
         generateLineupButton.textContent = '라인업 생성 중...';
-        setTimeout(executeLineupGeneration, 100);
+
+        const members = lineupMembersTextarea.value.split('\n').map(name => name.trim().replace(' (신규)', '')).filter(Boolean);
+        const formations = Array.from(document.querySelectorAll('#page-lineup select')).map(s => s.value);
+        
+        const result = await executeLineupGeneration(members, formations);
+
+        if (result) {
+            state.lineupResults = result;
+            window.shareMgmt.updateLineupData(result, formations);
+            lineupDisplay.classList.remove('hidden');
+            placeholderLineup.classList.add('hidden'); // 여기도 확인
+            currentQuarter = 0;
+            // 쿼터 탭을 클릭하는 효과를 줌
+            const firstQuarterTab = document.querySelector('.lineup-q-tab[data-q="0"]');
+            if (firstQuarterTab) {
+                document.querySelectorAll('.lineup-q-tab').forEach(t => t.classList.remove('active-q-tab'));
+                firstQuarterTab.classList.add('active-q-tab');
+                renderQuarter(0);
+            }
+            window.showNotification(`라인업 생성 완료! (실력차: ${result.score.toFixed(1)})`);
+        }
+        resetLineupUI();
     });
     
     document.addEventListener('click', (e) => {
