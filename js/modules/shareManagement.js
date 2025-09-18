@@ -133,7 +133,7 @@ export function generatePrintView(shareData) {
         window.showNotification('팝업이 차단되었습니다. 팝업을 허용해주세요.', 'error');
         return;
     }
-    const createQuarterHTML = (teamLineup, qIndex) => {
+    const createQuarterHTML = (teamLineup, teamIdx, qIndex) => {
         if (!teamLineup || !teamLineup.lineups || !teamLineup.lineups[qIndex]) return '<div class="pitch-print-placeholder"></div>';
         const lineup = teamLineup.lineups[qIndex];
         const formation = teamLineup.formations[qIndex];
@@ -145,7 +145,7 @@ export function generatePrintView(shareData) {
             <div class="center-circle-print" style="top:50%;left:50%;width:25%;height:18%;transform:translate(-50%,-50%);"></div>
             <div class="penalty-box-print" style="top:0;left:50%;transform:translateX(-50%);width:60%;height:18%;border-top:0;"></div>
             <div class="penalty-box-print" style="bottom:0;left:50%;transform:translateX(-50%);width:60%;height:18%;border-bottom:0;"></div>
-            <div class="quarter-title-integrated">${qIndex + 1}쿼터 (${formation})</div>`;
+            <div class="quarter-title-integrated">팀 ${teamIdx + 1} - ${qIndex + 1}쿼터 (${formation})</div>`;
         
         const counters = {};
         (posCellMap[formation] || []).forEach(fc => {
@@ -179,7 +179,6 @@ export function generatePrintView(shareData) {
         .print-header h1 { font-size: 28px; margin: 0 0 5px 0; }
         .print-header p { font-size: 16px; margin: 0; color: #6b7280; }
         .print-footer { position: absolute; bottom: 1cm; left: 1.5cm; right: 1.5cm; text-align: center; font-size: 10px; color: #9ca3af; }
-
         .info-box { background:#fff; padding:1rem; border:1px solid #e5e7eb; border-radius:.5rem; margin-bottom:1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
         .section-title { font-size:20px; margin:0 0 12px 0; padding-bottom: 8px; border-bottom: 1px solid #e5e7eb; }
         .team-grid-print { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px; }
@@ -187,7 +186,6 @@ export function generatePrintView(shareData) {
         .team-box h3 { font-size: 1rem; margin:0 0 8px 0; padding-bottom:4px; border-bottom: 1px solid rgba(255,255,255,0.4); }
         .team-box ul { font-size:0.7rem; list-style:none; padding-left:0; margin:0; }
         .team-box li { margin-bottom:3px; background:rgba(255,255,255,0.2); padding:3px 5px; border-radius:4px; }
-        
         .single-team-title { text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 1cm; padding-bottom: 10px; }
         .lineup-grid-final { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1cm; }
         .quarter-block { display:flex; flex-direction:column; }
@@ -325,5 +323,4 @@ export function updateLineupData(lineupData, formations) {
     if (state.lineupResults) {
         state.lineupResults.formations = formations;
     }
-}
 }
