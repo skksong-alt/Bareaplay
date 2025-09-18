@@ -131,7 +131,6 @@ export function generatePrintView(shareData) {
         const posCellMap = window.lineup.getPosCellMap();
         const resters = teamLineup.resters[`q${qIndex + 1}`] || [];
         
-        // [수정] 휴식자 명단을 pitchHtml 밖으로 분리
         let pitchHtml = `<div class="pitch-print">
             <div class="pitch-line-print" style="top:50%;left:0;width:100%;height:1px;"></div>
             <div class="center-circle-print" style="top:50%;left:50%;width:25%;height:18%;transform:translate(-50%,-50%);"></div>
@@ -150,7 +149,6 @@ export function generatePrintView(shareData) {
         });
         pitchHtml += `</div>`;
         
-        // 경기장 그래픽과 휴식자 명단을 포함하는 전체 블록 반환
         return `<div class="quarter-block">
                     ${pitchHtml}
                     <div class="rest-players-print"><b>휴식:</b> ${resters.join(', ') || '없음'}</div>
@@ -177,21 +175,21 @@ export function generatePrintView(shareData) {
         .team-box li { margin-bottom:3px; background:rgba(255,255,255,0.2); padding:3px 5px; border-radius:4px; }
         
         .single-team-title { text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 1cm; }
-        /* [수정] 그리드 행 높이를 자동으로 조절하도록 변경 */
-        .lineup-grid-final { display: grid; grid-template-columns: 1fr; grid-template-rows: repeat(3, auto); gap: 1cm; }
-        
+        /* [수정] 3개 쿼터를 가로로 나열하는 그리드 */
+        .lineup-grid-final { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1cm; }
         .quarter-block { display:flex; flex-direction:column; }
         .pitch-print { background:#2E7D32; border:1px solid #999; position:relative; width:100%; aspect-ratio: 7/10; border-radius: 4px; overflow: hidden; }
         .pitch-print-placeholder { border: 2px dashed #ccc; border-radius: 4px; width: 100%; aspect-ratio: 7/10; }
-        .pitch-line-print, .center-circle-print, .penalty-box-print { /* ... 이전과 동일 ... */ }
+        .pitch-line-print { position: absolute; background-color: rgba(255,255,255,0.5); }
+        .center-circle-print { position: absolute; border: 1.5px solid rgba(255,255,255,0.5); border-radius: 50%; }
+        .penalty-box-print { position: absolute; border: 1.5px solid rgba(255,255,255,0.5); }
         .quarter-title-integrated { position: absolute; top: 8px; left: 8px; font-size: 0.8rem; font-weight: bold; color: white; background: rgba(0,0,0,0.5); padding: 3px 6px; border-radius: 5px; z-index: 10; }
-        
-        /* [수정] 경기장 밖으로 나온 휴식자 명단 스타일 */
         .rest-players-print { text-align: center; margin-top: 5px; font-size: 0.8rem; font-weight: bold; }
         .player-marker-print { position:absolute; transform:translate(-50%,-50%); text-align:center; }
-        .player-icon-print { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-size:.9rem; border:1.5px solid white; margin: 0 auto; box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
-        .player-name-print { background:rgba(0,0,0,0.7); color:white; font-size:0.7rem; padding:2px 5px; border-radius:5px; margin-top:3px; white-space:nowrap; }
-        @page { size: A4 portrait; margin: 0; }
+        .player-icon-print { width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-size:.7rem; border:1.5px solid white; margin: 0 auto; box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
+        .player-name-print { background:rgba(0,0,0,0.7); color:white; font-size:0.65rem; padding:2px 5px; border-radius:5px; margin-top:3px; white-space:nowrap; }
+        /* [수정] 가로 페이지로 변경 */
+        @page { size: A4 landscape; margin: 0; }
     </style>
     </head><body>
     <div class="print-container">
@@ -210,7 +208,6 @@ export function generatePrintView(shareData) {
     });
     fullHtml += `</div></div></div>`;
     
-    // [수정] 팀별로 2페이지씩 생성하는 새로운 루프
     teams.forEach((team, teamIdx) => {
         const lineup = lineups[`team${teamIdx + 1}`];
         // 1-3쿼터 페이지
