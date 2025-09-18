@@ -41,9 +41,10 @@ function renderLocationList() {
 }
 
 
+// [수정] 함수 시작 시 관리자 권한 확인 로직 추가
 async function generateShareableLink() {
     if (!state.isAdmin) {
-        window.showNotification("관리자만 공유 링크를 생성할 수 있습니다.", "error");
+        window.promptForAdminPassword();
         return;
     }
     if (!state.teams || state.teams.length === 0) {
@@ -66,7 +67,6 @@ async function generateShareableLink() {
         
         lineups.forEach((lineup, i) => {
             if (lineup) {
-                // [수정] resters 데이터를 객체로 변환하여 중첩 배열 오류 해결
                 const restersObject = {};
                 lineup.resters.forEach((resterArray, qIndex) => {
                     restersObject[`q${qIndex + 1}`] = resterArray;
@@ -93,7 +93,6 @@ async function generateShareableLink() {
         };
 
         const shareDocRef = await addDoc(collection(db, "shares"), shareData);
-        
         const shareUrl = `${window.location.origin}${window.location.pathname}?shareId=${shareDocRef.id}`;
         
         shareLinkContainer.classList.remove('hidden');
@@ -115,6 +114,7 @@ async function generateShareableLink() {
     }
 }
 
+// [수정] 인쇄 레이아웃 전면 수정 (세로, 2x2 그리드)
 export function generatePrintView(shareData) {
     const teams = Object.values(shareData.teams || {});
     const { meetingInfo, lineups } = shareData;
@@ -124,13 +124,15 @@ export function generatePrintView(shareData) {
         window.showNotification('팝업이 차단되었습니다. 팝업을 허용해주세요.', 'error');
         return;
     }
-    const createQuarterHTML = (teamLineup, qIndex) => {
+    const createQuarterHTML = (teamLineup, teamIdx, qIndex) => {
         if (!teamLineup || !teamLineup.lineups || !teamLineup.lineups[qIndex]) return '<div class="quarter-block"></div>';
         const lineup = teamLineup.lineups[qIndex];
         const formation = teamLineup.formations[qIndex];
         const posCellMap = window.lineup.getPosCellMap();
         
-        let html = `<div class="quarter-block"><div class="pitch-print"><div class="formation-title-print">${qIndex + 1}쿼터 (${formation})</div>`;
+        let html = `<div class="quarter-block">
+                        <h3 class="quarter-title">팀 ${teamIdx + 1} - ${qIndex + 1}쿼터 (${formation})</h3>
+                        <div class="pitch-print">`;
         const counters = {};
         (posCellMap[formation] || []).forEach(fc => {
             counters[fc.pos] = (counters[fc.pos] || 0);
@@ -144,7 +146,6 @@ export function generatePrintView(shareData) {
             html += `<div class="player-marker-print" style="left:${fc.x}%;top:${fc.y}%;"><div class="player-icon-print" style="background:${bg}">${icon}</div><div class="player-name-print">${name||'-'}</div></div>`;
             counters[fc.pos]++;
         });
-        // [수정] 객체로 변경된 resters 데이터 참조
         const resters = teamLineup.resters[`q${qIndex + 1}`] || [];
         html += `</div><div class="rest-players-print"><b>휴식:</b> ${resters.join(', ') || '없음'}</div></div>`;
         return html;
@@ -154,16 +155,13 @@ export function generatePrintView(shareData) {
         ? `<a href="${meetingInfo.locationUrl}" target="_blank" style="color: #0000EE; text-decoration: underline;">${meetingInfo.location}</a>`
         : (meetingInfo.location || '미정');
 
- let fullHtml = `
+    let fullHtml = `
     <html><head><title>BareaPlay 출력</title>
     <style>
-        /* [수정] 인쇄 전용 CSS 최적화 */
         * { -webkit-print-color-adjust: exact !important; color-adjust: exact !important; box-sizing: border-box; }
         body { font-family:'Noto Sans KR', sans-serif; margin: 0; }
         .page-break { page-break-after: always; }
         .print-container { padding: 1cm; }
-        
-        /* 1페이지: 모임 정보 및 팀 배정 */
         .info-box { background:#f8f9fa; padding:1rem; border:1px solid #dee2e6; border-radius:.5rem; margin-bottom:1.5rem; }
         .section-title { font-size:20px; margin:0 0 12px 0; padding-bottom: 8px; border-bottom: 1px solid #ccc; }
         .team-grid-print { display:grid; grid-template-columns:repeat(${teams.length}, 1fr); gap:10px; }
@@ -171,20 +169,15 @@ export function generatePrintView(shareData) {
         .team-box h3 { font-size: 1rem; margin:0 0 8px 0; padding-bottom:4px; border-bottom: 1px solid rgba(255,255,255,0.3); }
         .team-box ul { font-size:0.7rem; list-style:none; padding-left:0; margin:0; }
         .team-box li { margin-bottom:2px; background:rgba(255,255,255,0.2); padding:2px 5px; border-radius:4px; }
-
-        /* 2페이지 이후: 라인업 */
-        .lineup-page-grid { display:grid; grid-template-columns:1fr 1fr; gap: 1cm; }
-        .team-quarters-block { display: flex; flex-direction: column; gap: 0.5cm; }
-        .team-lineup-title { text-align:center; font-size: 1.1rem; font-weight: bold; }
-        
-        .pitch-print { background:#4CAF50; border:1px solid #999; position:relative; width:100%; aspect-ratio:7/10; border-radius: 4px; }
+        .lineup-page-grid { display:grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 0.5cm; height: calc(100vh - 2cm); }
+        .quarter-block { display:flex; flex-direction:column; }
+        .quarter-title { text-align:center; font-size: 0.8rem; font-weight: bold; margin-bottom: 4px; }
+        .pitch-print { background:#4CAF50; border:1px solid #999; position:relative; width:100%; aspect-ratio:7/10; border-radius: 4px; flex-grow: 1; }
         .player-marker-print { position:absolute; transform:translate(-50%,-50%); text-align:center; }
-        .formation-title-print { position: absolute; top: 3px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); color: white; padding: 1px 5px; border-radius: 6px; font-size: 0.55rem; font-weight: bold; white-space: nowrap; z-index: 10; }
-        .player-icon-print { width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-size:.6rem; border:1px solid white; box-shadow: 0 0 2px rgba(0,0,0,0.5); }
-        .player-name-print { background:rgba(0,0,0,0.7); color:white; font-size:.45rem; padding:1px 3px; border-radius:4px; margin-top:1px; white-space:nowrap; }
-        .rest-players-print { text-align: center; margin-top: 2px; font-size: 0.6rem; font-weight: bold; }
-
-        @page { size: A4 landscape; margin: 0; }
+        .player-icon-print { width:16px; height:16px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-size:.5rem; border:1px solid white; margin: 0 auto; }
+        .player-name-print { background:rgba(0,0,0,0.7); color:white; font-size:.4rem; padding:1px 2px; border-radius:4px; margin-top:1px; white-space:nowrap; }
+        .rest-players-print { text-align: center; margin-top: 3px; font-size: 0.6rem; font-weight: bold; }
+        @page { size: A4 portrait; margin: 0; }
     </style>
     </head><body>
     <div class="print-container">
@@ -205,22 +198,14 @@ export function generatePrintView(shareData) {
     fullHtml += `</div></div></div>`;
     
     for (let qPair = 0; qPair < 3; qPair++) {
+        const q1_index = qPair * 2;
+        const q2_index = qPair * 2 + 1;
         fullHtml += `<div class="page-break"></div><div class="print-container">`;
         fullHtml += `<div class="lineup-page-grid">`;
-
-        teams.forEach((team, teamIdx) => {
-            fullHtml += `<div class="team-quarters-block">`;
-            fullHtml += `<h2 class="team-lineup-title">팀 ${teamIdx + 1}</h2>`;
-            const lineup = lineups[`team${teamIdx + 1}`];
-            
-            const q1_index = qPair * 2;
-            const q2_index = qPair * 2 + 1;
-            
-            fullHtml += createQuarterHTML(lineup, q1_index);
-            fullHtml += createQuarterHTML(lineup, q2_index);
-            
-            fullHtml += `</div>`;
-        });
+        fullHtml += createQuarterHTML(lineups['team1'], 0, q1_index);
+        fullHtml += createQuarterHTML(lineups['team2'], 1, q1_index);
+        fullHtml += createQuarterHTML(lineups['team1'], 0, q2_index);
+        fullHtml += createQuarterHTML(lineups['team2'], 1, q2_index);
         fullHtml += `</div></div>`;
     }
 
@@ -233,13 +218,13 @@ export function generatePrintView(shareData) {
     setTimeout(()=>printWindow.print(), 500);
 }
 
-
 export function init(dependencies) {
     db = dependencies.db;
     state = dependencies.state;
     
     const pageElement = document.getElementById('page-share');
-    pageElement.innerHTML = `<div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">📢 모임 정보 및 공유</h2><div class="space-y-4 max-w-lg mx-auto"><div><label for="share-date" class="block text-sm font-medium">날짜</label><input type="date" id="share-date" class="mt-1 w-full p-2 border rounded-lg"></div><div><label for="share-time" class="block text-sm font-medium">시간</label><input type="time" id="share-time" class="mt-1 w-full p-2 border rounded-lg"></div><div><div class="flex justify-between items-center"><label for="share-location-select" class="block text-sm font-medium">장소 선택</label><button id="manage-locations-btn" class="text-sm text-indigo-600 hover:underline">장소 관리</button></div><select id="share-location-select" class="w-full p-2 border rounded-lg bg-white mt-1"></select></div><div class="mt-6"><button id="generate-share-btn" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 admin-control" disabled>공유 링크 생성</button></div><div id="share-link-container" class="mt-4 p-4 bg-gray-100 rounded-lg hidden"><p class="text-sm font-semibold mb-2">생성된 링크:</p><a id="share-link-anchor" href="#" target="_blank" class="text-blue-600 break-all hover:underline"></a></div></div></div>`;
+    // [수정] generate-share-btn에서 admin-control 클래스 제거 (동작을 JS에서 제어)
+    pageElement.innerHTML = `<div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">📢 모임 정보 및 공유</h2><div class="space-y-4 max-w-lg mx-auto"><div><label for="share-date" class="block text-sm font-medium">날짜</label><input type="date" id="share-date" class="mt-1 w-full p-2 border rounded-lg"></div><div><label for="share-time" class="block text-sm font-medium">시간</label><input type="time" id="share-time" class="mt-1 w-full p-2 border rounded-lg"></div><div><div class="flex justify-between items-center"><label for="share-location-select" class="block text-sm font-medium">장소 선택</label><button id="manage-locations-btn" class="text-sm text-indigo-600 hover:underline">장소 관리</button></div><select id="share-location-select" class="w-full p-2 border rounded-lg bg-white mt-1"></select></div><div class="mt-6"><button id="generate-share-btn" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700">공유 링크 생성</button></div><div id="share-link-container" class="mt-4 p-4 bg-gray-100 rounded-lg hidden"><p class="text-sm font-semibold mb-2">생성된 링크:</p><a id="share-link-anchor" href="#" target="_blank" class="text-blue-600 break-all hover:underline"></a></div></div></div>`;
 
     generateShareBtn = document.getElementById('generate-share-btn');
     shareLinkContainer = document.getElementById('share-link-container');
