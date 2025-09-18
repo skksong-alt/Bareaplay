@@ -3,6 +3,7 @@ let state;
 let generateLineupButton, lineupDisplay, pitchContainer, restersPanel, unassignedPanel, loadingLineupSpinner, placeholderLineup;
 let teamSelectTabsContainer, lineupMembersTextarea;
 let currentQuarter = 0;
+let activeTeamIndex = -1; // [신규] 현재 활성화된 팀 인덱스 추적
 
 const posCellMap = { '4-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 75}, {pos: 'CB', x: 65, y: 80}, {pos: 'CB', x: 35, y: 80}, {pos: 'LB', x: 15, y: 75}, {pos: 'RW', x: 85, y: 45}, {pos: 'CM', x: 65, y: 55}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 15, y: 45}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-3-3': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 88, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 12, y: 78}, {pos: 'CM', x: 50, y: 65}, {pos: 'MF', x: 70, y: 50}, {pos: 'MF', x: 30, y: 50}, {pos: 'RW', x: 80, y: 25}, {pos: 'FW', x: 50, y: 18}, {pos: 'LW', x: 20, y: 25} ], '3-5-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 75, y: 80}, {pos: 'CB', x: 50, y: 85}, {pos: 'CB', x: 25, y: 80}, {pos: 'RW', x: 90, y: 50}, {pos: 'CM', x: 65, y: 55}, {pos: 'MF', x: 50, y: 65}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 10, y: 50}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-2-3-1': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 15, y: 78}, {pos: 'MF', x: 60, y: 65}, {pos: 'MF', x: 40, y: 65}, {pos: 'RW', x: 80, y: 40}, {pos: 'MF', x: 50, y: 45}, {pos: 'LW', x: 20, y: 40}, {pos: 'FW', x: 50, y: 18} ] };
 
@@ -128,26 +129,49 @@ function renderQuarter(qIndex) {
     addDragAndDropHandlers();
 }
 
+
+// [수정] 라인업 캐시 확인 및 표시 로직 추가
 export function renderTeamSelectTabs(teams) {
     if (!teamSelectTabsContainer) return;
     teamSelectTabsContainer.innerHTML = '';
+    
+    const handleTabClick = (team, index) => {
+        activeTeamIndex = index;
+        document.querySelectorAll('.team-tab-btn').forEach(btn => btn.classList.remove('active'));
+        const currentButton = document.querySelector(`.team-tab-btn[data-team-index="${index}"]`);
+        if (currentButton) currentButton.classList.add('active');
+
+        lineupMembersTextarea.value = team.map(p => p.name.replace(' (신규)', '')).join('\n');
+        
+        // 캐시된 라인업 확인
+        if (state.teamLineupCache[index]) {
+            state.lineupResults = state.teamLineupCache[index];
+            lineupDisplay.classList.remove('hidden');
+            placeholderLineup.classList.add('hidden');
+            document.querySelector('.lineup-q-tab[data-q="0"]').click(); // 1쿼터부터 표시
+        } else {
+            state.lineupResults = null;
+            lineupDisplay.classList.add('hidden');
+            placeholderLineup.classList.remove('hidden');
+        }
+        window.showNotification(`팀 ${index + 1}이 선택되었습니다.`);
+    };
+
     teams.forEach((team, index) => {
         const teamButton = document.createElement('button');
         teamButton.className = `team-tab-btn p-2 rounded-lg border-2 font-semibold transition team-tab-btn-${(index % 5) + 1}`;
         teamButton.textContent = `팀 ${index + 1}`;
-        teamButton.addEventListener('click', () => {
-            document.querySelectorAll('.team-tab-btn').forEach(btn => btn.classList.remove('active'));
-            teamButton.classList.add('active');
-            lineupMembersTextarea.value = team.map(p => p.name.replace(' (신규)', '')).join('\n');
-            window.showNotification(`팀 ${index + 1}이 선택되었습니다.`);
-        });
+        teamButton.dataset.teamIndex = index;
+        teamButton.addEventListener('click', () => handleTabClick(team, index));
         teamSelectTabsContainer.appendChild(teamButton);
     });
-    if (teamSelectTabsContainer.firstChild) {
-        teamSelectTabsContainer.firstChild.click();
+
+    if (teams.length > 0) {
+        handleTabClick(teams[0], 0); // 첫 번째 팀을 기본으로 선택
     }
 }
 
+// [수정] 6쿼터 지원 로직으로 변경
 function executeLineupGeneration(members, formations, isSilent = false) {
     return new Promise(resolve => {
         if (members.length < 11 && !isSilent) {
@@ -156,12 +180,11 @@ function executeLineupGeneration(members, formations, isSilent = false) {
             return;
         }
 
-        // [수정] 휴식자 선정 로직 안정성 강화
         const initialOrder = state.initialAttendeeOrder || [];
         const sortedMembers = [...members].sort((a, b) => {
             const indexA = initialOrder.indexOf(a);
             const indexB = initialOrder.indexOf(b);
-            if (indexA === -1) return 1; // 명단에 없으면 뒤로
+            if (indexA === -1) return 1;
             if (indexB === -1) return -1;
             return indexA - indexB;
         });
@@ -179,7 +202,7 @@ function executeLineupGeneration(members, formations, isSilent = false) {
         let fullRestQueue = [];
         let totalRestSlots = 0;
         formations.forEach(f => {
-            const numOnField = posCellMap[f].length;
+            const numOnField = posCellMap[f]?.length || 11;
             totalRestSlots += Math.max(0, members.length - numOnField);
         });
         while (fullRestQueue.length < totalRestSlots) { fullRestQueue.push(...restOrderQueue); }
@@ -189,9 +212,9 @@ function executeLineupGeneration(members, formations, isSilent = false) {
             const lineups = []; const resters = [];
             let restQueuePointer = 0;
             
-            for (let q = 0; q < 4; q++) {
+            for (let q = 0; q < 6; q++) { // 6쿼터까지 반복
                 const formation = formations[q];
-                const slots = posCellMap[formation].map(c => c.pos);
+                const slots = posCellMap[formation]?.map(c => c.pos) || [];
                 const numToRest = members.length - slots.length;
 
                 const quarterResters = [...new Set(fullRestQueue.slice(restQueuePointer, restQueuePointer + numToRest))];
@@ -245,9 +268,11 @@ export { executeLineupGeneration };
 
 export function init(dependencies) {
     state = dependencies.state;
+    state.teamLineupCache = {}; // 캐시 객체 초기화
     
     const pageElement = document.getElementById('page-lineup');
-    pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">라인업 조건</h2><div class="mb-4"><label class="block text-md font-semibold text-gray-700 mb-2">팀 선택</label><div id="team-select-tabs-container" class="flex flex-wrap gap-2"><p class="text-sm text-gray-500">팀 배정기에서 먼저 팀을 생성해주세요.</p></div><textarea id="lineup-members" class="hidden"></textarea></div><div class="grid grid-cols-2 gap-4 mb-6"><div><label for="formation-q1" class="block text-sm font-medium">1쿼터</label><select id="formation-q1" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q2" class="block text-sm font-medium">2쿼터</label><select id="formation-q2" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q3" class="block text-sm font-medium">3쿼터</label><select id="formation-q3" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q4" class="block text-sm font-medium">4쿼터</label><select id="formation-q4" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div></div><div class="mt-8"><button id="generateLineupButton" class="w-full bg-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-teal-700 transition-transform transform hover:scale-105 shadow-lg">라인업 생성!</button></div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">라인업 결과</h2><div id="loading-lineup" class="hidden"><svg class="animate-spin h-6 w-6 text-teal-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div></div><div id="result-container-lineup"><div id="placeholder-lineup" class="flex items-center justify-center text-gray-400 min-h-[60vh]"><p>조건을 입력하고 라인업 생성을 눌러주세요.</p></div><div id="lineup-display" class="hidden"><div class="flex space-x-2 border-b mb-4"><button class="lineup-q-tab active-q-tab py-2 px-4 font-semibold" data-q="0">1쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="1">2쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="2">3쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="3">4쿼터</button></div><div class="grid grid-cols-1 md:grid-cols-3 gap-4"><div class="md:col-span-2"><div id="pitch-container"></div></div><div id="lineup-sidebar" class="md:col-span-1 p-4 bg-gray-50 rounded-lg space-y-4"><div id="resters-panel"></div><div id="unassigned-panel"></div></div></div></div></div></div></div>`;
+    // [수정] 6쿼터 UI로 변경
+    pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">라인업 조건</h2><div class="mb-4"><label class="block text-md font-semibold text-gray-700 mb-2">팀 선택</label><div id="team-select-tabs-container" class="flex flex-wrap gap-2"><p class="text-sm text-gray-500">팀 배정기에서 먼저 팀을 생성해주세요.</p></div><textarea id="lineup-members" class="hidden"></textarea></div><div class="grid grid-cols-2 gap-4 mb-6"><div><label for="formation-q1" class="block text-sm font-medium">1쿼터</label><select id="formation-q1" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q2" class="block text-sm font-medium">2쿼터</label><select id="formation-q2" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q3" class="block text-sm font-medium">3쿼터</label><select id="formation-q3" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q4" class="block text-sm font-medium">4쿼터</label><select id="formation-q4" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q5" class="block text-sm font-medium">5쿼터</label><select id="formation-q5" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q6" class="block text-sm font-medium">6쿼터</label><select id="formation-q6" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div></div><div class="mt-8"><button id="generateLineupButton" class="w-full bg-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-teal-700 transition-transform transform hover:scale-105 shadow-lg">라인업 생성!</button></div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">라인업 결과</h2><div id="loading-lineup" class="hidden"><svg class="animate-spin h-6 w-6 text-teal-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div></div><div id="result-container-lineup"><div id="placeholder-lineup" class="flex items-center justify-center text-gray-400 min-h-[60vh]"><p>조건을 입력하고 라인업 생성을 눌러주세요.</p></div><div id="lineup-display" class="hidden"><div class="flex space-x-2 border-b mb-4"><button class="lineup-q-tab active-q-tab py-2 px-4 font-semibold" data-q="0">1쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="1">2쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="2">3쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="3">4쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="4">5쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="5">6쿼터</button></div><div class="grid grid-cols-1 md:grid-cols-3 gap-4"><div class="md:col-span-2"><div id="pitch-container"></div></div><div id="lineup-sidebar" class="md:col-span-1 p-4 bg-gray-50 rounded-lg space-y-4"><div id="resters-panel"></div><div id="unassigned-panel"></div></div></div></div></div></div></div>`;
     
     generateLineupButton = document.getElementById('generateLineupButton');
     lineupDisplay = document.getElementById('lineup-display');
@@ -273,6 +298,7 @@ export function init(dependencies) {
 
         if (result) {
             state.lineupResults = result;
+            state.teamLineupCache[activeTeamIndex] = result; // [수정] 결과를 캐시에 저장
             window.shareMgmt.updateLineupData(result, formations);
             lineupDisplay.classList.remove('hidden');
             placeholderLineup.classList.add('hidden');
@@ -289,8 +315,8 @@ export function init(dependencies) {
     });
     
     document.addEventListener('click', (e) => {
-        if (e.target.closest('.lineup-q-tab')) {
-            const tab = e.target.closest('.lineup-q-tab');
+        const tab = e.target.closest('.lineup-q-tab');
+        if (tab) {
             document.querySelectorAll('.lineup-q-tab').forEach(t => t.classList.remove('active-q-tab'));
             tab.classList.add('active-q-tab');
             currentQuarter = parseInt(tab.dataset.q, 10);

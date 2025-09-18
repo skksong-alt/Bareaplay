@@ -4,11 +4,10 @@ import { doc, setDoc, collection, onSnapshot, addDoc, getDoc, deleteDoc } from "
 let db, state;
 let addLocationBtn, shareDate, shareTime, shareLocationSelect;
 let generateShareBtn, shareLinkContainer, shareLinkAnchor;
-// [신규] 장소 관리 모달 UI 요소
 let locationModal, closeLocationModalBtn, addNewLocationBtn, locationListDiv, newLocationNameInput, newLocationUrlInput;
 
-
 function populateLocations() {
+    if (!shareLocationSelect) return;
     const currentVal = shareLocationSelect.value;
     shareLocationSelect.innerHTML = '<option value="">장소를 선택하세요</option>';
     const sortedLocations = [...state.locations].sort((a,b) => a.name.localeCompare(b.name, 'ko-KR'));
@@ -24,8 +23,8 @@ function populateLocations() {
     }
 }
 
-// [신규] 장소 관리 목록 렌더링
 function renderLocationList() {
+    if (!locationListDiv) return;
     locationListDiv.innerHTML = '';
     state.locations.forEach(loc => {
         const div = document.createElement('div');
@@ -58,17 +57,25 @@ async function generateShareableLink() {
 
     try {
         const allTeamLineups = {};
-        const lineupPromises = state.teams.map((team, i) => {
+        const lineupPromises = state.teams.map((team) => {
             const teamMembers = team.map(p => p.name.replace(' (신규)', ''));
             const formations = Array.from(document.querySelectorAll('#page-lineup select')).map(s => s.value);
             return window.lineup.executeLineupGeneration(teamMembers, formations, true);
         });
         const lineups = await Promise.all(lineupPromises);
+        
         lineups.forEach((lineup, i) => {
-            if (lineup) allTeamLineups[`team${i + 1}`] = lineup;
+            if (lineup) {
+                // [수정] resters 데이터를 객체로 변환
+                const restersObject = {};
+                lineup.resters.forEach((resterArray, qIndex) => {
+                    restersObject[`q${qIndex + 1}`] = resterArray;
+                });
+                lineup.resters = restersObject;
+                allTeamLineups[`team${i + 1}`] = lineup;
+            }
         });
 
-        // [수정] Firestore 중첩 배열 오류 해결을 위해 teams 데이터를 객체로 변환
         const teamsObject = {};
         state.teams.forEach((team, index) => {
             teamsObject[`team${index + 1}`] = team;
@@ -80,7 +87,7 @@ async function generateShareableLink() {
                 location: shareLocationSelect.value,
                 locationUrl: shareLocationSelect.options[shareLocationSelect.selectedIndex]?.dataset.url || ''
             },
-            teams: teamsObject, // 객체로 저장
+            teams: teamsObject,
             lineups: allTeamLineups,
             createdAt: new Date().toISOString()
         };
@@ -108,8 +115,8 @@ async function generateShareableLink() {
     }
 }
 
+// [수정] 6쿼터 및 새로운 인쇄 레이아웃 적용
 export function generatePrintView(shareData) {
-    // [수정] teams 데이터를 객체에서 배열로 변환하여 사용
     const teams = Object.values(shareData.teams || {});
     const { meetingInfo, lineups } = shareData;
 
@@ -120,7 +127,7 @@ export function generatePrintView(shareData) {
     }
 
     const createQuarterHTML = (teamLineup, qIndex) => {
-        if (!teamLineup || !teamLineup.lineups || !teamLineup.lineups[qIndex]) return '';
+        if (!teamLineup || !teamLineup.lineups || !teamLineup.lineups[qIndex]) return '<div class="quarter-block"></div>';
         const lineup = teamLineup.lineups[qIndex];
         const formation = teamLineup.formations[qIndex];
         const posCellMap = window.lineup.getPosCellMap();
@@ -139,7 +146,8 @@ export function generatePrintView(shareData) {
             html += `<div class="player-marker-print" style="left:${fc.x}%;top:${fc.y}%;"><div class="player-icon-print" style="background:${bg}">${icon}</div><div class="player-name-print">${name||'-'}</div></div>`;
             counters[fc.pos]++;
         });
-        html += `</div><div class="rest-players-print"><b>휴식:</b> ${(teamLineup.resters[qIndex]||[]).join(', ') || '없음'}</div></div>`;
+        const resters = teamLineup.resters[`q${qIndex + 1}`] || [];
+        html += `</div><div class="rest-players-print"><b>휴식:</b> ${resters.join(', ') || '없음'}</div></div>`;
         return html;
     };
     
@@ -151,10 +159,12 @@ export function generatePrintView(shareData) {
     <html><head><title>BareaPlay 출력</title>
     <style>
         * { -webkit-print-color-adjust: exact !important; color-adjust: exact !important; box-sizing: border-box; }
-        body { font-family:'Noto Sans KR', sans-serif; padding: 1rem; }
+        body { font-family:'Noto Sans KR', sans-serif; }
         .page-break { page-break-after: always; }
+        .print-container { padding: 1cm; }
         .team-lineup-title { text-align:center; margin-bottom: 5px; font-size: 20px; }
-        .lineup-grid { display:grid; grid-template-columns:1fr 1fr; gap: 4px; }
+        .lineup-grid { display:grid; grid-template-columns:1fr 1fr; gap: 1cm; } /* 팀 간 간격 */
+        .team-quarters-block { display: grid; grid-template-rows: auto 1fr 1fr; gap: 0.5cm; } /* 쿼터 간 간격 */
         .quarter-block { padding: 0.1rem; }
         .pitch-print { background:#4CAF50; border:1px solid #ddd; position:relative; width:100%; aspect-ratio:7/10; border-radius: 4px; }
         .player-marker-print{position:absolute;transform:translate(-50%,-50%);text-align:center;}
@@ -163,10 +173,10 @@ export function generatePrintView(shareData) {
         .player-name-print{ background:rgba(0,0,0,0.7); color:white; font-size:.5rem; padding:1px 3px; border-radius:4px; margin-top:1px; white-space:nowrap; }
         .rest-players-print { text-align: center; margin-top: 2px; font-size: 0.6rem; }
         .team-box{border-radius:0.5rem;padding:0.8rem;color:white;font-weight:bold;}
-        @page { size: A4; margin: 1cm; }
+        @page { size: A4 landscape; margin: 1cm; }
     </style>
     </head><body>
-    <div>
+    <div class="print-container">
         <h1 style="text-align:center;font-size:28px;margin-bottom:20px;">Barea 모임 결과</h1>
         <div style="background:#f8f9fa;padding:1rem;border:1px solid #dee2e6;border-radius:.5rem;margin-bottom:1.5rem;">
             <h2 style="font-size:20px;margin:0 0 10px 0; padding-bottom: 8px; border-bottom: 1px solid #ccc;">📅 모임 정보</h2>
@@ -181,16 +191,30 @@ export function generatePrintView(shareData) {
     teams.forEach((team, i) => {
         fullHtml += `<div class="team-box" style="background:${colors[i%5]}"><h3 style="margin:0 0 8px 0; padding-bottom:4px; border-bottom: 1px solid rgba(255,255,255,0.3);">팀 ${i+1}</h3><ul style="font-size:0.85rem;list-style:none;padding-left:0; margin:0;">${team.map(p=>`<li style="margin-bottom:3px;background:rgba(255,255,255,0.2);padding:2px 5px;border-radius:4px;">${p.name.replace(' (신규)','')}</li>`).join('')}</ul></div>`;
     });
-    fullHtml += `</div></div>`;
+    fullHtml += `</div></div></div>`;
     
-    teams.forEach((team, idx) => {
-        const teamKey = `team${idx + 1}`;
-        const lineup = lineups[teamKey];
-        if(!lineup) return;
-        fullHtml += `<div class="page-break"></div><div><h2 class="team-lineup-title">팀 ${idx+1} 라인업</h2><div class="lineup-grid">${createQuarterHTML(lineup,0)}${createQuarterHTML(lineup,1)}${createQuarterHTML(lineup,2)}${createQuarterHTML(lineup,3)}</div></div>`;
-    });
+    // 2개 쿼터씩 3페이지에 걸쳐 출력
+    for (let qPair = 0; qPair < 3; qPair++) {
+        fullHtml += `<div class="page-break"></div><div class="print-container">`;
+        fullHtml += `<div class="lineup-grid">`; // 팀1, 팀2를 묶는 그리드
 
-    fullHtml += `</div></body></html>`;
+        teams.forEach((team, teamIdx) => {
+            fullHtml += `<div class="team-quarters-block">`; // 한 팀의 쿼터들을 묶는 블록
+            fullHtml += `<h2 class="team-lineup-title">팀 ${teamIdx + 1}</h2>`;
+            const lineup = lineups[`team${teamIdx + 1}`];
+            
+            const q1_index = qPair * 2;
+            const q2_index = qPair * 2 + 1;
+            
+            fullHtml += createQuarterHTML(lineup, q1_index);
+            fullHtml += createQuarterHTML(lineup, q2_index);
+            
+            fullHtml += `</div>`;
+        });
+        fullHtml += `</div></div>`;
+    }
+
+    fullHtml += `</body></html>`;
 
     printWindow.document.open();
     printWindow.document.write(fullHtml);
@@ -205,7 +229,6 @@ export function init(dependencies) {
     state = dependencies.state;
     
     const pageElement = document.getElementById('page-share');
-    // [수정] '장소 관리' 버튼 추가
     pageElement.innerHTML = `<div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">📢 모임 정보 및 공유</h2><div class="space-y-4 max-w-lg mx-auto"><div><label for="share-date" class="block text-sm font-medium">날짜</label><input type="date" id="share-date" class="mt-1 w-full p-2 border rounded-lg"></div><div><label for="share-time" class="block text-sm font-medium">시간</label><input type="time" id="share-time" class="mt-1 w-full p-2 border rounded-lg"></div><div><div class="flex justify-between items-center"><label for="share-location-select" class="block text-sm font-medium">장소 선택</label><button id="manage-locations-btn" class="text-sm text-indigo-600 hover:underline">장소 관리</button></div><select id="share-location-select" class="w-full p-2 border rounded-lg bg-white mt-1"></select></div><div class="mt-6"><button id="generate-share-btn" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 admin-control" disabled>공유 링크 생성</button></div><div id="share-link-container" class="mt-4 p-4 bg-gray-100 rounded-lg hidden"><p class="text-sm font-semibold mb-2">생성된 링크:</p><a id="share-link-anchor" href="#" target="_blank" class="text-blue-600 break-all hover:underline"></a></div></div></div>`;
 
     generateShareBtn = document.getElementById('generate-share-btn');
@@ -215,7 +238,6 @@ export function init(dependencies) {
     shareTime = document.getElementById('share-time');
     shareLocationSelect = document.getElementById('share-location-select');
 
-    // [신규] 장소 관리 모달 로직 추가
     locationModal = document.getElementById('location-modal');
     closeLocationModalBtn = document.getElementById('close-location-modal-btn');
     addNewLocationBtn = document.getElementById('add-location-btn');
@@ -246,11 +268,10 @@ export function init(dependencies) {
         }
     });
 
-
     onSnapshot(collection(db, "locations"), (snapshot) => {
         state.locations = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         populateLocations();
-        renderLocationList(); // 모달 내 목록도 갱신
+        renderLocationList();
     });
 
     const today = new Date();
@@ -264,6 +285,7 @@ export function init(dependencies) {
 
 export function updateTeamData(teams) {
     state.teams = teams;
+    state.teamLineupCache = {}; // 팀이 새로 배정되면 라인업 캐시 초기화
 }
 
 export function updateLineupData(lineupData, formations) {
