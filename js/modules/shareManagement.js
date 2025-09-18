@@ -40,8 +40,6 @@ function renderLocationList() {
     });
 }
 
-// [수정] 아래 줄의 잘못된 주석 기호 '/'를 '//'로 수정했습니다.
-// [수정] 링크 생성 시 'activeMeeting'에 ID 저장
 async function generateShareableLink() {
     if (!state.isAdmin) {
         window.promptForAdminPassword();
@@ -179,7 +177,6 @@ export function generatePrintView(shareData) {
         .team-box ul { font-size:0.65rem; list-style:none; padding-left:0; margin:0; }
         .team-box li { margin-bottom:2px; background:rgba(255,255,255,0.2); padding:2px 4px; border-radius:4px; }
         .lineup-page-grid { display:grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 0.8cm; height: calc(100vh - 2cm); }
-        .quarter-block { display:flex; flex-direction:column; }
         .quarter-title-integrated { position: absolute; top: 5px; left: 8px; font-size: 0.6rem; font-weight: bold; color: white; background: rgba(0,0,0,0.5); padding: 2px 5px; border-radius: 5px; z-index: 10; }
         .rest-list-integrated { position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%); width: 95%; text-align: center; font-size: 0.6rem; font-weight: bold; color: white; background: rgba(0,0,0,0.5); padding: 2px; border-radius: 5px; z-index: 10; }
         .pitch-print { background:#2E7D32; border:1px solid #999; position:relative; width:100%; height:100%; border-radius: 4px; overflow: hidden; }
@@ -214,10 +211,10 @@ export function generatePrintView(shareData) {
         const q2_index = qPair * 2 + 1;
         fullHtml += `<div class="page-break"></div><div class="print-container">`;
         fullHtml += `<div class="lineup-page-grid">`;
-        fullHtml += createQuarterHTML(lineups['team1'], 0, q1_index);
-        fullHtml += createQuarterHTML(lineups['team2'], 1, q1_index);
-        fullHtml += createQuarterHTML(lineups['team1'], 0, q2_index);
-        fullHtml += createQuarterHTML(lineups['team2'], 1, q2_index);
+        if (teams.length > 0) fullHtml += createQuarterHTML(lineups['team1'], 0, q1_index);
+        if (teams.length > 1) fullHtml += createQuarterHTML(lineups['team2'], 1, q1_index);
+        if (teams.length > 0) fullHtml += createQuarterHTML(lineups['team1'], 0, q2_index);
+        if (teams.length > 1) fullHtml += createQuarterHTML(lineups['team2'], 1, q2_index);
         fullHtml += `</div></div>`;
     }
 
@@ -229,7 +226,6 @@ export function generatePrintView(shareData) {
     printWindow.focus();
     setTimeout(()=>printWindow.print(), 500);
 }
-
 
 export function init(dependencies) {
     db = dependencies.db;
@@ -317,5 +313,3 @@ export function updateLineupData(lineupData, formations) {
         state.lineupResults.formations = formations;
     }
 }
-}
-</html>
