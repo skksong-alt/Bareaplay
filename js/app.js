@@ -25,8 +25,9 @@ const pages = {};
 const tabs = {};
 
 window.showNotification = function(message, type = 'success') {
-    const notificationEl = document.getElementById('notification') || document.createElement('div');
-    if (!document.getElementById('notification')) {
+    let notificationEl = document.getElementById('notification');
+    if (!notificationEl) {
+        notificationEl = document.createElement('div');
         notificationEl.id = 'notification';
         document.body.appendChild(notificationEl);
     }
@@ -102,51 +103,83 @@ window.refreshData = async function(collectionName) {
     }
 };
 
-// [신규] 공유 페이지를 화면에 그리는 함수
+// [수정] 공유 페이지를 화면에 그리는 함수 대폭 강화
 function renderSharePageView(shareData) {
-    const { meetingInfo, teams: teamsObject } = shareData;
+    const { meetingInfo, teams: teamsObject, lineups } = shareData;
     const teams = Object.values(teamsObject || {});
-    document.body.innerHTML = ''; // 기존 UI 모두 제거
-    document.body.className = "bg-gray-100"; // 배경색 유지
+    document.body.innerHTML = '';
+    document.body.className = "bg-gray-100";
 
     let locationHtml = meetingInfo.locationUrl 
         ? `<a href="${meetingInfo.locationUrl}" target="_blank" class="text-blue-600 underline">${meetingInfo.location}</a>`
         : (meetingInfo.location || '미정');
 
+    // --- 1. 기본 정보 및 팀 배정 결과 HTML ---
     let contentHtml = `
-        <div class="container mx-auto p-4 md:p-8">
-            <h1 class="text-4xl text-center font-bold text-gray-900 mb-2">BareaPlay⚽</h1>
-            <p class="text-center text-lg text-gray-600 mb-8">모임 결과</p>
-            
-            <div class="bg-white p-6 rounded-lg shadow-md mb-8 max-w-2xl mx-auto">
-                <h2 class="text-2xl font-bold mb-4 border-b pb-2">📅 모임 정보</h2>
-                <p class="text-gray-700 mb-2"><strong>시간:</strong> ${new Date(meetingInfo.time).toLocaleString('ko-KR')}</p>
-                <p class="text-gray-700"><strong>장소:</strong> ${locationHtml}</p>
-            </div>
+    <div class="container mx-auto p-4 md:p-8">
+        <h1 class="text-4xl text-center font-bold text-gray-900 mb-2">BareaPlay⚽</h1>
+        <p class="text-center text-lg text-gray-600 mb-8">모임 결과</p>
+        
+        <div class="bg-white p-6 rounded-lg shadow-md mb-8 max-w-2xl mx-auto">
+            <h2 class="text-2xl font-bold mb-4 border-b pb-2">📅 모임 정보</h2>
+            <p class="text-gray-700 mb-2"><strong>시간:</strong> ${new Date(meetingInfo.time).toLocaleString('ko-KR')}</p>
+            <p class="text-gray-700"><strong>장소:</strong> ${locationHtml}</p>
+        </div>
 
-            <div class="bg-white p-6 rounded-lg shadow-md max-w-4xl mx-auto">
-                <h2 class="text-2xl font-bold mb-4 border-b pb-2">⚖️ 팀 배정 결과</h2>
-                <div class="grid grid-cols-1 md:grid-cols-${teams.length > 2 ? '3' : '2'} gap-4">
-    `;
+        <div class="bg-white p-6 rounded-lg shadow-md mb-8 max-w-4xl mx-auto">
+            <h2 class="text-2xl font-bold mb-4 border-b pb-2">⚖️ 팀 배정 결과</h2>
+            <div class="grid grid-cols-1 md:grid-cols-${teams.length > 2 ? '3' : '2'} gap-4">`;
 
     const colors = ["#14B8A6","#0288D1","#7B1FA2","#43A047","#F4511E"];
     teams.forEach((team, i) => {
         contentHtml += `<div class="rounded-lg p-4 text-white" style="background-color:${colors[i%5]}">
             <h3 class="font-bold text-xl mb-2 border-b border-white/30 pb-2">팀 ${i + 1}</h3>
-            <ul class="space-y-1">
-                ${team.map(p => `<li class="bg-white/20 p-2 rounded-md">${p.name.replace(' (신규)','')}</li>`).join('')}
-            </ul>
+            <ul class="space-y-1">${team.map(p => `<li class="bg-white/20 p-2 rounded-md">${p.name.replace(' (신규)','')}</li>`).join('')}</ul>
         </div>`;
     });
+    contentHtml += `</div></div>`;
 
-    contentHtml += `</div></div>
+    // --- 2. 라인업 결과 HTML ---
+    const createQuarterHTML = (teamLineup, qIndex) => {
+        if (!teamLineup || !teamLineup.lineups || !teamLineup.lineups[qIndex]) return '<div class="p-2 border rounded-lg bg-gray-50 text-center text-gray-400">데이터 없음</div>';
+        const lineup = teamLineup.lineups[qIndex];
+        const formation = teamLineup.formations[qIndex];
+        const resters = teamLineup.resters[`q${qIndex + 1}`] || [];
+        
+        let html = `<div class="p-2 border rounded-lg"><h4 class="font-bold text-center mb-2">${qIndex + 1}쿼터 (${formation})</h4><ul class="space-y-1 text-sm">`;
+        Object.keys(lineup).forEach(pos => {
+            lineup[pos].forEach(player => {
+                if(player) html += `<li class="p-1 bg-gray-100 rounded">${pos}: ${player}</li>`;
+            });
+        });
+        html += `</ul><hr class="my-2"><p class="text-sm"><b>휴식:</b> ${resters.join(', ') || '없음'}</p></div>`;
+        return html;
+    };
+    
+    contentHtml += `<div class="bg-white p-6 rounded-lg shadow-md max-w-6xl mx-auto">
+        <h2 class="text-2xl font-bold mb-4 border-b pb-2">📋 라인업 결과</h2>
+        <div class="grid grid-cols-1 md:grid-cols-${teams.length} gap-6">`;
+
+    teams.forEach((team, teamIdx) => {
+        contentHtml += `<div><h3 class="text-xl font-bold text-center mb-3">팀 ${teamIdx + 1}</h3><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">`;
+        const lineup = lineups[`team${teamIdx + 1}`];
+        for (let i = 0; i < 6; i++) {
+            contentHtml += createQuarterHTML(lineup, i);
+        }
+        contentHtml += `</div></div>`;
+    });
+
+    contentHtml += `</div></div>`;
+    
+    // --- 3. 인쇄 버튼 ---
+    contentHtml += `
         <div class="text-center my-8">
             <button id="print-share-btn" class="bg-gray-700 text-white font-bold py-3 px-6 rounded-lg hover:bg-gray-800">전체 라인업 인쇄 / PDF 저장</button>
         </div>
     </div>`;
     
     document.body.innerHTML = contentHtml;
-
+    
     const notificationEl = document.createElement('div');
     notificationEl.id = 'notification';
     document.body.appendChild(notificationEl);
@@ -156,8 +189,9 @@ function renderSharePageView(shareData) {
     });
 }
 
-
 document.addEventListener('DOMContentLoaded', async () => {
+    // ... (이전과 동일한 초기화 로직) ...
+    // 공유 링크 처리 로직은 바로 위 `renderSharePageView`를 사용하도록 수정되었습니다.
     const loadingOverlay = document.getElementById('loading-overlay');
     
     const modules = { playerMgmt, balancer, lineup, accounting, shareMgmt };
@@ -185,7 +219,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const shareDoc = await getDoc(doc(db, "shares", shareId));
             if (shareDoc.exists()) {
                 const shareData = shareDoc.data();
-                renderSharePageView(shareData); // 화면 그리는 함수 호출
+                renderSharePageView(shareData);
             } else {
                 document.body.innerHTML = `<p class="text-center text-red-500 text-2xl mt-10">공유된 데이터를 찾을 수 없습니다.</p>`;
             }

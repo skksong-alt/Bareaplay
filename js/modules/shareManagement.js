@@ -124,7 +124,6 @@ export function generatePrintView(shareData) {
         window.showNotification('팝업이 차단되었습니다. 팝업을 허용해주세요.', 'error');
         return;
     }
-
     const createQuarterHTML = (teamLineup, qIndex) => {
         if (!teamLineup || !teamLineup.lineups || !teamLineup.lineups[qIndex]) return '<div class="quarter-block"></div>';
         const lineup = teamLineup.lineups[qIndex];
@@ -155,37 +154,49 @@ export function generatePrintView(shareData) {
         ? `<a href="${meetingInfo.locationUrl}" target="_blank" style="color: #0000EE; text-decoration: underline;">${meetingInfo.location}</a>`
         : (meetingInfo.location || '미정');
 
-    let fullHtml = `
+ let fullHtml = `
     <html><head><title>BareaPlay 출력</title>
     <style>
+        /* [수정] 인쇄 전용 CSS 최적화 */
         * { -webkit-print-color-adjust: exact !important; color-adjust: exact !important; box-sizing: border-box; }
-        body { font-family:'Noto Sans KR', sans-serif; }
+        body { font-family:'Noto Sans KR', sans-serif; margin: 0; }
         .page-break { page-break-after: always; }
         .print-container { padding: 1cm; }
-        .team-lineup-title { text-align:center; margin-bottom: 5px; font-size: 20px; }
-        .lineup-grid { display:grid; grid-template-columns:1fr 1fr; gap: 1cm; }
-        .team-quarters-block { display: grid; grid-template-rows: auto 1fr 1fr; gap: 0.5cm; }
-        .quarter-block { padding: 0.1rem; }
-        .pitch-print { background:#4CAF50; border:1px solid #ddd; position:relative; width:100%; aspect-ratio:7/10; border-radius: 4px; }
-        .player-marker-print{position:absolute;transform:translate(-50%,-50%);text-align:center;}
-        .formation-title-print { position: absolute; top: 4px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); color: white; padding: 2px 6px; border-radius: 8px; font-size: 0.65rem; font-weight: bold; white-space: nowrap; z-index: 10; }
-        .player-icon-print{ width:20px; height:20px; border-radius:50%; display:flex;align-items:center;justify-content:center; color:white;font-size:.65rem;border:1.5px solid white; box-shadow: 0 0 2px rgba(0,0,0,0.5); }
-        .player-name-print{ background:rgba(0,0,0,0.7); color:white; font-size:.5rem; padding:1px 3px; border-radius:4px; margin-top:1px; white-space:nowrap; }
-        .rest-players-print { text-align: center; margin-top: 2px; font-size: 0.6rem; }
-        .team-box{border-radius:0.5rem;padding:0.8rem;color:white;font-weight:bold;}
-        @page { size: A4 landscape; margin: 1cm; }
+        
+        /* 1페이지: 모임 정보 및 팀 배정 */
+        .info-box { background:#f8f9fa; padding:1rem; border:1px solid #dee2e6; border-radius:.5rem; margin-bottom:1.5rem; }
+        .section-title { font-size:20px; margin:0 0 12px 0; padding-bottom: 8px; border-bottom: 1px solid #ccc; }
+        .team-grid-print { display:grid; grid-template-columns:repeat(${teams.length}, 1fr); gap:10px; }
+        .team-box { border-radius:0.5rem; padding:0.5rem; color:white; font-weight:bold; }
+        .team-box h3 { font-size: 1rem; margin:0 0 8px 0; padding-bottom:4px; border-bottom: 1px solid rgba(255,255,255,0.3); }
+        .team-box ul { font-size:0.7rem; list-style:none; padding-left:0; margin:0; }
+        .team-box li { margin-bottom:2px; background:rgba(255,255,255,0.2); padding:2px 5px; border-radius:4px; }
+
+        /* 2페이지 이후: 라인업 */
+        .lineup-page-grid { display:grid; grid-template-columns:1fr 1fr; gap: 1cm; }
+        .team-quarters-block { display: flex; flex-direction: column; gap: 0.5cm; }
+        .team-lineup-title { text-align:center; font-size: 1.1rem; font-weight: bold; }
+        
+        .pitch-print { background:#4CAF50; border:1px solid #999; position:relative; width:100%; aspect-ratio:7/10; border-radius: 4px; }
+        .player-marker-print { position:absolute; transform:translate(-50%,-50%); text-align:center; }
+        .formation-title-print { position: absolute; top: 3px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); color: white; padding: 1px 5px; border-radius: 6px; font-size: 0.55rem; font-weight: bold; white-space: nowrap; z-index: 10; }
+        .player-icon-print { width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-size:.6rem; border:1px solid white; box-shadow: 0 0 2px rgba(0,0,0,0.5); }
+        .player-name-print { background:rgba(0,0,0,0.7); color:white; font-size:.45rem; padding:1px 3px; border-radius:4px; margin-top:1px; white-space:nowrap; }
+        .rest-players-print { text-align: center; margin-top: 2px; font-size: 0.6rem; font-weight: bold; }
+
+        @page { size: A4 landscape; margin: 0; }
     </style>
     </head><body>
     <div class="print-container">
         <h1 style="text-align:center;font-size:28px;margin-bottom:20px;">Barea 모임 결과</h1>
-        <div style="background:#f8f9fa;padding:1rem;border:1px solid #dee2e6;border-radius:.5rem;margin-bottom:1.5rem;">
-            <h2 style="font-size:20px;margin:0 0 10px 0; padding-bottom: 8px; border-bottom: 1px solid #ccc;">📅 모임 정보</h2>
+        <div class="info-box">
+            <h2 class="section-title">📅 모임 정보</h2>
             <p style="margin: 4px 0;"><b>시간:</b> ${new Date(meetingInfo.time).toLocaleString('ko-KR')}</p>
             <p style="margin: 4px 0;"><b>장소:</b> ${locationHtml}</p>
         </div>
         <div>
-            <h2 style="font-size:20px;margin:0 0 12px 0; padding-bottom: 8px; border-bottom: 1px solid #ccc;">⚖️ 팀 배정 결과</h2>
-            <div style="display:grid;grid-template-columns:repeat(${teams.length},1fr);gap:10px;">`;
+            <h2 class="section-title">⚖️ 팀 배정 결과</h2>
+            <div class="team-grid-print">`;
 
     const colors = ["#14B8A6","#0288D1","#7B1FA2","#43A047","#F4511E"];
     teams.forEach((team, i) => {
@@ -195,7 +206,7 @@ export function generatePrintView(shareData) {
     
     for (let qPair = 0; qPair < 3; qPair++) {
         fullHtml += `<div class="page-break"></div><div class="print-container">`;
-        fullHtml += `<div class="lineup-grid">`;
+        fullHtml += `<div class="lineup-page-grid">`;
 
         teams.forEach((team, teamIdx) => {
             fullHtml += `<div class="team-quarters-block">`;
