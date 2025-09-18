@@ -80,7 +80,8 @@ window.promptForAdminPassword = function() {
 }
 
 function switchTab(activeKey, force = false) {
-    if ((activeKey === 'players' || activeKey === 'accounting') && !state.isAdmin && !force) {
+    // '선수관리'와 '모임배포' 탭만 관리자 권한 확인
+    if ((activeKey === 'players' || activeKey === 'share') && !state.isAdmin && !force) {
         promptForAdminPassword();
         if (!state.isAdmin) return;
     }
@@ -92,7 +93,6 @@ function switchTab(activeKey, force = false) {
         accounting.renderForDate();
     }
 }
-
 window.refreshData = async function(collectionName) {
     const snapshot = await getDocs(collection(db, collectionName));
     if (collectionName === 'players') {
