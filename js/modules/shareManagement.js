@@ -185,20 +185,31 @@ export function generatePrintView(shareData) {
         .print-footer { position: fixed; bottom: 1cm; left: 1.5cm; right: 1.5cm; text-align: center; font-size: 10px; color: #9ca3af; }
         .info-box { background:#fff; padding:1rem; border:1px solid #e5e7eb; border-radius:.5rem; margin-bottom:1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
         .section-title { font-size:20px; margin:0 0 12px 0; padding-bottom: 8px; border-bottom: 1px solid #e5e7eb; }
-        .team-grid-print { display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:10px; page-break-inside: avoid; }
-        .team-box { border-radius:0.5rem; padding:0.6rem; color:white; }
-        .team-box h3 { font-size: 1rem; margin:0 0 8px 0; padding-bottom:4px; border-bottom: 1px solid rgba(255,255,255,0.4); }
-        .team-box ul { font-size:0.7rem; list-style:none; padding-left:0; margin:0; }
-        .team-box li { margin-bottom:3px; background:rgba(255,255,255,0.2); padding:3px 5px; border-radius:4px; }
+        .team-grid-print { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:15px; page-break-inside: avoid; }
+        .team-box { border-radius:0.5rem; padding:0.8rem; color:white; }
+        .team-box h3 { font-size: 1.1rem; margin:0 0 8px 0; padding-bottom:4px; border-bottom: 1px solid rgba(255,255,255,0.4); }
+        
+        /* [수정] 팀 박스 내부 선수 명단을 2줄로 나누어 높이를 줄임 */
+        .team-box ul {
+            font-size:0.8rem;
+            list-style:none;
+            padding-left:0;
+            margin:0;
+            columns: 2;
+            -webkit-columns: 2;
+            -moz-columns: 2;
+            column-gap: 15px;
+        }
+        .team-box li { margin-bottom:4px; }
+        
         .single-team-title { text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 1cm; padding-bottom: 10px; }
         .lineup-grid-final { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1cm; }
         .quarter-block { display:flex; flex-direction:column; }
         .pitch-print { background:#2E7D32; border:1px solid #999; position:relative; width:100%; aspect-ratio: 7/10; border-radius: 4px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         .pitch-print-placeholder { border: 2px dashed #ccc; border-radius: 4px; width: 100%; aspect-ratio: 7/10; }
-        .pitch-line-print, .center-circle-print, .penalty-box-print { position: absolute; border-color: rgba(255,255,255,0.5); border-style: solid; }
-        .pitch-line-print { background-color: rgba(255,255,255,0.5); }
-        .center-circle-print { border-width: 1.5px; border-radius: 50%; }
-        .penalty-box-print { border-width: 1.5px; }
+        .pitch-line-print { position: absolute; background-color: rgba(255,255,255,0.5); }
+        .center-circle-print { position: absolute; border: 1.5px solid rgba(255,255,255,0.5); border-radius: 50%; }
+        .penalty-box-print { position: absolute; border: 1.5px solid rgba(255,255,255,0.5); }
         .quarter-title-integrated { position: absolute; top: 8px; left: 8px; font-size: 0.8rem; font-weight: bold; color: white; background: rgba(0,0,0,0.5); padding: 3px 6px; border-radius: 5px; z-index: 10; }
         .rest-players-print { text-align: center; margin-top: 8px; padding: 4px; font-size: 0.8rem; font-weight: bold; background: #f3f4f6; border-radius: 4px; }
         .player-marker-print { position:absolute; transform:translate(-50%,-50%); text-align:center; }
@@ -229,19 +240,13 @@ export function generatePrintView(shareData) {
         fullHtml += `<div class="page-break"></div><div class="print-container">`;
         fullHtml += `<h2 class="single-team-title" style="border-bottom: 3px solid ${teamColor};">팀 ${teamIdx + 1} 라인업 (1-3쿼터)</h2>`;
         fullHtml += `<div class="lineup-grid-final">`;
-        // [수정] createQuarterHTML 함수에 올바른 인자(lineup, teamIdx, i) 전달
-        for (let i = 0; i < 3; i++) {
-            fullHtml += createQuarterHTML(lineup, teamIdx, i);
-        }
+        for (let i = 0; i < 3; i++) { fullHtml += createQuarterHTML(lineup, teamIdx, i); }
         fullHtml += `</div><div class="print-footer">© 2025 BareaPlay. Created by 송감독.</div></div>`;
         
         fullHtml += `<div class="page-break"></div><div class="print-container">`;
         fullHtml += `<h2 class="single-team-title" style="border-bottom: 3px solid ${teamColor};">팀 ${teamIdx + 1} 라인업 (4-6쿼터)</h2>`;
         fullHtml += `<div class="lineup-grid-final">`;
-        // [수정] createQuarterHTML 함수에 올바른 인자(lineup, teamIdx, i) 전달
-        for (let i = 3; i < 6; i++) {
-            fullHtml += createQuarterHTML(lineup, teamIdx, i);
-        }
+        for (let i = 3; i < 6; i++) { fullHtml += createQuarterHTML(lineup, teamIdx, i); }
         fullHtml += `</div><div class="print-footer">© 2025 BareaPlay. Created by 송감독.</div></div>`;
     });
 
