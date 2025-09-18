@@ -66,7 +66,7 @@ async function generateShareableLink() {
         
         lineups.forEach((lineup, i) => {
             if (lineup) {
-                // [수정] resters 데이터를 객체로 변환
+                // [수정] resters 데이터를 객체로 변환하여 중첩 배열 오류 해결
                 const restersObject = {};
                 lineup.resters.forEach((resterArray, qIndex) => {
                     restersObject[`q${qIndex + 1}`] = resterArray;
@@ -115,7 +115,6 @@ async function generateShareableLink() {
     }
 }
 
-// [수정] 6쿼터 및 새로운 인쇄 레이아웃 적용
 export function generatePrintView(shareData) {
     const teams = Object.values(shareData.teams || {});
     const { meetingInfo, lineups } = shareData;
@@ -146,6 +145,7 @@ export function generatePrintView(shareData) {
             html += `<div class="player-marker-print" style="left:${fc.x}%;top:${fc.y}%;"><div class="player-icon-print" style="background:${bg}">${icon}</div><div class="player-name-print">${name||'-'}</div></div>`;
             counters[fc.pos]++;
         });
+        // [수정] 객체로 변경된 resters 데이터 참조
         const resters = teamLineup.resters[`q${qIndex + 1}`] || [];
         html += `</div><div class="rest-players-print"><b>휴식:</b> ${resters.join(', ') || '없음'}</div></div>`;
         return html;
@@ -163,8 +163,8 @@ export function generatePrintView(shareData) {
         .page-break { page-break-after: always; }
         .print-container { padding: 1cm; }
         .team-lineup-title { text-align:center; margin-bottom: 5px; font-size: 20px; }
-        .lineup-grid { display:grid; grid-template-columns:1fr 1fr; gap: 1cm; } /* 팀 간 간격 */
-        .team-quarters-block { display: grid; grid-template-rows: auto 1fr 1fr; gap: 0.5cm; } /* 쿼터 간 간격 */
+        .lineup-grid { display:grid; grid-template-columns:1fr 1fr; gap: 1cm; }
+        .team-quarters-block { display: grid; grid-template-rows: auto 1fr 1fr; gap: 0.5cm; }
         .quarter-block { padding: 0.1rem; }
         .pitch-print { background:#4CAF50; border:1px solid #ddd; position:relative; width:100%; aspect-ratio:7/10; border-radius: 4px; }
         .player-marker-print{position:absolute;transform:translate(-50%,-50%);text-align:center;}
@@ -193,13 +193,12 @@ export function generatePrintView(shareData) {
     });
     fullHtml += `</div></div></div>`;
     
-    // 2개 쿼터씩 3페이지에 걸쳐 출력
     for (let qPair = 0; qPair < 3; qPair++) {
         fullHtml += `<div class="page-break"></div><div class="print-container">`;
-        fullHtml += `<div class="lineup-grid">`; // 팀1, 팀2를 묶는 그리드
+        fullHtml += `<div class="lineup-grid">`;
 
         teams.forEach((team, teamIdx) => {
-            fullHtml += `<div class="team-quarters-block">`; // 한 팀의 쿼터들을 묶는 블록
+            fullHtml += `<div class="team-quarters-block">`;
             fullHtml += `<h2 class="team-lineup-title">팀 ${teamIdx + 1}</h2>`;
             const lineup = lineups[`team${teamIdx + 1}`];
             
@@ -285,7 +284,7 @@ export function init(dependencies) {
 
 export function updateTeamData(teams) {
     state.teams = teams;
-    state.teamLineupCache = {}; // 팀이 새로 배정되면 라인업 캐시 초기화
+    state.teamLineupCache = {};
 }
 
 export function updateLineupData(lineupData, formations) {

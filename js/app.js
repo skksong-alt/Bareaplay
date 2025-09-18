@@ -25,7 +25,11 @@ const pages = {};
 const tabs = {};
 
 window.showNotification = function(message, type = 'success') {
-    const notificationEl = document.getElementById('notification');
+    const notificationEl = document.getElementById('notification') || document.createElement('div');
+    if (!document.getElementById('notification')) {
+        notificationEl.id = 'notification';
+        document.body.appendChild(notificationEl);
+    }
     notificationEl.textContent = message;
     notificationEl.className = 'notification';
     notificationEl.classList.add(type === 'success' ? 'notification-success' : 'notification-error');
@@ -98,6 +102,61 @@ window.refreshData = async function(collectionName) {
     }
 };
 
+// [신규] 공유 페이지를 화면에 그리는 함수
+function renderSharePageView(shareData) {
+    const { meetingInfo, teams: teamsObject } = shareData;
+    const teams = Object.values(teamsObject || {});
+    document.body.innerHTML = ''; // 기존 UI 모두 제거
+    document.body.className = "bg-gray-100"; // 배경색 유지
+
+    let locationHtml = meetingInfo.locationUrl 
+        ? `<a href="${meetingInfo.locationUrl}" target="_blank" class="text-blue-600 underline">${meetingInfo.location}</a>`
+        : (meetingInfo.location || '미정');
+
+    let contentHtml = `
+        <div class="container mx-auto p-4 md:p-8">
+            <h1 class="text-4xl text-center font-bold text-gray-900 mb-2">BareaPlay⚽</h1>
+            <p class="text-center text-lg text-gray-600 mb-8">모임 결과</p>
+            
+            <div class="bg-white p-6 rounded-lg shadow-md mb-8 max-w-2xl mx-auto">
+                <h2 class="text-2xl font-bold mb-4 border-b pb-2">📅 모임 정보</h2>
+                <p class="text-gray-700 mb-2"><strong>시간:</strong> ${new Date(meetingInfo.time).toLocaleString('ko-KR')}</p>
+                <p class="text-gray-700"><strong>장소:</strong> ${locationHtml}</p>
+            </div>
+
+            <div class="bg-white p-6 rounded-lg shadow-md max-w-4xl mx-auto">
+                <h2 class="text-2xl font-bold mb-4 border-b pb-2">⚖️ 팀 배정 결과</h2>
+                <div class="grid grid-cols-1 md:grid-cols-${teams.length > 2 ? '3' : '2'} gap-4">
+    `;
+
+    const colors = ["#14B8A6","#0288D1","#7B1FA2","#43A047","#F4511E"];
+    teams.forEach((team, i) => {
+        contentHtml += `<div class="rounded-lg p-4 text-white" style="background-color:${colors[i%5]}">
+            <h3 class="font-bold text-xl mb-2 border-b border-white/30 pb-2">팀 ${i + 1}</h3>
+            <ul class="space-y-1">
+                ${team.map(p => `<li class="bg-white/20 p-2 rounded-md">${p.name.replace(' (신규)','')}</li>`).join('')}
+            </ul>
+        </div>`;
+    });
+
+    contentHtml += `</div></div>
+        <div class="text-center my-8">
+            <button id="print-share-btn" class="bg-gray-700 text-white font-bold py-3 px-6 rounded-lg hover:bg-gray-800">전체 라인업 인쇄 / PDF 저장</button>
+        </div>
+    </div>`;
+    
+    document.body.innerHTML = contentHtml;
+
+    const notificationEl = document.createElement('div');
+    notificationEl.id = 'notification';
+    document.body.appendChild(notificationEl);
+    
+    document.getElementById('print-share-btn').addEventListener('click', () => {
+        shareMgmt.generatePrintView(shareData);
+    });
+}
+
+
 document.addEventListener('DOMContentLoaded', async () => {
     const loadingOverlay = document.getElementById('loading-overlay');
     
@@ -121,23 +180,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (shareId) {
         loadingOverlay.style.display = 'flex';
         loadingOverlay.style.opacity = 1;
-        document.querySelector('.container').style.display = 'none';
         
         try {
             const shareDoc = await getDoc(doc(db, "shares", shareId));
             if (shareDoc.exists()) {
                 const shareData = shareDoc.data();
-                const printButtonContainer = document.createElement('div');
-                printButtonContainer.className = 'text-center my-8';
-                printButtonContainer.innerHTML = `<button id="print-share-btn" class="bg-gray-700 text-white font-bold py-3 px-6 rounded-lg hover:bg-gray-800">결과 인쇄 / PDF 저장</button>`;
-                document.body.appendChild(printButtonContainer);
-                
-                document.getElementById('print-share-btn').addEventListener('click', () => {
-                    shareMgmt.generatePrintView(shareData);
-                });
-                
-                window.showNotification("공유된 모임 정보입니다. 버튼을 눌러 확인하세요.");
-
+                renderSharePageView(shareData); // 화면 그리는 함수 호출
             } else {
                 document.body.innerHTML = `<p class="text-center text-red-500 text-2xl mt-10">공유된 데이터를 찾을 수 없습니다.</p>`;
             }
@@ -148,6 +196,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             loadingOverlay.style.display = 'none';
         }
     } else {
+        // 일반 접속의 경우 (이하 코드는 이전과 동일)
         Object.assign(pages, { 
             players: document.getElementById('page-players'), 
             balancer: document.getElementById('page-balancer'), 
@@ -177,7 +226,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const activeTabKey = Object.keys(tabs).find(key => tabs[key].classList.contains('active'));
                 if(activeTabKey) switchTab(activeTabKey, true);
             } else {
-                window.showNotification('승인번호가 올바지 않습니다.', 'error');
+                window.showNotification('승인번호가 올바르지 않습니다.', 'error');
             }
         });
         modalCancelBtn.addEventListener('click', () => adminModal.classList.add('hidden'));
@@ -199,13 +248,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             onSnapshot(collection(db, "expenses"), (snapshot) => {
                 state.expenseLog = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                if(!pages.accounting.classList.contains('hidden')) { accounting.renderForDate(); }
+                if(pages.accounting && !pages.accounting.classList.contains('hidden')) { accounting.renderForDate(); }
             });
 
             onSnapshot(collection(db, "attendance"), (snapshot) => {
                  state.attendanceLog = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                 if(!pages.accounting.classList.contains('hidden')) { accounting.renderForDate(); }
-                 playerMgmt.renderPlayerTable();
+                 if(pages.accounting && !pages.accounting.classList.contains('hidden')) { accounting.renderForDate(); }
+                 if (playerMgmt) playerMgmt.renderPlayerTable();
             });
 
             onSnapshot(doc(db, "memos", "accounting_memo"), (doc) => {
@@ -215,8 +264,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             playerMgmt.renderPlayerTable();
             accounting.renderForDate();
-            // [수정] 불필요한 호출 제거
-            // shareMgmt.populateLocations(); 
 
         } catch (error) {
             console.error("초기 데이터 로딩 실패:", error);
