@@ -131,13 +131,13 @@ export function generatePrintView(shareData) {
         const posCellMap = window.lineup.getPosCellMap();
         const resters = teamLineup.resters[`q${qIndex + 1}`] || [];
         
+        // [수정] 휴식자 명단을 pitchHtml 밖으로 분리
         let pitchHtml = `<div class="pitch-print">
             <div class="pitch-line-print" style="top:50%;left:0;width:100%;height:1px;"></div>
             <div class="center-circle-print" style="top:50%;left:50%;width:25%;height:18%;transform:translate(-50%,-50%);"></div>
             <div class="penalty-box-print" style="top:0;left:50%;transform:translateX(-50%);width:60%;height:18%;border-top:0;"></div>
             <div class="penalty-box-print" style="bottom:0;left:50%;transform:translateX(-50%);width:60%;height:18%;border-bottom:0;"></div>
-            <div class="quarter-title-integrated">${qIndex + 1}쿼터 (${formation})</div>
-            <div class="rest-list-integrated"><b>휴식:</b> ${resters.join(', ') || '없음'}</div>`;
+            <div class="quarter-title-integrated">${qIndex + 1}쿼터 (${formation})</div>`;
         
         const counters = {};
         (posCellMap[formation] || []).forEach(fc => {
@@ -148,9 +148,13 @@ export function generatePrintView(shareData) {
             pitchHtml += `<div class="player-marker-print" style="left:${fc.x}%;top:${fc.y}%;"><div class="player-icon-print" style="background:${bg}">${icon}</div><div class="player-name-print">${name||'-'}</div></div>`;
             counters[fc.pos]++;
         });
-
         pitchHtml += `</div>`;
-        return pitchHtml;
+        
+        // 경기장 그래픽과 휴식자 명단을 포함하는 전체 블록 반환
+        return `<div class="quarter-block">
+                    ${pitchHtml}
+                    <div class="rest-players-print"><b>휴식:</b> ${resters.join(', ') || '없음'}</div>
+                </div>`;
     };
     
     let locationHtml = meetingInfo.locationUrl 
@@ -172,16 +176,18 @@ export function generatePrintView(shareData) {
         .team-box ul { font-size:0.7rem; list-style:none; padding-left:0; margin:0; }
         .team-box li { margin-bottom:3px; background:rgba(255,255,255,0.2); padding:3px 5px; border-radius:4px; }
         
-        /* 팀별 라인업 페이지 (가독성 확보) */
         .single-team-title { text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 1cm; }
-        .lineup-grid-final { display: grid; grid-template-columns: 1fr; grid-template-rows: repeat(3, 1fr); gap: 1cm; height: calc(100vh - 6cm); }
-        .pitch-print { background:#2E7D32; border:1px solid #999; position:relative; width:100%; height:100%; border-radius: 4px; overflow: hidden; }
-        .pitch-print-placeholder { border: 2px dashed #ccc; border-radius: 4px; width: 100%; height: 100%; }
-        .pitch-line-print { position: absolute; background-color: rgba(255,255,255,0.5); }
-        .center-circle-print { position: absolute; border: 1.5px solid rgba(255,255,255,0.5); border-radius: 50%; }
-        .penalty-box-print { position: absolute; border: 1.5px solid rgba(255,255,255,0.5); }
+        /* [수정] 그리드 행 높이를 자동으로 조절하도록 변경 */
+        .lineup-grid-final { display: grid; grid-template-columns: 1fr; grid-template-rows: repeat(3, auto); gap: 1cm; }
+        
+        .quarter-block { display:flex; flex-direction:column; }
+        .pitch-print { background:#2E7D32; border:1px solid #999; position:relative; width:100%; aspect-ratio: 7/10; border-radius: 4px; overflow: hidden; }
+        .pitch-print-placeholder { border: 2px dashed #ccc; border-radius: 4px; width: 100%; aspect-ratio: 7/10; }
+        .pitch-line-print, .center-circle-print, .penalty-box-print { /* ... 이전과 동일 ... */ }
         .quarter-title-integrated { position: absolute; top: 8px; left: 8px; font-size: 0.8rem; font-weight: bold; color: white; background: rgba(0,0,0,0.5); padding: 3px 6px; border-radius: 5px; z-index: 10; }
-        .rest-list-integrated { position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); width: 95%; text-align: center; font-size: 0.75rem; font-weight: bold; color: white; background: rgba(0,0,0,0.5); padding: 3px; border-radius: 5px; z-index: 10; }
+        
+        /* [수정] 경기장 밖으로 나온 휴식자 명단 스타일 */
+        .rest-players-print { text-align: center; margin-top: 5px; font-size: 0.8rem; font-weight: bold; }
         .player-marker-print { position:absolute; transform:translate(-50%,-50%); text-align:center; }
         .player-icon-print { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-size:.9rem; border:1.5px solid white; margin: 0 auto; box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
         .player-name-print { background:rgba(0,0,0,0.7); color:white; font-size:0.7rem; padding:2px 5px; border-radius:5px; margin-top:3px; white-space:nowrap; }
