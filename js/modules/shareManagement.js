@@ -56,17 +56,23 @@ async function generateShareableLink() {
 
     try {
         const allTeamLineups = {};
-        const lineupPromises = state.teams.map((team) => {
+        // 캐시를 먼저 확인하고, 없으면 새로 생성
+        const lineupPromises = state.teams.map((team, i) => {
+            if (state.teamLineupCache && state.teamLineupCache[i]) {
+                return Promise.resolve(state.teamLineupCache[i]); // 캐시된 데이터 사용
+            }
+            // 캐시 없으면 새로 생성
             const teamMembers = team.map(p => p.name.replace(' (신규)', ''));
             const formations = Array.from(document.querySelectorAll('#page-lineup select')).map(s => s.value);
             return window.lineup.executeLineupGeneration(teamMembers, formations, true);
         });
+
         const lineups = await Promise.all(lineupPromises);
         
         lineups.forEach((lineup, i) => {
             if (lineup) {
                 const restersObject = {};
-                lineup.resters.forEach((resterArray, qIndex) => {
+                (lineup.resters || []).forEach((resterArray, qIndex) => {
                     restersObject[`q${qIndex + 1}`] = resterArray;
                 });
                 lineup.resters = restersObject;

@@ -69,14 +69,7 @@ function addDragAndDropHandlers() {
             if (draggingPosType !== 'rest' && draggingPosType !== 'sub') {
                 const d_loc = findInLineup(lineup, draggingName);
                 if (!d_loc) return;
-
-                if (targetPosType === 'rest') {
-                    const t_idx = resters.indexOf(targetName);
-                    if (t_idx > -1) {
-                        resters[t_idx] = draggingName;
-                        lineup[d_loc.pos][d_loc.idx] = targetName;
-                    }
-                } else if (targetPosType !== 'sub') {
+                if (targetPosType !== 'rest' && targetPosType !== 'sub') {
                     const t_loc = findInLineup(lineup, targetName);
                     if (t_loc) {
                         lineup[d_loc.pos][d_loc.idx] = targetName;
@@ -84,17 +77,13 @@ function addDragAndDropHandlers() {
                     }
                 }
             } 
-            else if (draggingPosType === 'rest') {
-                 const d_idx = resters.indexOf(draggingName);
-                 if (targetPosType !== 'rest' && targetPosType !== 'sub') {
-                    const t_loc = findInLineup(lineup, targetName);
-                    if (t_loc && d_idx > -1) {
-                        resters[d_idx] = targetName;
-                        lineup[t_loc.pos][t_loc.idx] = draggingName;
-                    }
-                 }
-            }
+            
             renderQuarter(currentQuarter);
+            
+            // [신규] 수정된 결과를 캐시에 즉시 저장
+            if (state.teamLineupCache && activeTeamIndex !== -1) {
+                state.teamLineupCache[activeTeamIndex] = state.lineupResults;
+            }
             window.showNotification(`${draggingName} ↔ ${targetName} 위치 변경!`);
         });
     });
@@ -193,26 +182,29 @@ function executeLineupGeneration(members, formations, isSilent = false) {
         members.forEach(name => {
             localPlayerDB[name] = state.playerDB[name] || { name, pos1: [], s1: 65, pos2: [], s2: 0 };
         });
+
+        const primaryGks = members.filter(m => (localPlayerDB[m].pos1 || []).includes('GK'));
+        const secondaryGks = members.filter(m => !(localPlayerDB[m].pos1 || []).includes('GK') && (localPlayerDB[m].pos2 || []).includes('GK'));
         
         let bestLineup = null; let bestScore = Infinity;
         const TRIAL = 300;
-        const FIXED_GK = "강석영";
-
-        let restOrderQueue = sortedMembers.filter(m => m !== FIXED_GK).reverse();
-        let fullRestQueue = [];
-        let totalRestSlots = 0;
-        formations.forEach(f => {
-            const numOnField = posCellMap[f]?.length || 11;
-            totalRestSlots += Math.max(0, members.length - numOnField);
-        });
-        while (fullRestQueue.length < totalRestSlots) { fullRestQueue.push(...restOrderQueue); }
-        fullRestQueue = fullRestQueue.slice(0, totalRestSlots);
-
+        
         for (let tr = 0; tr < TRIAL; tr++) {
+            let restOrderQueue = [...sortedMembers].reverse();
+            let fullRestQueue = [];
+            let totalRestSlots = 0;
+            formations.forEach(f => {
+                const numOnField = posCellMap[f]?.length || 11;
+                totalRestSlots += Math.max(0, members.length - numOnField);
+            });
+            while (fullRestQueue.length < totalRestSlots) { fullRestQueue.push(...restOrderQueue); }
+            fullRestQueue = fullRestQueue.slice(0, totalRestSlots);
+
             const lineups = []; const resters = [];
             let restQueuePointer = 0;
+            let secondaryGkUsage = {}; // 부포지션 키퍼 사용 횟수 추적
             
-            for (let q = 0; q < 6; q++) { // 6쿼터까지 반복
+            for (let q = 0; q < 6; q++) {
                 const formation = formations[q];
                 const slots = posCellMap[formation]?.map(c => c.pos) || [];
                 const numToRest = members.length - slots.length;
@@ -225,11 +217,36 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                 let assignment = {};
                 let availablePlayers = [...onField];
                 
-                if (slots.includes('GK') && availablePlayers.includes(FIXED_GK)) {
-                    assignment['GK'] = [FIXED_GK];
-                    availablePlayers.splice(availablePlayers.indexOf(FIXED_GK), 1);
+                // --- 신규 GK 배정 로직 ---
+                const gkSlotExists = slots.includes('GK');
+                if (gkSlotExists) {
+                    const prevResters = q > 0 ? resters[q-1] : [];
+                    let gkCandidates = availablePlayers.filter(p => !prevResters.includes(p));
+                    let assignedGk = null;
+
+                    // 1. 주포지션 키퍼 우선 배정
+                    let availablePrimaryGks = primaryGks.filter(gk => gkCandidates.includes(gk));
+                    if (availablePrimaryGks.length > 0) {
+                        assignedGk = availablePrimaryGks[0];
+                    }
+
+                    // 2. 주포지션 키퍼 없으면, 부포지션 키퍼 중 한번도 안쓴 선수 배정
+                    if (!assignedGk) {
+                        let availableSecondaryGks = secondaryGks.filter(gk => gkCandidates.includes(gk) && !secondaryGkUsage[gk]);
+                        if (availableSecondaryGks.length > 0) {
+                            assignedGk = availableSecondaryGks[0];
+                            secondaryGkUsage[assignedGk] = 1; // 사용 기록
+                        }
+                    }
+
+                    // 3. 그래도 없으면 그냥 아무나 배정 (기존 로직)
+                    if (assignedGk) {
+                        assignment['GK'] = [assignedGk];
+                        availablePlayers.splice(availablePlayers.indexOf(assignedGk), 1);
+                    }
                 }
-                
+                // --- GK 로직 끝 ---
+
                 for (const pos of slots) {
                     if (pos === 'GK' && assignment['GK']) continue;
                     assignment[pos] = assignment[pos] || [];
@@ -263,7 +280,6 @@ function executeLineupGeneration(members, formations, isSilent = false) {
         resolve(bestLineup);
     });
 }
-
 export { executeLineupGeneration };
 
 export function init(dependencies) {
