@@ -267,19 +267,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (tabs[key]) tabs[key].addEventListener('click', () => switchTab(key));
         });
         
-        onSnapshot(doc(db, "settings", "activeMeeting"), (doc) => {
-            const container = document.getElementById('active-meeting-link-container');
-            const link = document.getElementById('active-meeting-link');
-            if (doc.exists() && doc.data().shareId) {
-                const shareId = doc.data().shareId;
-                const linkText = doc.data().linkText || "오늘 모임 결과 확인하기";
-                link.href = `${window.location.origin}${window.location.pathname}?shareId=${shareId}`;
-                link.textContent = linkText;
-                container.classList.remove('hidden');
-            } else {
-                container.classList.add('hidden');
-            }
-        });
+onSnapshot(doc(db, "settings", "activeMeeting"), (doc) => {
+    const placeholder = document.getElementById('realtime-link-placeholder');
+    placeholder.innerHTML = ''; // 기존 버튼 삭제
+    if (doc.exists() && doc.data().shareId) {
+        const shareId = doc.data().shareId;
+        const linkText = doc.data().linkText || "오늘 모임 결과 확인하기";
+        
+        const link = document.createElement('a');
+        link.href = `${window.location.origin}${window.location.pathname}?shareId=${shareId}`;
+        link.target = "_blank";
+        link.className = 'realtime-link-button';
+        link.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clip-rule="evenodd" /></svg>${linkText}`;
+        
+        placeholder.appendChild(link);
+    }
+});
 
         try {
             const collectionsToFetch = ['players', 'attendance', 'expenses', 'locations'];

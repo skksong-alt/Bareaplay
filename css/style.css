@@ -63,3 +63,27 @@ body {
     .print-rester-list h4 { font-size: 16px; font-weight: bold; margin-top: 10px; }
     a { color: #000; text-decoration: none; }
 }
+.realtime-link-button {
+    display: inline-block;
+    padding: 8px 16px;
+    background-color: #16a34a; /* A darker green */
+    color: white;
+    font-weight: bold;
+    font-size: 0.9rem;
+    border-radius: 8px;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.realtime-link-button:hover {
+    background-color: #15803d;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+.realtime-link-button svg {
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 6px;
+    width: 16px;
+    height: 16px;
+}
