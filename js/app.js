@@ -103,7 +103,6 @@ window.refreshData = async function(collectionName) {
     }
 };
 
-// [수정] 공유 페이지를 화면에 그리는 함수 대폭 강화
 function renderSharePageView(shareData) {
     const { meetingInfo, teams: teamsObject, lineups } = shareData;
     const teams = Object.values(teamsObject || {});
@@ -114,11 +113,12 @@ function renderSharePageView(shareData) {
         ? `<a href="${meetingInfo.locationUrl}" target="_blank" class="text-blue-600 underline">${meetingInfo.location}</a>`
         : (meetingInfo.location || '미정');
 
-    // --- 1. 기본 정보 및 팀 배정 결과 HTML ---
     let contentHtml = `
     <div class="container mx-auto p-4 md:p-8">
-        <h1 class="text-4xl text-center font-bold text-gray-900 mb-2">BareaPlay⚽</h1>
-        <p class="text-center text-lg text-gray-600 mb-8">모임 결과</p>
+        <header class="text-center mb-8 relative">
+            <h1 class="text-4xl md:text-5xl font-bold text-gray-900">BareaPlay⚽</h1>
+            <p class="mt-2 text-lg text-gray-600">모임 결과</p>
+        </header>
         
         <div class="bg-white p-6 rounded-lg shadow-md mb-8 max-w-2xl mx-auto">
             <h2 class="text-2xl font-bold mb-4 border-b pb-2">📅 모임 정보</h2>
@@ -139,7 +139,6 @@ function renderSharePageView(shareData) {
     });
     contentHtml += `</div></div>`;
 
-    // --- 2. 라인업 결과 HTML ---
     const createQuarterHTML = (teamLineup, qIndex) => {
         if (!teamLineup || !teamLineup.lineups || !teamLineup.lineups[qIndex]) return '<div class="p-2 border rounded-lg bg-gray-50 text-center text-gray-400">데이터 없음</div>';
         const lineup = teamLineup.lineups[qIndex];
@@ -147,7 +146,7 @@ function renderSharePageView(shareData) {
         const resters = teamLineup.resters[`q${qIndex + 1}`] || [];
         
         let html = `<div class="p-2 border rounded-lg"><h4 class="font-bold text-center mb-2">${qIndex + 1}쿼터 (${formation})</h4><ul class="space-y-1 text-sm">`;
-        Object.keys(lineup).forEach(pos => {
+        Object.keys(lineup).sort().forEach(pos => {
             lineup[pos].forEach(player => {
                 if(player) html += `<li class="p-1 bg-gray-100 rounded">${pos}: ${player}</li>`;
             });
@@ -158,7 +157,7 @@ function renderSharePageView(shareData) {
     
     contentHtml += `<div class="bg-white p-6 rounded-lg shadow-md max-w-6xl mx-auto">
         <h2 class="text-2xl font-bold mb-4 border-b pb-2">📋 라인업 결과</h2>
-        <div class="grid grid-cols-1 md:grid-cols-${teams.length} gap-6">`;
+        <div class="grid grid-cols-1 ${teams.length > 1 ? 'md:grid-cols-2' : ''} ${teams.length > 2 ? 'lg:grid-cols-3' : ''} gap-6">`;
 
     teams.forEach((team, teamIdx) => {
         contentHtml += `<div><h3 class="text-xl font-bold text-center mb-3">팀 ${teamIdx + 1}</h3><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">`;
@@ -169,13 +168,13 @@ function renderSharePageView(shareData) {
         contentHtml += `</div></div>`;
     });
 
-    contentHtml += `</div></div>`;
-    
-    // --- 3. 인쇄 버튼 ---
-    contentHtml += `
+    contentHtml += `</div></div>
         <div class="text-center my-8">
             <button id="print-share-btn" class="bg-gray-700 text-white font-bold py-3 px-6 rounded-lg hover:bg-gray-800">전체 라인업 인쇄 / PDF 저장</button>
         </div>
+        <footer class="text-center py-4">
+            <p class="text-sm text-gray-500">© 2025 BareaPlay. All Rights Reserved. Created by 송감독.</p>
+        </footer>
     </div>`;
     
     document.body.innerHTML = contentHtml;
@@ -190,8 +189,6 @@ function renderSharePageView(shareData) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-    // ... (이전과 동일한 초기화 로직) ...
-    // 공유 링크 처리 로직은 바로 위 `renderSharePageView`를 사용하도록 수정되었습니다.
     const loadingOverlay = document.getElementById('loading-overlay');
     
     const modules = { playerMgmt, balancer, lineup, accounting, shareMgmt };
@@ -230,7 +227,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             loadingOverlay.style.display = 'none';
         }
     } else {
-        // 일반 접속의 경우 (이하 코드는 이전과 동일)
         Object.assign(pages, { 
             players: document.getElementById('page-players'), 
             balancer: document.getElementById('page-balancer'), 
@@ -270,17 +266,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         Object.keys(tabs).forEach(key => {
             if (tabs[key]) tabs[key].addEventListener('click', () => switchTab(key));
         });
-onSnapshot(doc(db, "settings", "activeMeeting"), (doc) => {
+        
+        onSnapshot(doc(db, "settings", "activeMeeting"), (doc) => {
             const container = document.getElementById('active-meeting-link-container');
             const link = document.getElementById('active-meeting-link');
             if (doc.exists() && doc.data().shareId) {
                 const shareId = doc.data().shareId;
+                const linkText = doc.data().linkText || "오늘 모임 결과 확인하기";
                 link.href = `${window.location.origin}${window.location.pathname}?shareId=${shareId}`;
+                link.textContent = linkText;
                 container.classList.remove('hidden');
             } else {
                 container.classList.add('hidden');
             }
         });
+
         try {
             const collectionsToFetch = ['players', 'attendance', 'expenses', 'locations'];
             const snapshots = await Promise.all(collectionsToFetch.map(c => getDocs(collection(db, c))));
