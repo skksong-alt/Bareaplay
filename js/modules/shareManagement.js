@@ -22,7 +22,7 @@ function populateLocations() {
         shareLocationSelect.value = currentVal;
     }
 }
-
+//
 function renderLocationList() {
     if (!locationListDiv) return;
     locationListDiv.innerHTML = '';
