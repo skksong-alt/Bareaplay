@@ -131,30 +131,25 @@ export function generatePrintView(shareData) {
         const posCellMap = window.lineup.getPosCellMap();
         const resters = teamLineup.resters[`q${qIndex + 1}`] || [];
         
-        let pitchHtml = `<div class="quarter-block">
-            <div class="pitch-print">
-                <div class="pitch-line-print" style="top:50%;left:0;width:100%;height:1px;"></div>
-                <div class="center-circle-print" style="top:50%;left:50%;width:20%;height:14%;transform:translate(-50%,-50%);"></div>
-                <div class="penalty-box-print" style="top:0;left:50%;transform:translateX(-50%);width:60%;height:18%;border-top:0;"></div>
-                <div class="penalty-box-print" style="bottom:0;left:50%;transform:translateX(-50%);width:60%;height:18%;border-bottom:0;"></div>
-                <div class="quarter-title-integrated">${qIndex + 1}쿼터 (${formation})</div>
-                <div class="rest-list-integrated"><b>휴식:</b> ${resters.join(', ') || '없음'}</div>`;
+        let pitchHtml = `<div class="pitch-print">
+            <div class="pitch-line-print" style="top:50%;left:0;width:100%;height:1px;"></div>
+            <div class="center-circle-print" style="top:50%;left:50%;width:25%;height:18%;transform:translate(-50%,-50%);"></div>
+            <div class="penalty-box-print" style="top:0;left:50%;transform:translateX(-50%);width:60%;height:18%;border-top:0;"></div>
+            <div class="penalty-box-print" style="bottom:0;left:50%;transform:translateX(-50%);width:60%;height:18%;border-bottom:0;"></div>
+            <div class="quarter-title-integrated">${qIndex + 1}쿼터 (${formation})</div>
+            <div class="rest-list-integrated"><b>휴식:</b> ${resters.join(', ') || '없음'}</div>`;
         
         const counters = {};
         (posCellMap[formation] || []).forEach(fc => {
             counters[fc.pos] = (counters[fc.pos] || 0);
             const name = (lineup[fc.pos] || [])[counters[fc.pos]] || '';
             let icon = "❓", bg = "#555";
-            if(fc.pos=="GK"){icon="🧤";bg="#00C853"}
-            else if(["CB","RB","LB","DF"].includes(fc.pos)){icon="🛡";bg="#0288D1"}
-            else if(["MF","CM"].includes(fc.pos)){icon="⚙";bg="#FBC02D"}
-            else if(["LW","RW","FW"].includes(fc.pos)){icon="🎯";bg="#EF6C00"}
-
+            if(fc.pos=="GK"){icon="🧤";bg="#00C853"} else if(["CB","RB","LB","DF"].includes(fc.pos)){icon="🛡";bg="#0288D1"} else if(["MF","CM"].includes(fc.pos)){icon="⚙";bg="#FBC02D"} else if(["LW","RW","FW"].includes(fc.pos)){icon="🎯";bg="#EF6C00"}
             pitchHtml += `<div class="player-marker-print" style="left:${fc.x}%;top:${fc.y}%;"><div class="player-icon-print" style="background:${bg}">${icon}</div><div class="player-name-print">${name||'-'}</div></div>`;
             counters[fc.pos]++;
         });
 
-        pitchHtml += `</div></div>`;
+        pitchHtml += `</div>`;
         return pitchHtml;
     };
     
@@ -168,26 +163,28 @@ export function generatePrintView(shareData) {
         * { -webkit-print-color-adjust: exact !important; color-adjust: exact !important; box-sizing: border-box; }
         body { font-family:'Noto Sans KR', sans-serif; margin: 0; }
         .page-break { page-break-after: always; }
-        .print-container { padding: 1cm; }
-        .info-box { background:#f8f9fa; padding:0.8rem; border:1px solid #dee2e6; border-radius:.5rem; margin-bottom:1rem; }
-        .section-title { font-size:18px; margin:0 0 10px 0; padding-bottom: 6px; border-bottom: 1px solid #ccc; }
-        .team-grid-print { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:8px; }
-        .team-box { border-radius:0.5rem; padding:0.5rem; color:white; font-weight:bold; }
-        .team-box h3 { font-size: 0.9rem; margin:0 0 6px 0; padding-bottom:3px; border-bottom: 1px solid rgba(255,255,255,0.3); }
-        .team-box ul { font-size:0.65rem; list-style:none; padding-left:0; margin:0; }
-        .team-box li { margin-bottom:2px; background:rgba(255,255,255,0.2); padding:2px 4px; border-radius:4px; }
+        .print-container { padding: 1.5cm; }
+        .info-box { background:#f8f9fa; padding:1rem; border:1px solid #dee2e6; border-radius:.5rem; margin-bottom:1.5rem; }
+        .section-title { font-size:20px; margin:0 0 12px 0; padding-bottom: 8px; border-bottom: 1px solid #ccc; }
+        .team-grid-print { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px; }
+        .team-box { border-radius:0.5rem; padding:0.6rem; color:white; font-weight:bold; }
+        .team-box h3 { font-size: 1rem; margin:0 0 8px 0; padding-bottom:4px; border-bottom: 1px solid rgba(255,255,255,0.3); }
+        .team-box ul { font-size:0.7rem; list-style:none; padding-left:0; margin:0; }
+        .team-box li { margin-bottom:3px; background:rgba(255,255,255,0.2); padding:3px 5px; border-radius:4px; }
         
-        /* 팀별 라인업 페이지 스타일 */
-        .single-team-title { text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 0.5cm; }
-        .lineup-grid-single-team { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; gap: 0.8cm; height: calc(100vh - 5cm); }
-        .quarter-block { display:flex; flex-direction:column; }
+        /* 팀별 라인업 페이지 (가독성 확보) */
+        .single-team-title { text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 1cm; }
+        .lineup-grid-final { display: grid; grid-template-columns: 1fr; grid-template-rows: repeat(3, 1fr); gap: 1cm; height: calc(100vh - 6cm); }
         .pitch-print { background:#2E7D32; border:1px solid #999; position:relative; width:100%; height:100%; border-radius: 4px; overflow: hidden; }
         .pitch-print-placeholder { border: 2px dashed #ccc; border-radius: 4px; width: 100%; height: 100%; }
-        .pitch-line-print, .center-circle-print, .penalty-box-print { position: absolute; border-color: rgba(255,255,255,0.5); border-style: solid; }
-        .pitch-line-print { background-color: rgba(255,255,255,0.5); }
-        .center-circle-print { border-width: 1px; border-radius: 50%; }
-        .penalty-box-print { border-width: 1px; }
-        .quarter-title-integrated, .rest-list-integrated, .player-marker-print, .player-icon-print, .player-name-print { /* 이전과 동일한 스타일 */ }
+        .pitch-line-print { position: absolute; background-color: rgba(255,255,255,0.5); }
+        .center-circle-print { position: absolute; border: 1.5px solid rgba(255,255,255,0.5); border-radius: 50%; }
+        .penalty-box-print { position: absolute; border: 1.5px solid rgba(255,255,255,0.5); }
+        .quarter-title-integrated { position: absolute; top: 8px; left: 8px; font-size: 0.8rem; font-weight: bold; color: white; background: rgba(0,0,0,0.5); padding: 3px 6px; border-radius: 5px; z-index: 10; }
+        .rest-list-integrated { position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); width: 95%; text-align: center; font-size: 0.75rem; font-weight: bold; color: white; background: rgba(0,0,0,0.5); padding: 3px; border-radius: 5px; z-index: 10; }
+        .player-marker-print { position:absolute; transform:translate(-50%,-50%); text-align:center; }
+        .player-icon-print { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-size:.9rem; border:1.5px solid white; margin: 0 auto; box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
+        .player-name-print { background:rgba(0,0,0,0.7); color:white; font-size:0.7rem; padding:2px 5px; border-radius:5px; margin-top:3px; white-space:nowrap; }
         @page { size: A4 portrait; margin: 0; }
     </style>
     </head><body>
@@ -207,13 +204,23 @@ export function generatePrintView(shareData) {
     });
     fullHtml += `</div></div></div>`;
     
-    // [수정] 팀별로 페이지를 생성하는 새로운 루프
+    // [수정] 팀별로 2페이지씩 생성하는 새로운 루프
     teams.forEach((team, teamIdx) => {
-        fullHtml += `<div class="page-break"></div><div class="print-container">`;
-        fullHtml += `<h2 class="single-team-title">팀 ${teamIdx + 1} 라인업</h2>`;
-        fullHtml += `<div class="lineup-grid-single-team">`;
         const lineup = lineups[`team${teamIdx + 1}`];
-        for (let i = 0; i < 6; i++) {
+        // 1-3쿼터 페이지
+        fullHtml += `<div class="page-break"></div><div class="print-container">`;
+        fullHtml += `<h2 class="single-team-title">팀 ${teamIdx + 1} 라인업 (1-3쿼터)</h2>`;
+        fullHtml += `<div class="lineup-grid-final">`;
+        for (let i = 0; i < 3; i++) {
+            fullHtml += createQuarterHTML(lineup, i);
+        }
+        fullHtml += `</div></div>`;
+        
+        // 4-6쿼터 페이지
+        fullHtml += `<div class="page-break"></div><div class="print-container">`;
+        fullHtml += `<h2 class="single-team-title">팀 ${teamIdx + 1} 라인업 (4-6쿼터)</h2>`;
+        fullHtml += `<div class="lineup-grid-final">`;
+        for (let i = 3; i < 6; i++) {
             fullHtml += createQuarterHTML(lineup, i);
         }
         fullHtml += `</div></div>`;
