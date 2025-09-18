@@ -124,21 +124,21 @@ export function generatePrintView(shareData) {
         window.showNotification('팝업이 차단되었습니다. 팝업을 허용해주세요.', 'error');
         return;
     }
-    const createQuarterHTML = (teamLineup, teamIdx, qIndex) => {
-        if (!teamLineup || !teamLineup.lineups || !teamLineup.lineups[qIndex]) return '<div class="quarter-block"></div>';
+    const createQuarterHTML = (teamLineup, qIndex) => {
+        if (!teamLineup || !teamLineup.lineups || !teamLineup.lineups[qIndex]) return '<div class="pitch-print-placeholder"></div>';
         const lineup = teamLineup.lineups[qIndex];
         const formation = teamLineup.formations[qIndex];
         const posCellMap = window.lineup.getPosCellMap();
         const resters = teamLineup.resters[`q${qIndex + 1}`] || [];
         
-        let pitchHtml = `<div class="pitch-print">
-            <div class="pitch-line-print" style="top:50%;left:0;width:100%;height:1px;"></div>
-            <div class="center-circle-print" style="top:50%;left:50%;width:20%;height:14%;transform:translate(-50%,-50%);"></div>
-            <div class="penalty-box-print" style="top:0;left:50%;transform:translateX(-50%);width:60%;height:18%;border-top:0;"></div>
-            <div class="penalty-box-print" style="bottom:0;left:50%;transform:translateX(-50%);width:60%;height:18%;border-bottom:0;"></div>
-
-            <div class="quarter-title-integrated">팀 ${teamIdx + 1} - ${qIndex + 1}쿼터 (${formation})</div>
-            <div class="rest-list-integrated"><b>휴식:</b> ${resters.join(', ') || '없음'}</div>`;
+        let pitchHtml = `<div class="quarter-block">
+            <div class="pitch-print">
+                <div class="pitch-line-print" style="top:50%;left:0;width:100%;height:1px;"></div>
+                <div class="center-circle-print" style="top:50%;left:50%;width:20%;height:14%;transform:translate(-50%,-50%);"></div>
+                <div class="penalty-box-print" style="top:0;left:50%;transform:translateX(-50%);width:60%;height:18%;border-top:0;"></div>
+                <div class="penalty-box-print" style="bottom:0;left:50%;transform:translateX(-50%);width:60%;height:18%;border-bottom:0;"></div>
+                <div class="quarter-title-integrated">${qIndex + 1}쿼터 (${formation})</div>
+                <div class="rest-list-integrated"><b>휴식:</b> ${resters.join(', ') || '없음'}</div>`;
         
         const counters = {};
         (posCellMap[formation] || []).forEach(fc => {
@@ -154,7 +154,7 @@ export function generatePrintView(shareData) {
             counters[fc.pos]++;
         });
 
-        pitchHtml += `</div>`;
+        pitchHtml += `</div></div>`;
         return pitchHtml;
     };
     
@@ -176,16 +176,18 @@ export function generatePrintView(shareData) {
         .team-box h3 { font-size: 0.9rem; margin:0 0 6px 0; padding-bottom:3px; border-bottom: 1px solid rgba(255,255,255,0.3); }
         .team-box ul { font-size:0.65rem; list-style:none; padding-left:0; margin:0; }
         .team-box li { margin-bottom:2px; background:rgba(255,255,255,0.2); padding:2px 4px; border-radius:4px; }
-        .lineup-page-grid { display:grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 0.8cm; height: calc(100vh - 2cm); }
-        .quarter-title-integrated { position: absolute; top: 5px; left: 8px; font-size: 0.6rem; font-weight: bold; color: white; background: rgba(0,0,0,0.5); padding: 2px 5px; border-radius: 5px; z-index: 10; }
-        .rest-list-integrated { position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%); width: 95%; text-align: center; font-size: 0.6rem; font-weight: bold; color: white; background: rgba(0,0,0,0.5); padding: 2px; border-radius: 5px; z-index: 10; }
+        
+        /* 팀별 라인업 페이지 스타일 */
+        .single-team-title { text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 0.5cm; }
+        .lineup-grid-single-team { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; gap: 0.8cm; height: calc(100vh - 5cm); }
+        .quarter-block { display:flex; flex-direction:column; }
         .pitch-print { background:#2E7D32; border:1px solid #999; position:relative; width:100%; height:100%; border-radius: 4px; overflow: hidden; }
-        .pitch-line-print { position: absolute; background-color: rgba(255,255,255,0.5); }
-        .center-circle-print { position: absolute; border: 1px solid rgba(255,255,255,0.5); border-radius: 50%; }
-        .penalty-box-print { position: absolute; border: 1px solid rgba(255,255,255,0.5); }
-        .player-marker-print { position:absolute; transform:translate(-50%,-50%); text-align:center; }
-        .player-icon-print { width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-size:.65rem; border:1.5px solid white; margin: 0 auto; box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
-        .player-name-print { background:rgba(0,0,0,0.7); color:white; font-size:0.6rem; padding:1px 4px; border-radius:4px; margin-top:2px; white-space:nowrap; }
+        .pitch-print-placeholder { border: 2px dashed #ccc; border-radius: 4px; width: 100%; height: 100%; }
+        .pitch-line-print, .center-circle-print, .penalty-box-print { position: absolute; border-color: rgba(255,255,255,0.5); border-style: solid; }
+        .pitch-line-print { background-color: rgba(255,255,255,0.5); }
+        .center-circle-print { border-width: 1px; border-radius: 50%; }
+        .penalty-box-print { border-width: 1px; }
+        .quarter-title-integrated, .rest-list-integrated, .player-marker-print, .player-icon-print, .player-name-print { /* 이전과 동일한 스타일 */ }
         @page { size: A4 portrait; margin: 0; }
     </style>
     </head><body>
@@ -199,27 +201,25 @@ export function generatePrintView(shareData) {
         <div>
             <h2 class="section-title">⚖️ 팀 배정 결과</h2>
             <div class="team-grid-print">`;
-
     const colors = ["#14B8A6","#0288D1","#7B1FA2","#43A047","#F4511E"];
     teams.forEach((team, i) => {
         fullHtml += `<div class="team-box" style="background:${colors[i%5]}"><h3>팀 ${i+1}</h3><ul>${team.map(p=>`<li>${p.name.replace(' (신규)','')}</li>`).join('')}</ul></div>`;
     });
     fullHtml += `</div></div></div>`;
     
-    for (let qPair = 0; qPair < 3; qPair++) {
-        const q1_index = qPair * 2;
-        const q2_index = qPair * 2 + 1;
+    // [수정] 팀별로 페이지를 생성하는 새로운 루프
+    teams.forEach((team, teamIdx) => {
         fullHtml += `<div class="page-break"></div><div class="print-container">`;
-        fullHtml += `<div class="lineup-page-grid">`;
-        if (teams.length > 0) fullHtml += createQuarterHTML(lineups['team1'], 0, q1_index);
-        if (teams.length > 1) fullHtml += createQuarterHTML(lineups['team2'], 1, q1_index);
-        if (teams.length > 0) fullHtml += createQuarterHTML(lineups['team1'], 0, q2_index);
-        if (teams.length > 1) fullHtml += createQuarterHTML(lineups['team2'], 1, q2_index);
+        fullHtml += `<h2 class="single-team-title">팀 ${teamIdx + 1} 라인업</h2>`;
+        fullHtml += `<div class="lineup-grid-single-team">`;
+        const lineup = lineups[`team${teamIdx + 1}`];
+        for (let i = 0; i < 6; i++) {
+            fullHtml += createQuarterHTML(lineup, i);
+        }
         fullHtml += `</div></div>`;
-    }
+    });
 
     fullHtml += `</body></html>`;
-
     printWindow.document.open();
     printWindow.document.write(fullHtml);
     printWindow.document.close();
