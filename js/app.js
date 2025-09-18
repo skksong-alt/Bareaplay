@@ -270,7 +270,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         Object.keys(tabs).forEach(key => {
             if (tabs[key]) tabs[key].addEventListener('click', () => switchTab(key));
         });
-
+onSnapshot(doc(db, "settings", "activeMeeting"), (doc) => {
+            const container = document.getElementById('active-meeting-link-container');
+            const link = document.getElementById('active-meeting-link');
+            if (doc.exists() && doc.data().shareId) {
+                const shareId = doc.data().shareId;
+                link.href = `${window.location.origin}${window.location.pathname}?shareId=${shareId}`;
+                container.classList.remove('hidden');
+            } else {
+                container.classList.add('hidden');
+            }
+        });
         try {
             const collectionsToFetch = ['players', 'attendance', 'expenses', 'locations'];
             const snapshots = await Promise.all(collectionsToFetch.map(c => getDocs(collection(db, c))));
