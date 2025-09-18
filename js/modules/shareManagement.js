@@ -114,7 +114,6 @@ async function generateShareableLink() {
     }
 }
 
-// [수정] 인쇄 레이아웃 전면 수정 (세로, 2x2 그리드)
 export function generatePrintView(shareData) {
     const teams = Object.values(shareData.teams || {});
     const { meetingInfo, lineups } = shareData;
@@ -124,15 +123,24 @@ export function generatePrintView(shareData) {
         window.showNotification('팝업이 차단되었습니다. 팝업을 허용해주세요.', 'error');
         return;
     }
+    
+    // [수정] 경기장 안에 모든 정보를 넣도록 HTML 구조 변경
     const createQuarterHTML = (teamLineup, teamIdx, qIndex) => {
         if (!teamLineup || !teamLineup.lineups || !teamLineup.lineups[qIndex]) return '<div class="quarter-block"></div>';
         const lineup = teamLineup.lineups[qIndex];
         const formation = teamLineup.formations[qIndex];
         const posCellMap = window.lineup.getPosCellMap();
+        const resters = teamLineup.resters[`q${qIndex + 1}`] || [];
         
-        let html = `<div class="quarter-block">
-                        <h3 class="quarter-title">팀 ${teamIdx + 1} - ${qIndex + 1}쿼터 (${formation})</h3>
-                        <div class="pitch-print">`;
+        let pitchHtml = `<div class="pitch-print">
+            <div class="pitch-line-print" style="top:50%;left:0;width:100%;height:1px;"></div>
+            <div class="center-circle-print" style="top:50%;left:50%;width:20%;height:14%;transform:translate(-50%,-50%);"></div>
+            <div class="penalty-box-print" style="top:0;left:50%;transform:translateX(-50%);width:60%;height:18%;border-top:0;"></div>
+            <div class="penalty-box-print" style="bottom:0;left:50%;transform:translateX(-50%);width:60%;height:18%;border-bottom:0;"></div>
+
+            <div class="quarter-title-integrated">팀 ${teamIdx + 1} - ${qIndex + 1}쿼터 (${formation})</div>
+            <div class="rest-list-integrated"><b>휴식:</b> ${resters.join(', ') || '없음'}</div>`;
+        
         const counters = {};
         (posCellMap[formation] || []).forEach(fc => {
             counters[fc.pos] = (counters[fc.pos] || 0);
@@ -143,12 +151,12 @@ export function generatePrintView(shareData) {
             else if(["MF","CM"].includes(fc.pos)){icon="⚙";bg="#FBC02D"}
             else if(["LW","RW","FW"].includes(fc.pos)){icon="🎯";bg="#EF6C00"}
 
-            html += `<div class="player-marker-print" style="left:${fc.x}%;top:${fc.y}%;"><div class="player-icon-print" style="background:${bg}">${icon}</div><div class="player-name-print">${name||'-'}</div></div>`;
+            pitchHtml += `<div class="player-marker-print" style="left:${fc.x}%;top:${fc.y}%;"><div class="player-icon-print" style="background:${bg}">${icon}</div><div class="player-name-print">${name||'-'}</div></div>`;
             counters[fc.pos]++;
         });
-        const resters = teamLineup.resters[`q${qIndex + 1}`] || [];
-        html += `</div><div class="rest-players-print"><b>휴식:</b> ${resters.join(', ') || '없음'}</div></div>`;
-        return html;
+
+        pitchHtml += `</div>`; // .pitch-print 닫기
+        return pitchHtml;
     };
     
     let locationHtml = meetingInfo.locationUrl 
@@ -162,21 +170,34 @@ export function generatePrintView(shareData) {
         body { font-family:'Noto Sans KR', sans-serif; margin: 0; }
         .page-break { page-break-after: always; }
         .print-container { padding: 1cm; }
-        .info-box { background:#f8f9fa; padding:1rem; border:1px solid #dee2e6; border-radius:.5rem; margin-bottom:1.5rem; }
-        .section-title { font-size:20px; margin:0 0 12px 0; padding-bottom: 8px; border-bottom: 1px solid #ccc; }
-        .team-grid-print { display:grid; grid-template-columns:repeat(${teams.length}, 1fr); gap:10px; }
+        
+        /* 1페이지: 모임 정보 및 팀 배정 (더욱 압축) */
+        .info-box { background:#f8f9fa; padding:0.8rem; border:1px solid #dee2e6; border-radius:.5rem; margin-bottom:1rem; }
+        .section-title { font-size:18px; margin:0 0 10px 0; padding-bottom: 6px; border-bottom: 1px solid #ccc; }
+        .team-grid-print { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:8px; }
         .team-box { border-radius:0.5rem; padding:0.5rem; color:white; font-weight:bold; }
-        .team-box h3 { font-size: 1rem; margin:0 0 8px 0; padding-bottom:4px; border-bottom: 1px solid rgba(255,255,255,0.3); }
-        .team-box ul { font-size:0.7rem; list-style:none; padding-left:0; margin:0; }
-        .team-box li { margin-bottom:2px; background:rgba(255,255,255,0.2); padding:2px 5px; border-radius:4px; }
-        .lineup-page-grid { display:grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 0.5cm; height: calc(100vh - 2cm); }
-        .quarter-block { display:flex; flex-direction:column; }
-        .quarter-title { text-align:center; font-size: 0.8rem; font-weight: bold; margin-bottom: 4px; }
-        .pitch-print { background:#4CAF50; border:1px solid #999; position:relative; width:100%; aspect-ratio:7/10; border-radius: 4px; flex-grow: 1; }
+        .team-box h3 { font-size: 0.9rem; margin:0 0 6px 0; padding-bottom:3px; border-bottom: 1px solid rgba(255,255,255,0.3); }
+        .team-box ul { font-size:0.65rem; list-style:none; padding-left:0; margin:0; }
+        .team-box li { margin-bottom:2px; background:rgba(255,255,255,0.2); padding:2px 4px; border-radius:4px; }
+
+        /* 2페이지 이후: 라인업 (세로, 2x2 그리드) */
+        .lineup-page-grid { display:grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 0.8cm; height: calc(100vh - 2cm); }
+        
+        .pitch-print { background:#2E7D32; border:1px solid #999; position:relative; width:100%; height:100%; border-radius: 4px; overflow: hidden; }
+        /* 축구장 라인 스타일 */
+        .pitch-line-print { position: absolute; background-color: rgba(255,255,255,0.5); }
+        .center-circle-print { position: absolute; border: 1px solid rgba(255,255,255,0.5); border-radius: 50%; }
+        .penalty-box-print { position: absolute; border: 1px solid rgba(255,255,255,0.5); }
+
+        /* 경기장 내부 정보 스타일 */
+        .quarter-title-integrated { position: absolute; top: 5px; left: 8px; font-size: 0.6rem; font-weight: bold; color: white; background: rgba(0,0,0,0.5); padding: 2px 5px; border-radius: 5px; z-index: 10; }
+        .rest-list-integrated { position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%); width: 95%; text-align: center; font-size: 0.6rem; font-weight: bold; color: white; background: rgba(0,0,0,0.5); padding: 2px; border-radius: 5px; z-index: 10; }
+        
+        /* 선수 마커 (폰트 크기 키움) */
         .player-marker-print { position:absolute; transform:translate(-50%,-50%); text-align:center; }
-        .player-icon-print { width:16px; height:16px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-size:.5rem; border:1px solid white; margin: 0 auto; }
-        .player-name-print { background:rgba(0,0,0,0.7); color:white; font-size:.4rem; padding:1px 2px; border-radius:4px; margin-top:1px; white-space:nowrap; }
-        .rest-players-print { text-align: center; margin-top: 3px; font-size: 0.6rem; font-weight: bold; }
+        .player-icon-print { width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-size:.65rem; border:1.5px solid white; margin: 0 auto; box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
+        .player-name-print { background:rgba(0,0,0,0.7); color:white; font-size:0.6rem; padding:1px 4px; border-radius:4px; margin-top:2px; white-space:nowrap; }
+
         @page { size: A4 portrait; margin: 0; }
     </style>
     </head><body>
@@ -193,7 +214,7 @@ export function generatePrintView(shareData) {
 
     const colors = ["#14B8A6","#0288D1","#7B1FA2","#43A047","#F4511E"];
     teams.forEach((team, i) => {
-        fullHtml += `<div class="team-box" style="background:${colors[i%5]}"><h3 style="margin:0 0 8px 0; padding-bottom:4px; border-bottom: 1px solid rgba(255,255,255,0.3);">팀 ${i+1}</h3><ul style="font-size:0.85rem;list-style:none;padding-left:0; margin:0;">${team.map(p=>`<li style="margin-bottom:3px;background:rgba(255,255,255,0.2);padding:2px 5px;border-radius:4px;">${p.name.replace(' (신규)','')}</li>`).join('')}</ul></div>`;
+        fullHtml += `<div class="team-box" style="background:${colors[i%5]}"><h3>팀 ${i+1}</h3><ul>${team.map(p=>`<li>${p.name.replace(' (신규)','')}</li>`).join('')}</ul></div>`;
     });
     fullHtml += `</div></div></div>`;
     
@@ -218,12 +239,12 @@ export function generatePrintView(shareData) {
     setTimeout(()=>printWindow.print(), 500);
 }
 
+
 export function init(dependencies) {
     db = dependencies.db;
     state = dependencies.state;
     
     const pageElement = document.getElementById('page-share');
-    // [수정] generate-share-btn에서 admin-control 클래스 제거 (동작을 JS에서 제어)
     pageElement.innerHTML = `<div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">📢 모임 정보 및 공유</h2><div class="space-y-4 max-w-lg mx-auto"><div><label for="share-date" class="block text-sm font-medium">날짜</label><input type="date" id="share-date" class="mt-1 w-full p-2 border rounded-lg"></div><div><label for="share-time" class="block text-sm font-medium">시간</label><input type="time" id="share-time" class="mt-1 w-full p-2 border rounded-lg"></div><div><div class="flex justify-between items-center"><label for="share-location-select" class="block text-sm font-medium">장소 선택</label><button id="manage-locations-btn" class="text-sm text-indigo-600 hover:underline">장소 관리</button></div><select id="share-location-select" class="w-full p-2 border rounded-lg bg-white mt-1"></select></div><div class="mt-6"><button id="generate-share-btn" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700">공유 링크 생성</button></div><div id="share-link-container" class="mt-4 p-4 bg-gray-100 rounded-lg hidden"><p class="text-sm font-semibold mb-2">생성된 링크:</p><a id="share-link-anchor" href="#" target="_blank" class="text-blue-600 break-all hover:underline"></a></div></div></div>`;
 
     generateShareBtn = document.getElementById('generate-share-btn');
