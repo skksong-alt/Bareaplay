@@ -17,20 +17,17 @@ function getStatusColor(status) {
     }
 }
 
-// [수정] 참석자 명단이 있을 경우 해당 명단을 사용하도록 로직 변경
 function renderFullPlayerChecklist() {
     if (!checklistContainer) return;
     checklistContainer.innerHTML = '';
     const selectedDate = attendanceDate.value;
     const attendeesForDate = new Set(state.attendanceLog.filter(log => log.date === selectedDate).map(log => log.name));
     
-    // state.currentAttendees가 있으면 해당 명단을, 없으면 전체 선수 명단을 사용
     const playerNames = state.currentAttendees && state.currentAttendees.length > 0
         ? [...state.currentAttendees].sort((a, b) => a.localeCompare(b, 'ko-KR'))
         : Object.keys(state.playerDB).sort((a, b) => a.localeCompare(b, 'ko-KR'));
 
     playerNames.forEach(name => {
-        // 자동 채우기 시에는 모두 체크, 날짜 변경 시에는 기존 기록 따름
         const isChecked = state.currentAttendees ? true : attendeesForDate.has(name);
         const div = document.createElement('div');
         div.className = 'flex items-center';
@@ -38,7 +35,6 @@ function renderFullPlayerChecklist() {
         checklistContainer.appendChild(div);
     });
 }
-
 
 function renderAttendanceLogTable(logs) {
     if(!logBody) return;
@@ -205,13 +201,18 @@ export function renderForDate() {
     if(selectedDate) renderFullPlayerChecklist();
 }
 
-// [수정] 참석자 명단 state에 저장하고 UI 갱신
 export function autoFillAttendees(names) {
-    state.currentAttendees = names; // 현재 참석자 명단 저장
+    state.currentAttendees = names;
     const today = new Date().toISOString().split('T')[0];
     attendanceDate.value = today;
-    renderFullPlayerChecklist(); // UI 즉시 갱신
-    renderAttendanceLogTable(state.attendanceLog.filter(log => log.date === today));
+    
+    // [수정] autoFill 시에도 날짜 필터 연동
+    filterStartDateEl.value = today;
+    filterEndDateEl.value = today;
+    filterPeriodSelectEl.value = 'all';
+
+    renderFullPlayerChecklist();
+    renderForDate();
 }
 
 export function init(dependencies) {
@@ -220,7 +221,6 @@ export function init(dependencies) {
     state.currentAttendees = [];
 
     const pageElement = document.getElementById('page-accounting');
-    // [수정] 조회 기간 필터 UI 개선
     pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 space-y-8"><div class="bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">출석 기록 관리</h2><button id="admin-login-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1 px-3 rounded-lg">관리자 로그인</button></div><div class="mb-4"><label for="attendance-date" class="block text-md font-semibold text-gray-700 mb-2">날짜 선택</label><input type="date" id="attendance-date" class="w-full p-2 border rounded-lg"></div><div class="mb-4"><div class="flex justify-between items-center mb-2"><label class="block text-md font-semibold text-gray-700">참석자 선택</label><div class="space-x-2"><button id="check-all-btn" class="text-xs text-indigo-600 hover:underline admin-control" disabled>모두 선택</button><button id="uncheck-all-btn" class="text-xs text-gray-500 hover:underline admin-control" disabled>모두 해제</button></div></div><div id="attendance-checklist" class="max-h-60 overflow-y-auto border rounded-lg p-3 space-y-2"></div></div><button id="record-attendance-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition-transform transform hover:scale-105 shadow-lg admin-control" disabled>선택한 날짜 출석 저장</button></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">💰 총 잔액</h2><p id="total-balance" class="text-4xl font-bold text-indigo-600">0 Dhs</p></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">📊 월별 요약</h2><div class="w-full"><canvas id="accountingChart"></canvas></div></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">Remark / 특정 메모</h2><textarea id="memo-area" class="w-full p-3 border rounded-lg admin-control bg-gray-50" rows="5" placeholder="미납자 정보, 주요 공지 등..." disabled></textarea><p class="text-xs text-gray-500 mt-2">메모는 자동으로 저장됩니다.</p>
         <div class="mt-4 p-4 bg-gray-50 rounded-lg space-y-3">
             <div>
@@ -270,9 +270,15 @@ export function init(dependencies) {
     if(attendanceDate) attendanceDate.value = today;
 
     if(attendanceDate) attendanceDate.addEventListener('change', () => {
-        state.currentAttendees = []; // 날짜 변경 시에는 특정 참석자 명단 초기화
+        state.currentAttendees = [];
+        // [수정] 날짜 선택 시 조회 기간 필터도 함께 변경
+        const selectedDate = attendanceDate.value;
+        filterStartDateEl.value = selectedDate;
+        filterEndDateEl.value = selectedDate;
+        filterPeriodSelectEl.value = 'all'; // 기간 선택 드롭다운은 '전체 기간'으로 초기화
         renderForDate();
     });
+
     if(adminLoginBtn) adminLoginBtn.addEventListener('click', window.promptForAdminPassword);
     if(incomeTabBtn) incomeTabBtn.addEventListener('click', () => switchAccountingTab(incomeTabBtn));
     if(expenseTabBtn) expenseTabBtn.addEventListener('click', () => switchAccountingTab(expenseTabBtn));

@@ -23,8 +23,9 @@ const db = getFirestore(app);
 let adminModal, passwordInput, modalConfirmBtn, modalCancelBtn;
 const pages = {};
 const tabs = {};
+let pendingTabSwitch = null; // [수정] 이동하려던 탭을 기억하는 변수
 
-// --- [신규] 엑셀 업로드 관련 함수들 ---
+// --- 엑셀 업로드 관련 함수들 ---
 function loadPlayerDB() {
     const savedDB = localStorage.getItem('playerDB');
     if (savedDB) {
@@ -42,22 +43,33 @@ async function savePlayerDB(newDB, syncWithFirebase = true) {
 
     if (syncWithFirebase) {
         console.log("Firebase와 동기화를 시작합니다...");
-        const currentSnapshot = await getDocs(collection(db, "players"));
-        for (const docSnapshot of currentSnapshot.docs) {
-            await deleteDoc(doc(db, "players", docSnapshot.id));
+        try {
+            const currentSnapshot = await getDocs(collection(db, "players"));
+            const deletePromises = [];
+            currentSnapshot.forEach(docSnapshot => {
+                deletePromises.push(deleteDoc(doc(db, "players", docSnapshot.id)));
+            });
+            await Promise.all(deletePromises);
+
+            const setPromises = [];
+            for (const playerName in newDB) {
+                setPromises.push(setDoc(doc(db, "players", playerName), newDB[playerName]));
+            }
+            await Promise.all(setPromises);
+            
+            console.log("Firebase 동기화 완료.");
+            window.showNotification(`Firebase DB 동기화 완료!`);
+        } catch (error) {
+            console.error("Firebase 동기화 중 오류 발생:", error);
+            window.showNotification("DB 동기화에 실패했습니다.", "error");
         }
-        for (const playerName in newDB) {
-            await setDoc(doc(db, "players", playerName), newDB[playerName]);
-        }
-        console.log("Firebase 동기화 완료.");
-        window.showNotification(`Firebase DB 동기화 완료!`);
     }
 }
 
 function initExcelUploader() {
     const uploader = document.getElementById('excel-uploader');
     if (!uploader) return;
-    if (uploader.dataset.listenerAttached) return; // 중복 방지
+    if (uploader.dataset.listenerAttached) return;
 
     uploader.addEventListener('change', (event) => {
         const file = event.target.files[0];
@@ -85,15 +97,15 @@ function initExcelUploader() {
                     s2:   player.부포지션숙련도 || 0
                 };
             });
-            savePlayerDB(newPlayerDB, true); // Firebase와 동기화하며 저장
+            savePlayerDB(newPlayerDB, true);
             playerMgmt.renderPlayerTable();
             uploader.value = ''; 
         };
         reader.readAsArrayBuffer(file);
     });
-    uploader.dataset.listenerAttached = 'true'; // 중복 방지
+    uploader.dataset.listenerAttached = 'true';
 }
-// --- [신규] 함수 끝 ---
+// --- 함수 끝 ---
 
 
 window.showNotification = function(message, type = 'success') {
@@ -153,8 +165,9 @@ window.promptForAdminPassword = function() {
 
 function switchTab(activeKey, force = false) {
     if ((activeKey === 'players' || activeKey === 'share') && !state.isAdmin && !force) {
+        pendingTabSwitch = activeKey; 
         promptForAdminPassword();
-        if (!state.isAdmin) return;
+        return; 
     }
     Object.keys(pages).forEach(key => {
         if (pages[key]) pages[key].classList.toggle('hidden', key !== activeKey);
@@ -163,9 +176,10 @@ function switchTab(activeKey, force = false) {
     if (activeKey === 'accounting') {
         accounting.renderForDate();
     }
-    if (activeKey === 'players') { // 선수관리 탭을 누를 때 업로더 기능 활성화
+    if (activeKey === 'players') { 
         initExcelUploader();
     }
+    pendingTabSwitch = null; 
 }
 window.refreshData = async function(collectionName) {
     const snapshot = await getDocs(collection(db, collectionName));
@@ -177,7 +191,6 @@ window.refreshData = async function(collectionName) {
     }
 };
 
-// ... (renderSharePageView 함수는 기존과 동일하게 유지) ...
 function renderSharePageView(shareData) {
     const { meetingInfo, teams: teamsObject, lineups } = shareData;
     const teams = Object.values(teamsObject || {});
@@ -194,13 +207,11 @@ function renderSharePageView(shareData) {
             <h1 class="text-4xl md:text-5xl font-bold text-gray-900">BareaPlay⚽</h1>
             <p class="mt-2 text-lg text-gray-600">모임 결과</p>
         </header>
-        
         <div class="bg-white p-6 rounded-lg shadow-md mb-8 max-w-2xl mx-auto">
             <h2 class="text-2xl font-bold mb-4 border-b pb-2">📅 모임 정보</h2>
             <p class="text-gray-700 mb-2"><strong>시간:</strong> ${new Date(meetingInfo.time).toLocaleString('ko-KR')}</p>
             <p class="text-gray-700"><strong>장소:</strong> ${locationHtml}</p>
         </div>
-
         <div class="bg-white p-6 rounded-lg shadow-md mb-8 max-w-4xl mx-auto">
             <h2 class="text-2xl font-bold mb-4 border-b pb-2">⚖️ 팀 배정 결과</h2>
             <div class="grid grid-cols-1 md:grid-cols-${teams.length > 2 ? '3' : '2'} gap-4">`;
@@ -262,7 +273,6 @@ function renderSharePageView(shareData) {
         shareMgmt.generatePrintView(shareData);
     });
 }
-
 
 document.addEventListener('DOMContentLoaded', async () => {
     const loadingOverlay = document.getElementById('loading-overlay');
@@ -329,8 +339,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 window.showNotification('관리자 인증에 성공했습니다.', 'success');
                 updateAdminUI();
                 adminModal.classList.add('hidden');
-                const activeTabKey = Object.keys(tabs).find(key => tabs[key].classList.contains('active'));
-                if(activeTabKey) switchTab(activeTabKey, true);
+                if (pendingTabSwitch) {
+                    switchTab(pendingTabSwitch, true);
+                }
             } else {
                 window.showNotification('승인번호가 올바르지 않습니다.', 'error');
             }
@@ -345,7 +356,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         onSnapshot(doc(db, "settings", "activeMeeting"), (doc) => {
             const placeholder = document.getElementById('realtime-link-placeholder');
-            placeholder.innerHTML = ''; 
+            placeholder.innerHTML = '';
             if (doc.exists() && doc.data().shareId) {
                 const shareId = doc.data().shareId;
                 const linkText = doc.data().linkText || "오늘 모임 결과 확인하기";
@@ -360,10 +371,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
 
+        // [수정] 여기가 앱의 핵심 데이터 로딩 로직입니다.
         try {
-            // [수정] 데이터 로딩 순서 변경
-            loadPlayerDB(); // 1. 로컬 저장소(브라우저)에서 선수 DB 로드
+            loadPlayerDB(); // 1. 브라우저 저장소에서 선수 DB 먼저 로드
 
+            // 2. 'players'를 제외한 나머지 데이터만 Firebase에서 불러옴
             const collectionsToFetch = ['attendance', 'expenses', 'locations'];
             const snapshots = await Promise.all(collectionsToFetch.map(c => getDocs(collection(db, c))));
             
@@ -371,15 +383,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             state.expenseLog = snapshots[1].docs.map(doc => ({ id: doc.id, ...doc.data() }));
             state.locations = snapshots[2].docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            // 2. 만약 로컬에 선수 데이터가 없으면 Firebase에서 가져와서 로컬에 저장
+            // 3. 만약 브라우저에 선수 데이터가 없었다면 Firebase에서 가져와서 브라우저에도 저장
             if (Object.keys(state.playerDB).length === 0) {
                 console.log("로컬 선수 데이터가 없어 Firebase에서 가져옵니다.");
                 const playerSnapshot = await getDocs(collection(db, "players"));
                 const firebaseDB = {};
                 playerSnapshot.forEach(doc => { firebaseDB[doc.id] = doc.data(); });
-                savePlayerDB(firebaseDB, false); // Firebase와 다시 동기화할 필요는 없음
+                savePlayerDB(firebaseDB, false); // Firebase에 다시 쓸 필요는 없음
             }
 
+            // 실시간 데이터 감지 리스너들
             onSnapshot(collection(db, "expenses"), (snapshot) => {
                 state.expenseLog = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 if(pages.accounting && !pages.accounting.classList.contains('hidden')) { accounting.renderForDate(); }
@@ -396,6 +409,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (doc.exists() && memoArea) { memoArea.value = doc.data().content; }
             });
             
+            // 초기 렌더링
             playerMgmt.renderPlayerTable();
             accounting.renderForDate();
 
