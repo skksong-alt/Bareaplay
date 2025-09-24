@@ -22,7 +22,7 @@ function populateLocations() {
         shareLocationSelect.value = currentVal;
     }
 }
-//
+
 function renderLocationList() {
     if (!locationListDiv) return;
     locationListDiv.innerHTML = '';
@@ -56,12 +56,10 @@ async function generateShareableLink() {
 
     try {
         const allTeamLineups = {};
-        // 캐시를 먼저 확인하고, 없으면 새로 생성
         const lineupPromises = state.teams.map((team, i) => {
             if (state.teamLineupCache && state.teamLineupCache[i]) {
-                return Promise.resolve(state.teamLineupCache[i]); // 캐시된 데이터 사용
+                return Promise.resolve(state.teamLineupCache[i]);
             }
-            // 캐시 없으면 새로 생성
             const teamMembers = team.map(p => p.name.replace(' (신규)', ''));
             const formations = Array.from(document.querySelectorAll('#page-lineup select')).map(s => s.value);
             return window.lineup.executeLineupGeneration(teamMembers, formations, true);
@@ -69,13 +67,17 @@ async function generateShareableLink() {
 
         const lineups = await Promise.all(lineupPromises);
         
-        lineups.forEach((lineup, i) => {
-            if (lineup) {
+        lineups.forEach((originalLineup, i) => {
+            if (originalLineup) {
+                // [수정] 원본 데이터 훼손을 막기 위해 lineup 객체를 깊은 복사
+                const lineup = JSON.parse(JSON.stringify(originalLineup));
+
                 const restersObject = {};
+                // 복사된 lineup 객체의 resters를 사용
                 (lineup.resters || []).forEach((resterArray, qIndex) => {
                     restersObject[`q${qIndex + 1}`] = resterArray;
                 });
-                lineup.resters = restersObject;
+                lineup.resters = restersObject; // 복사된 lineup 객체를 수정
                 allTeamLineups[`team${i + 1}`] = lineup;
             }
         });
@@ -194,8 +196,6 @@ export function generatePrintView(shareData) {
         .team-grid-print { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:15px; page-break-inside: avoid; }
         .team-box { border-radius:0.5rem; padding:0.8rem; color:white; }
         .team-box h3 { font-size: 1.1rem; margin:0 0 8px 0; padding-bottom:4px; border-bottom: 1px solid rgba(255,255,255,0.4); }
-        
-        /* [수정] 팀 박스 내부 선수 명단을 2줄로 나누어 높이를 줄임 */
         .team-box ul {
             font-size:0.8rem;
             list-style:none;
@@ -207,7 +207,6 @@ export function generatePrintView(shareData) {
             column-gap: 15px;
         }
         .team-box li { margin-bottom:4px; }
-        
         .single-team-title { text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 1cm; padding-bottom: 10px; }
         .lineup-grid-final { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1cm; }
         .quarter-block { display:flex; flex-direction:column; }

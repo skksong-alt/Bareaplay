@@ -83,7 +83,6 @@ function renderResults(teams) {
             const playerTag = document.createElement('div');
             playerTag.className = 'player-tag flex justify-between items-center bg-white/20 p-2 rounded-lg mb-2 cursor-grab';
             playerTag.draggable = true;
-            // [수정] 개인별 실력 점수 표시하는 span 태그 제거
             playerTag.innerHTML = `<span class="font-semibold">${player.name}</span><div class="flex items-center"><span class="text-sm opacity-90 mr-2">${posIcons}</span></div>`;
             playerTag.addEventListener('dragstart', (e) => handlePlayerDragStart(e, player.name, index));
             playersContainer.appendChild(playerTag);
@@ -91,7 +90,8 @@ function renderResults(teams) {
         
         const header = document.createElement('div');
         header.className = 'mb-3';
-        header.innerHTML = `<h3 class="text-2xl font-bold">팀 ${index + 1}</h3><div class="text-sm opacity-90 font-medium bg-black/20 inline-block px-2 py-1 rounded-md mt-1">총합: ${teamSkillSum} | 평균: ${teamSkillAvg} | 인원: ${team.length}명</div><div class="text-sm font-medium mt-2">🧤${posCounts.GK} 🛡️${posCounts.DF} ⚙️${posCounts.MF} 🎯${posCounts.FW}</div>`;
+        // [수정] toFixed(1)를 사용하여 소수점 첫째 자리까지만 표시
+        header.innerHTML = `<h3 class="text-2xl font-bold">팀 ${index + 1}</h3><div class="text-sm opacity-90 font-medium bg-black/20 inline-block px-2 py-1 rounded-md mt-1">총합: ${teamSkillSum.toFixed(1)} | 평균: ${teamSkillAvg} | 인원: ${team.length}명</div><div class="text-sm font-medium mt-2">🧤${posCounts.GK} 🛡️${posCounts.DF} ⚙️${posCounts.MF} 🎯${posCounts.FW}</div>`;
 
         teamCard.appendChild(header);
         teamCard.appendChild(playersContainer);
