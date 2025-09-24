@@ -118,8 +118,6 @@ function renderQuarter(qIndex) {
     addDragAndDropHandlers();
 }
 
-
-// [수정] 라인업 캐시 확인 및 표시 로직 추가
 export function renderTeamSelectTabs(teams) {
     if (!teamSelectTabsContainer) return;
     teamSelectTabsContainer.innerHTML = '';
@@ -132,12 +130,11 @@ export function renderTeamSelectTabs(teams) {
 
         lineupMembersTextarea.value = team.map(p => p.name.replace(' (신규)', '')).join('\n');
         
-        // 캐시된 라인업 확인
         if (state.teamLineupCache[index]) {
             state.lineupResults = state.teamLineupCache[index];
             lineupDisplay.classList.remove('hidden');
             placeholderLineup.classList.add('hidden');
-            document.querySelector('.lineup-q-tab[data-q="0"]').click(); // 1쿼터부터 표시
+            document.querySelector('.lineup-q-tab[data-q="0"]').click();
         } else {
             state.lineupResults = null;
             lineupDisplay.classList.add('hidden');
@@ -156,11 +153,10 @@ export function renderTeamSelectTabs(teams) {
     });
 
     if (teams.length > 0) {
-        handleTabClick(teams[0], 0); // 첫 번째 팀을 기본으로 선택
+        handleTabClick(teams[0], 0);
     }
 }
 
-// [수정] 6쿼터 지원 로직으로 변경
 function executeLineupGeneration(members, formations, isSilent = false) {
     return new Promise(resolve => {
         if (members.length < 11 && !isSilent) {
@@ -202,7 +198,18 @@ function executeLineupGeneration(members, formations, isSilent = false) {
 
             const lineups = []; const resters = [];
             let restQueuePointer = 0;
-            let secondaryGkUsage = {}; // 부포지션 키퍼 사용 횟수 추적
+            let secondaryGkUsage = {};
+            
+            // [신규] 선수별 포지션 출전 횟수 추적 객체
+            const pos1Usage = {};
+            const pos2Usage = {};
+            members.forEach(m => {
+                pos1Usage[m] = 0;
+                pos2Usage[m] = 0;
+            });
+
+            const MAX_POS1_PLAYS = 4; // 주 포지션 최대 출전 횟수
+            const MAX_POS2_PLAYS = 3; // 부 포지션 최대 출전 횟수
             
             for (let q = 0; q < 6; q++) {
                 const formation = formations[q];
@@ -217,35 +224,30 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                 let assignment = {};
                 let availablePlayers = [...onField];
                 
-                // --- 신규 GK 배정 로직 ---
                 const gkSlotExists = slots.includes('GK');
                 if (gkSlotExists) {
                     const prevResters = q > 0 ? resters[q-1] : [];
                     let gkCandidates = availablePlayers.filter(p => !prevResters.includes(p));
                     let assignedGk = null;
 
-                    // 1. 주포지션 키퍼 우선 배정
                     let availablePrimaryGks = primaryGks.filter(gk => gkCandidates.includes(gk));
                     if (availablePrimaryGks.length > 0) {
                         assignedGk = availablePrimaryGks[0];
                     }
 
-                    // 2. 주포지션 키퍼 없으면, 부포지션 키퍼 중 한번도 안쓴 선수 배정
                     if (!assignedGk) {
                         let availableSecondaryGks = secondaryGks.filter(gk => gkCandidates.includes(gk) && !secondaryGkUsage[gk]);
                         if (availableSecondaryGks.length > 0) {
                             assignedGk = availableSecondaryGks[0];
-                            secondaryGkUsage[assignedGk] = 1; // 사용 기록
+                            secondaryGkUsage[assignedGk] = 1;
                         }
                     }
 
-                    // 3. 그래도 없으면 그냥 아무나 배정 (기존 로직)
                     if (assignedGk) {
                         assignment['GK'] = [assignedGk];
                         availablePlayers.splice(availablePlayers.indexOf(assignedGk), 1);
                     }
                 }
-                // --- GK 로직 끝 ---
 
                 for (const pos of slots) {
                     if (pos === 'GK' && assignment['GK']) continue;
@@ -254,18 +256,37 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                         assignment[pos].push(null); continue;
                     }
 
+                    // --- 수정된 필드 플레이어 배정 로직 ---
                     let bestPlayer = availablePlayers[0], bestFit = -1;
                     for (const playerName of availablePlayers) {
                         const player = localPlayerDB[playerName];
-                        let fitScore = Math.random() * 0.1;
-                        if ((player.pos1 || []).includes(pos)) fitScore += 2;
-                        else if ((player.pos2 || []).includes(pos)) fitScore += 1;
+                        let fitScore = 0;
+
+                        const isPos1 = (player.pos1 || []).includes(pos);
+                        const isPos2 = (player.pos2 || []).includes(pos);
+
+                        if (isPos1 && pos1Usage[playerName] < MAX_POS1_PLAYS) {
+                            fitScore = 100 + (player.s1 || 65);
+                        } else if (isPos2 && pos2Usage[playerName] < MAX_POS2_PLAYS) {
+                            fitScore = (player.s2 || 0);
+                        } else if (!isPos1 && !isPos2) {
+                            fitScore = 1;
+                        }
+
                         if (fitScore > bestFit) {
                             bestFit = fitScore; bestPlayer = playerName;
                         }
                     }
+                    
                     assignment[pos].push(bestPlayer);
-                    if (bestPlayer) availablePlayers.splice(availablePlayers.indexOf(bestPlayer), 1);
+                    availablePlayers.splice(availablePlayers.indexOf(bestPlayer), 1);
+
+                    const playerInfo = localPlayerDB[bestPlayer];
+                    if ((playerInfo.pos1 || []).includes(pos)) {
+                        pos1Usage[bestPlayer]++;
+                    } else if ((playerInfo.pos2 || []).includes(pos)) {
+                        pos2Usage[bestPlayer]++;
+                    }
                 }
                 lineups.push(assignment);
             }
@@ -284,10 +305,9 @@ export { executeLineupGeneration };
 
 export function init(dependencies) {
     state = dependencies.state;
-    state.teamLineupCache = {}; // 캐시 객체 초기화
+    state.teamLineupCache = {};
     
     const pageElement = document.getElementById('page-lineup');
-    // [수정] 6쿼터 UI로 변경
     pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">라인업 조건</h2><div class="mb-4"><label class="block text-md font-semibold text-gray-700 mb-2">팀 선택</label><div id="team-select-tabs-container" class="flex flex-wrap gap-2"><p class="text-sm text-gray-500">팀 배정기에서 먼저 팀을 생성해주세요.</p></div><textarea id="lineup-members" class="hidden"></textarea></div><div class="grid grid-cols-2 gap-4 mb-6"><div><label for="formation-q1" class="block text-sm font-medium">1쿼터</label><select id="formation-q1" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q2" class="block text-sm font-medium">2쿼터</label><select id="formation-q2" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q3" class="block text-sm font-medium">3쿼터</label><select id="formation-q3" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q4" class="block text-sm font-medium">4쿼터</label><select id="formation-q4" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q5" class="block text-sm font-medium">5쿼터</label><select id="formation-q5" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q6" class="block text-sm font-medium">6쿼터</label><select id="formation-q6" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div></div><div class="mt-8"><button id="generateLineupButton" class="w-full bg-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-teal-700 transition-transform transform hover:scale-105 shadow-lg">라인업 생성!</button></div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">라인업 결과</h2><div id="loading-lineup" class="hidden"><svg class="animate-spin h-6 w-6 text-teal-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div></div><div id="result-container-lineup"><div id="placeholder-lineup" class="flex items-center justify-center text-gray-400 min-h-[60vh]"><p>조건을 입력하고 라인업 생성을 눌러주세요.</p></div><div id="lineup-display" class="hidden"><div class="flex space-x-2 border-b mb-4"><button class="lineup-q-tab active-q-tab py-2 px-4 font-semibold" data-q="0">1쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="1">2쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="2">3쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="3">4쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="4">5쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="5">6쿼터</button></div><div class="grid grid-cols-1 md:grid-cols-3 gap-4"><div class="md:col-span-2"><div id="pitch-container"></div></div><div id="lineup-sidebar" class="md:col-span-1 p-4 bg-gray-50 rounded-lg space-y-4"><div id="resters-panel"></div><div id="unassigned-panel"></div></div></div></div></div></div></div>`;
     
     generateLineupButton = document.getElementById('generateLineupButton');
@@ -314,7 +334,7 @@ export function init(dependencies) {
 
         if (result) {
             state.lineupResults = result;
-            state.teamLineupCache[activeTeamIndex] = result; // [수정] 결과를 캐시에 저장
+            state.teamLineupCache[activeTeamIndex] = result;
             window.shareMgmt.updateLineupData(result, formations);
             lineupDisplay.classList.remove('hidden');
             placeholderLineup.classList.add('hidden');
