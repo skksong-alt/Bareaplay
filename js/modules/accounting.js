@@ -36,6 +36,7 @@ function renderFullPlayerChecklist() {
     });
 }
 
+
 function renderAttendanceLogTable(logs) {
     if(!logBody) return;
     logBody.innerHTML = '';
@@ -190,10 +191,11 @@ export function renderForDate() {
     const endDate = filterEndDateEl.value;
     
     const filteredAttendance = state.attendanceLog.filter(log => (!startDate || log.date >= startDate) && (!endDate || log.date <= endDate));
-    const filteredExpenses = state.expenseLog.filter(log => (!startDate || log.date >= startDate) && (!endDate || log.date <= endDate));
     
     renderAttendanceLogTable(filteredAttendance);
-    renderExpenseLog(filteredExpenses);
+    // [수정] 지출 내역은 날짜 필터 없이 항상 전체를 표시하도록 변경
+    renderExpenseLog(state.expenseLog);
+    
     calculateAndRenderTotalBalance();
     renderAccountingChart();
 
@@ -206,7 +208,6 @@ export function autoFillAttendees(names) {
     const today = new Date().toISOString().split('T')[0];
     attendanceDate.value = today;
     
-    // [수정] autoFill 시에도 날짜 필터 연동
     filterStartDateEl.value = today;
     filterEndDateEl.value = today;
     filterPeriodSelectEl.value = 'all';
@@ -271,11 +272,10 @@ export function init(dependencies) {
 
     if(attendanceDate) attendanceDate.addEventListener('change', () => {
         state.currentAttendees = [];
-        // [수정] 날짜 선택 시 조회 기간 필터도 함께 변경
         const selectedDate = attendanceDate.value;
         filterStartDateEl.value = selectedDate;
         filterEndDateEl.value = selectedDate;
-        filterPeriodSelectEl.value = 'all'; // 기간 선택 드롭다운은 '전체 기간'으로 초기화
+        filterPeriodSelectEl.value = 'all';
         renderForDate();
     });
 
