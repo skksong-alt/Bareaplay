@@ -59,14 +59,12 @@ function addDragAndDropHandlers() {
             e.preventDefault(); target.classList.remove('drop-target');
             const dragging = document.querySelector('.dragging');
             if (!dragging || target === dragging) return;
-
             const lineup = state.lineupResults.lineups[currentQuarter];
             const resters = state.lineupResults.resters[currentQuarter];
             const draggingName = dragging.dataset.name;
             const targetName = target.dataset.name;
             const draggingPosType = dragging.dataset.pos;
             const targetPosType = target.dataset.pos;
-            
             if (draggingPosType !== 'rest' && draggingPosType !== 'sub') {
                 const d_loc = findInLineup(lineup, draggingName);
                 if (!d_loc) return;
@@ -78,9 +76,7 @@ function addDragAndDropHandlers() {
                     }
                 }
             } 
-            
             renderQuarter(currentQuarter);
-            
             if (state.teamLineupCache && activeTeamIndex !== -1) {
                 state.teamLineupCache[activeTeamIndex] = state.lineupResults;
             }
@@ -91,7 +87,10 @@ function addDragAndDropHandlers() {
 }
 
 function renderQuarter(qIndex) {
-    if (!state.lineupResults) return;
+    if (!state.lineupResults || !state.lineupResults.lineups || !state.lineupResults.lineups[qIndex]) {
+        pitchContainer.innerHTML = createPitchHTML(); // 라인업 없어도 경기장은 표시
+        return;
+    }
     pitchContainer.innerHTML = createPitchHTML();
     const pitch = pitchContainer.querySelector('.pitch');
     const lineup = state.lineupResults.lineups[qIndex];
@@ -99,7 +98,6 @@ function renderQuarter(qIndex) {
     const formationLayout = posCellMap[formation] || [];
     let counters = {};
     let assignedPlayers = new Set(Object.values(lineup).flat().filter(Boolean));
-
     formationLayout.forEach((fc, index) => {
         const pos = fc.pos;
         counters[pos] = (counters[pos] || 0);
@@ -109,18 +107,16 @@ function renderQuarter(qIndex) {
         marker.style.left = `${fc.x}%`; marker.style.top = `${fc.y}%`;
         pitch.appendChild(marker);
     });
-
     const resters = (state.lineupResults.resters[qIndex] || []).sort((a,b) => a.localeCompare(b, 'ko-KR'));
-    const unassigned = state.lineupResults.members.filter(m => !assignedPlayers.has(m) && !resters.includes(m)).sort((a,b) => a.localeCompare(b, 'ko-KR'));
-
+    const unassigned = (state.lineupResults.members || []).filter(m => !assignedPlayers.has(m) && !resters.includes(m)).sort((a,b) => a.localeCompare(b, 'ko-KR'));
     restersPanel.innerHTML = `<h4 class="font-bold text-lg mb-2">🛑 휴식 선수</h4><div class="space-y-2">${resters.length > 0 ? resters.map(r => createPlayerMarker(r, 'rest', r).outerHTML).join('') : '<p class="text-gray-500">휴식 인원 없음</p>'}</div>`;
     unassignedPanel.innerHTML = `<h4 class="font-bold text-lg mb-2">🤔 미배정 선수</h4><div class="space-y-2">${unassigned.length > 0 ? unassigned.map((name, index) => createPlayerMarker(name, 'sub', `${name}-${index}`).outerHTML).join('') : '<p class="text-gray-500">미배정 인원 없음</p>'}</div>`;
-    
     addDragAndDropHandlers();
 }
 
 export function renderTeamSelectTabs(teams) {
     if (!teamSelectTabsContainer) return;
+    const previouslyActiveIndex = activeTeamIndex;
     teamSelectTabsContainer.innerHTML = '';
     
     const handleTabClick = (team, index) => {
@@ -128,10 +124,9 @@ export function renderTeamSelectTabs(teams) {
         document.querySelectorAll('.team-tab-btn').forEach(btn => btn.classList.remove('active'));
         const currentButton = document.querySelector(`.team-tab-btn[data-team-index="${index}"]`);
         if (currentButton) currentButton.classList.add('active');
-
         lineupMembersTextarea.value = team.map(p => p.name.replace(' (신규)', '')).join('\n');
         
-        if (state.teamLineupCache[index]) {
+        if (state.teamLineupCache && state.teamLineupCache[index]) {
             state.lineupResults = state.teamLineupCache[index];
             lineupDisplay.classList.remove('hidden');
             placeholderLineup.classList.add('hidden');
@@ -148,181 +143,96 @@ export function renderTeamSelectTabs(teams) {
         teamButton.className = `team-tab-btn p-2 rounded-lg border-2 font-semibold transition team-tab-btn-${(index % 5) + 1}`;
         teamButton.textContent = `팀 ${index + 1}`;
         teamButton.dataset.teamIndex = index;
+        if (index === previouslyActiveIndex) {
+            teamButton.classList.add('active');
+        }
         teamButton.addEventListener('click', () => handleTabClick(team, index));
         teamSelectTabsContainer.appendChild(teamButton);
     });
 
     if (teams.length > 0) {
-        const firstActiveTab = document.querySelector('.team-tab-btn.active');
-        if (!firstActiveTab) {
-             handleTabClick(teams[0], 0);
+        const currentActive = document.querySelector('.team-tab-btn.active');
+        if (currentActive) {
+            handleTabClick(teams[previouslyActiveIndex], previouslyActiveIndex);
         } else {
-             const currentIdx = parseInt(firstActiveTab.dataset.teamIndex, 10);
-             if(currentIdx >= teams.length) handleTabClick(teams[0], 0);
-             else handleTabClick(teams[currentIdx], currentIdx);
+            handleTabClick(teams[0], 0);
         }
     } else {
         lineupDisplay.classList.add('hidden');
         placeholderLineup.classList.remove('hidden');
+        lineupMembersTextarea.value = '';
     }
 }
 
-function executeLineupGeneration(members, formations, isSilent = false) {
+export function executeLineupGeneration(members, formations, isSilent = false) {
     return new Promise(resolve => {
         if (members.length < 11 && !isSilent) {
             window.showNotification("최소 11명의 선수가 필요합니다.", 'error');
-            resolve(null);
-            return;
+            resolve(null); return;
         }
-
         const initialOrder = state.initialAttendeeOrder || [];
-        const sortedMembers = [...members].sort((a, b) => {
-            const indexA = initialOrder.indexOf(a);
-            const indexB = initialOrder.indexOf(b);
-            if (indexA === -1) return 1;
-            if (indexB === -1) return -1;
-            return indexA - indexB;
-        });
-
+        const sortedMembers = [...members].sort((a, b) => { const indexA = initialOrder.indexOf(a); const indexB = initialOrder.indexOf(b); if (indexA === -1) return 1; if (indexB === -1) return -1; return indexA - indexB; });
         const localPlayerDB = {};
-        members.forEach(name => {
-            localPlayerDB[name] = state.playerDB[name] || { name, pos1: [], s1: 65, pos2: [], s2: 0 };
-        });
-
+        members.forEach(name => { localPlayerDB[name] = state.playerDB[name] || { name, pos1: [], s1: 65, pos2: [], s2: 0 }; });
         const primaryGks = members.filter(m => (localPlayerDB[m].pos1 || []).includes('GK'));
         const secondaryGks = members.filter(m => !(localPlayerDB[m].pos1 || []).includes('GK') && (localPlayerDB[m].pos2 || []).includes('GK'));
-        
         let bestLineup = null; let bestScore = Infinity;
         const TRIAL = 300;
-        
         for (let tr = 0; tr < TRIAL; tr++) {
-            let restOrderQueue = [...sortedMembers].reverse();
-            let fullRestQueue = [];
-            let totalRestSlots = 0;
-            formations.forEach(f => {
-                const numOnField = posCellMap[f]?.length || 11;
-                totalRestSlots += Math.max(0, members.length - numOnField);
-            });
+            let restOrderQueue = [...sortedMembers].reverse(); let fullRestQueue = []; let totalRestSlots = 0;
+            formations.forEach(f => { const numOnField = posCellMap[f]?.length || 11; totalRestSlots += Math.max(0, members.length - numOnField); });
             while (fullRestQueue.length < totalRestSlots) { fullRestQueue.push(...restOrderQueue); }
             fullRestQueue = fullRestQueue.slice(0, totalRestSlots);
-
-            const lineups = []; const resters = [];
-            let restQueuePointer = 0;
-            let secondaryGkUsage = {};
-            let fillerGkUsage = {};
-            
-            const pos1Usage = {};
-            const pos2Usage = {};
-            members.forEach(m => {
-                pos1Usage[m] = 0;
-                pos2Usage[m] = 0;
-            });
-
-            const MAX_POS1_PLAYS = 4;
-            const MAX_POS2_PLAYS = 3;
-            
+            const lineups = []; const resters = []; let restQueuePointer = 0;
+            let secondaryGkUsage = {}; let fillerGkUsage = {}; const pos1Usage = {}; const pos2Usage = {};
+            members.forEach(m => { pos1Usage[m] = 0; pos2Usage[m] = 0; });
+            const MAX_POS1_PLAYS = 4; const MAX_POS2_PLAYS = 3;
             for (let q = 0; q < 6; q++) {
-                const formation = formations[q];
-                const slots = posCellMap[formation]?.map(c => c.pos) || [];
-                const numToRest = members.length - slots.length;
-
+                const formation = formations[q]; const slots = posCellMap[formation]?.map(c => c.pos) || []; const numToRest = members.length - slots.length;
                 const quarterResters = [...new Set(fullRestQueue.slice(restQueuePointer, restQueuePointer + numToRest))];
-                restQueuePointer += numToRest;
-                resters.push(quarterResters);
-                
-                let onField = members.filter(m => !quarterResters.includes(m));
-                let assignment = {};
-                let availablePlayers = [...onField];
-                
+                restQueuePointer += numToRest; resters.push(quarterResters);
+                let onField = members.filter(m => !quarterResters.includes(m)); let assignment = {}; let availablePlayers = [...onField];
                 const gkSlotExists = slots.includes('GK');
                 if (gkSlotExists) {
-                    const prevResters = q > 0 ? resters[q-1] : [];
-                    let gkCandidates = availablePlayers.filter(p => !prevResters.includes(p));
-                    let assignedGk = null;
-
+                    const prevResters = q > 0 ? resters[q-1] : []; let gkCandidates = availablePlayers.filter(p => !prevResters.includes(p)); let assignedGk = null;
                     let availablePrimaryGks = primaryGks.filter(gk => gkCandidates.includes(gk));
-                    if (availablePrimaryGks.length > 0) {
-                        assignedGk = availablePrimaryGks[0];
-                    }
-
+                    if (availablePrimaryGks.length > 0) { assignedGk = availablePrimaryGks[0]; }
                     if (!assignedGk) {
                         let availableSecondaryGks = secondaryGks.filter(gk => gkCandidates.includes(gk) && !secondaryGkUsage[gk]);
-                        if (availableSecondaryGks.length > 0) {
-                            assignedGk = availableSecondaryGks[0];
-                            secondaryGkUsage[assignedGk] = 1;
-                        }
+                        if (availableSecondaryGks.length > 0) { assignedGk = availableSecondaryGks[0]; secondaryGkUsage[assignedGk] = 1; }
                     }
-
-                    if (assignedGk) {
-                        assignment['GK'] = [assignedGk];
-                        availablePlayers.splice(availablePlayers.indexOf(assignedGk), 1);
-                    }
+                    if (assignedGk) { assignment['GK'] = [assignedGk]; availablePlayers.splice(availablePlayers.indexOf(assignedGk), 1); }
                 }
-
                 for (const pos of slots) {
                     if (pos === 'GK' && assignment['GK']) continue;
                     assignment[pos] = assignment[pos] || [];
-                    if (availablePlayers.length === 0) {
-                        assignment[pos].push(null); continue;
-                    }
-
+                    if (availablePlayers.length === 0) { assignment[pos].push(null); continue; }
                     let bestPlayer = availablePlayers[0], bestFit = -1;
                     for (const playerName of availablePlayers) {
-                        const player = localPlayerDB[playerName];
-                        let fitScore = 0;
-
-                        if (pos === 'GK' && secondaryGks.includes(playerName) && secondaryGkUsage[playerName]) {
-                            fitScore = -1; 
-                        } else {
-                            const isPos1 = (player.pos1 || []).includes(pos);
-                            const isPos2 = (player.pos2 || []).includes(pos);
-
-                            if (isPos1 && pos1Usage[playerName] < MAX_POS1_PLAYS) {
-                                fitScore = 100 + (player.s1 || 65);
-                            } else if (isPos2 && pos2Usage[playerName] < MAX_POS2_PLAYS) {
-                                fitScore = (player.s2 || 0);
-                            } else if (!isPos1 && !isPos2) {
-                                if (pos === 'GK' && fillerGkUsage[playerName]) {
-                                    fitScore = -1;
-                                } else {
-                                    fitScore = 1;
-                                }
-                            }
+                        const player = localPlayerDB[playerName]; let fitScore = 0;
+                        if (pos === 'GK' && secondaryGks.includes(playerName) && secondaryGkUsage[playerName]) { fitScore = -1; } 
+                        else {
+                            const isPos1 = (player.pos1 || []).includes(pos); const isPos2 = (player.pos2 || []).includes(pos);
+                            if (isPos1 && pos1Usage[playerName] < MAX_POS1_PLAYS) { fitScore = 100 + (player.s1 || 65); } 
+                            else if (isPos2 && pos2Usage[playerName] < MAX_POS2_PLAYS) { fitScore = (player.s2 || 0); } 
+                            else if (!isPos1 && !isPos2) { if (pos === 'GK' && fillerGkUsage[playerName]) { fitScore = -1; } else { fitScore = 1; } }
                         }
-
-                        if (fitScore > bestFit) {
-                            bestFit = fitScore; bestPlayer = playerName;
-                        }
+                        if (fitScore > bestFit) { bestFit = fitScore; bestPlayer = playerName; }
                     }
-                    
                     assignment[pos].push(bestPlayer);
-                    if (bestPlayer) availablePlayers.splice(availablePlayers.indexOf(bestPlayer), 1);
-
-                    if(bestPlayer) {
-                        const playerInfo = localPlayerDB[bestPlayer];
-                        const isPrimaryGk = primaryGks.includes(bestPlayer);
-                        const isSecondaryGk = secondaryGks.includes(bestPlayer);
-
-                        if ((playerInfo.pos1 || []).includes(pos)) {
-                            pos1Usage[bestPlayer]++;
-                        } else if ((playerInfo.pos2 || []).includes(pos)) {
-                            pos2Usage[bestPlayer]++;
-                        }
-                        
-                        if (pos === 'GK' && !isPrimaryGk && !isSecondaryGk) {
-                            fillerGkUsage[bestPlayer] = 1;
-                        }
+                    if (bestPlayer) {
+                        availablePlayers.splice(availablePlayers.indexOf(bestPlayer), 1);
+                        const playerInfo = localPlayerDB[bestPlayer]; const isPrimaryGk = primaryGks.includes(bestPlayer); const isSecondaryGk = secondaryGks.includes(bestPlayer);
+                        if ((playerInfo.pos1 || []).includes(pos)) { pos1Usage[bestPlayer]++; } 
+                        else if ((playerInfo.pos2 || []).includes(pos)) { pos2Usage[bestPlayer]++; }
+                        if (pos === 'GK' && !isPrimaryGk && !isSecondaryGk) { fillerGkUsage[bestPlayer] = 1; }
                     }
                 }
                 lineups.push(assignment);
             }
-            
             const qScores = lineups.map(l => Object.values(l).flat().filter(Boolean).reduce((sum, name) => sum + (localPlayerDB[name]?.s1 || 65), 0));
             const score = qScores.length > 1 ? Math.max(...qScores) - Math.min(...qScores) : 0;
-            if (score < bestScore) {
-                bestScore = score;
-                bestLineup = { lineups, resters, members, formations, score };
-            }
+            if (score < bestScore) { bestScore = score; bestLineup = { lineups, resters, members, formations, score }; }
         }
         resolve(bestLineup);
     });
@@ -331,10 +241,8 @@ export { executeLineupGeneration };
 
 export function init(dependencies) {
     state = dependencies.state;
-    state.teamLineupCache = {};
-    
     const pageElement = document.getElementById('page-lineup');
-    pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">라인업 조건</h2><div class="mb-4"><label class="block text-md font-semibold text-gray-700 mb-2">팀 선택</label><div id="team-select-tabs-container" class="flex flex-wrap gap-2"><p class="text-sm text-gray-500">팀 배정기에서 먼저 팀을 생성해주세요.</p></div><textarea id="lineup-members" class="hidden"></textarea></div><div class="grid grid-cols-2 gap-4 mb-6"><div><label for="formation-q1" class="block text-sm font-medium">1쿼터</label><select id="formation-q1" class="mt-1 w-full p-2 border rounded-lg bg-white admin-control"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q2" class="block text-sm font-medium">2쿼터</label><select id="formation-q2" class="mt-1 w-full p-2 border rounded-lg bg-white admin-control"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q3" class="block text-sm font-medium">3쿼터</label><select id="formation-q3" class="mt-1 w-full p-2 border rounded-lg bg-white admin-control"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q4" class="block text-sm font-medium">4쿼터</label><select id="formation-q4" class="mt-1 w-full p-2 border rounded-lg bg-white admin-control"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q5" class="block text-sm font-medium">5쿼터</label><select id="formation-q5" class="mt-1 w-full p-2 border rounded-lg bg-white admin-control"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q6" class="block text-sm font-medium">6쿼터</label><select id="formation-q6" class="mt-1 w-full p-2 border rounded-lg bg-white admin-control"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div></div><div class="mt-8"><button id="generateLineupButton" class="w-full bg-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-teal-700 transition-transform transform hover:scale-105 shadow-lg admin-control">라인업 생성!</button></div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">라인업 결과</h2><div id="loading-lineup" class="hidden"><svg class="animate-spin h-6 w-6 text-teal-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div></div><div id="result-container-lineup"><div id="placeholder-lineup" class="flex items-center justify-center text-gray-400 min-h-[60vh]"><p>조건을 입력하고 라인업 생성을 눌러주세요.</p></div><div id="lineup-display" class="hidden"><div class="flex space-x-2 border-b mb-4"><button class="lineup-q-tab active-q-tab py-2 px-4 font-semibold" data-q="0">1쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="1">2쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="2">3쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="3">4쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="4">5쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="5">6쿼터</button></div><div class="grid grid-cols-1 md:grid-cols-3 gap-4"><div class="md:col-span-2"><div id="pitch-container"></div></div><div id="lineup-sidebar" class="md:col-span-1 p-4 bg-gray-50 rounded-lg space-y-4"><div id="resters-panel"></div><div id="unassigned-panel"></div></div></div></div></div></div></div>`;
+    pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">라인업 조건</h2><div class="mb-4"><label class="block text-md font-semibold text-gray-700 mb-2">팀 선택</label><div id="team-select-tabs-container" class="flex flex-wrap gap-2"><p class="text-sm text-gray-500">팀 배정기에서 먼저 팀을 생성해주세요.</p></div><textarea id="lineup-members" class="hidden"></textarea></div><div class="grid grid-cols-2 gap-4 mb-6"><div><label for="formation-q1" class="block text-sm font-medium">1쿼터</label><select id="formation-q1" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q2" class="block text-sm font-medium">2쿼터</label><select id="formation-q2" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q3" class="block text-sm font-medium">3쿼터</label><select id="formation-q3" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q4" class="block text-sm font-medium">4쿼터</label><select id="formation-q4" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q5" class="block text-sm font-medium">5쿼터</label><select id="formation-q5" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q6" class="block text-sm font-medium">6쿼터</label><select id="formation-q6" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div></div><div class="mt-8"><button id="generateLineupButton" class="w-full bg-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-teal-700 transition-transform transform hover:scale-105 shadow-lg">라인업 생성!</button></div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">라인업 결과</h2><div id="loading-lineup" class="hidden"><svg class="animate-spin h-6 w-6 text-teal-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div></div><div id="result-container-lineup"><div id="placeholder-lineup" class="flex items-center justify-center text-gray-400 min-h-[60vh]"><p>조건을 입력하고 라인업 생성을 눌러주세요.</p></div><div id="lineup-display" class="hidden"><div class="flex space-x-2 border-b mb-4"><button class="lineup-q-tab active-q-tab py-2 px-4 font-semibold" data-q="0">1쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="1">2쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="2">3쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="3">4쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="4">5쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="5">6쿼터</button></div><div class="grid grid-cols-1 md:grid-cols-3 gap-4"><div class="md:col-span-2"><div id="pitch-container"></div></div><div id="lineup-sidebar" class="md:col-span-1 p-4 bg-gray-50 rounded-lg space-y-4"><div id="resters-panel"></div><div id="unassigned-panel"></div></div></div></div></div></div></div>`;
     
     generateLineupButton = document.getElementById('generateLineupButton');
     lineupDisplay = document.getElementById('lineup-display');
@@ -352,12 +260,9 @@ export function init(dependencies) {
         placeholderLineup.classList.add('hidden');
         generateLineupButton.disabled = true;
         generateLineupButton.textContent = '라인업 생성 중...';
-
         const members = lineupMembersTextarea.value.split('\n').map(name => name.trim().replace(' (신규)', '')).filter(Boolean);
         const formations = Array.from(document.querySelectorAll('#page-lineup select')).map(s => s.value);
-        
         const result = await executeLineupGeneration(members, formations);
-
         if (result) {
             state.lineupResults = result;
             state.teamLineupCache[activeTeamIndex] = result;
@@ -384,6 +289,17 @@ export function init(dependencies) {
             tab.classList.add('active-q-tab');
             currentQuarter = parseInt(tab.dataset.q, 10);
             renderQuarter(currentQuarter);
+        }
+    });
+
+    // [추가] 보기 모드에서 클릭 시 관리자 로그인 요청
+    pageElement.addEventListener('click', (e) => {
+        if (pageElement.classList.contains('view-only')) {
+            if (e.target.closest('select, button')) {
+                e.preventDefault();
+                e.stopPropagation();
+                window.promptForAdminPassword();
+            }
         }
     });
 }
