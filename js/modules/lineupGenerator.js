@@ -3,7 +3,7 @@ let state;
 let generateLineupButton, lineupDisplay, pitchContainer, restersPanel, unassignedPanel, loadingLineupSpinner, placeholderLineup;
 let teamSelectTabsContainer, lineupMembersTextarea;
 let currentQuarter = 0;
-let activeTeamIndex = -1; // [신규] 현재 활성화된 팀 인덱스 추적
+let activeTeamIndex = -1; 
 
 const posCellMap = { '4-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 75}, {pos: 'CB', x: 65, y: 80}, {pos: 'CB', x: 35, y: 80}, {pos: 'LB', x: 15, y: 75}, {pos: 'RW', x: 85, y: 45}, {pos: 'CM', x: 65, y: 55}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 15, y: 45}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-3-3': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 88, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 12, y: 78}, {pos: 'CM', x: 50, y: 65}, {pos: 'MF', x: 70, y: 50}, {pos: 'MF', x: 30, y: 50}, {pos: 'RW', x: 80, y: 25}, {pos: 'FW', x: 50, y: 18}, {pos: 'LW', x: 20, y: 25} ], '3-5-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 75, y: 80}, {pos: 'CB', x: 50, y: 85}, {pos: 'CB', x: 25, y: 80}, {pos: 'RW', x: 90, y: 50}, {pos: 'CM', x: 65, y: 55}, {pos: 'MF', x: 50, y: 65}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 10, y: 50}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-2-3-1': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 15, y: 78}, {pos: 'MF', x: 60, y: 65}, {pos: 'MF', x: 40, y: 65}, {pos: 'RW', x: 80, y: 40}, {pos: 'MF', x: 50, y: 45}, {pos: 'LW', x: 20, y: 40}, {pos: 'FW', x: 50, y: 18} ] };
 
@@ -198,6 +198,7 @@ function executeLineupGeneration(members, formations, isSilent = false) {
             const lineups = []; const resters = [];
             let restQueuePointer = 0;
             let secondaryGkUsage = {};
+            let fillerGkUsage = {}; // [BUG FIX] '땜빵' 골키퍼 사용 기록
             
             const pos1Usage = {};
             const pos2Usage = {};
@@ -259,12 +260,9 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                         const player = localPlayerDB[playerName];
                         let fitScore = 0;
 
-                        // --- BUG FIX STARTS HERE ---
-                        // GK 포지션을 배정할 때, 이미 뛴 부포지션 GK는 아닌지 확인
                         if (pos === 'GK' && secondaryGks.includes(playerName) && secondaryGkUsage[playerName]) {
-                            fitScore = -1; // 이미 뛴 부포지션 GK는 배정되지 않도록 점수를 매우 낮게 설정
+                            fitScore = -1; 
                         } else {
-                        // --- BUG FIX ENDS HERE ---
                             const isPos1 = (player.pos1 || []).includes(pos);
                             const isPos2 = (player.pos2 || []).includes(pos);
 
@@ -273,7 +271,12 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                             } else if (isPos2 && pos2Usage[playerName] < MAX_POS2_PLAYS) {
                                 fitScore = (player.s2 || 0);
                             } else if (!isPos1 && !isPos2) {
-                                fitScore = 1;
+                                // [BUG FIX] 땜빵 GK로 이미 뛰었는지 확인
+                                if (pos === 'GK' && fillerGkUsage[playerName]) {
+                                    fitScore = -1; // 이미 뛴 땜빵 GK는 배정 불가
+                                } else {
+                                    fitScore = 1;
+                                }
                             }
                         }
 
@@ -286,10 +289,18 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                     availablePlayers.splice(availablePlayers.indexOf(bestPlayer), 1);
 
                     const playerInfo = localPlayerDB[bestPlayer];
+                    const isPrimaryGk = primaryGks.includes(bestPlayer);
+                    const isSecondaryGk = secondaryGks.includes(bestPlayer);
+
                     if ((playerInfo.pos1 || []).includes(pos)) {
                         pos1Usage[bestPlayer]++;
                     } else if ((playerInfo.pos2 || []).includes(pos)) {
                         pos2Usage[bestPlayer]++;
+                    }
+                    
+                    // [BUG FIX] 땜빵 선수가 GK로 배정되면 기록
+                    if (pos === 'GK' && !isPrimaryGk && !isSecondaryGk) {
+                        fillerGkUsage[bestPlayer] = 1;
                     }
                 }
                 lineups.push(assignment);
