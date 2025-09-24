@@ -24,6 +24,78 @@ let adminModal, passwordInput, modalConfirmBtn, modalCancelBtn;
 const pages = {};
 const tabs = {};
 
+// --- [신규] 엑셀 업로드 관련 함수들 ---
+function loadPlayerDB() {
+    const savedDB = localStorage.getItem('playerDB');
+    if (savedDB) {
+        state.playerDB = JSON.parse(savedDB);
+        console.log('브라우저 저장소에서 선수 정보를 불러왔습니다.');
+    } else {
+        console.log('브라우저에 저장된 선수 정보가 없습니다.');
+    }
+}
+
+async function savePlayerDB(newDB, syncWithFirebase = true) {
+    state.playerDB = newDB;
+    localStorage.setItem('playerDB', JSON.stringify(newDB));
+    window.showNotification(`${Object.keys(newDB).length}명의 선수 정보가 업데이트되었습니다!`);
+
+    if (syncWithFirebase) {
+        console.log("Firebase와 동기화를 시작합니다...");
+        const currentSnapshot = await getDocs(collection(db, "players"));
+        for (const docSnapshot of currentSnapshot.docs) {
+            await deleteDoc(doc(db, "players", docSnapshot.id));
+        }
+        for (const playerName in newDB) {
+            await setDoc(doc(db, "players", playerName), newDB[playerName]);
+        }
+        console.log("Firebase 동기화 완료.");
+        window.showNotification(`Firebase DB 동기화 완료!`);
+    }
+}
+
+function initExcelUploader() {
+    const uploader = document.getElementById('excel-uploader');
+    if (!uploader) return;
+    if (uploader.dataset.listenerAttached) return; // 중복 방지
+
+    uploader.addEventListener('change', (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const json = XLSX.utils.sheet_to_json(worksheet);
+
+            const newPlayerDB = {};
+            json.forEach(player => {
+                const name = player.이름;
+                if (!name) return;
+
+                newPlayerDB[name] = {
+                    name: name,
+                    pos1: (player.주포지션 || "").toString().split(',').map(p => p.trim()).filter(Boolean),
+                    s1:   player.주포지션숙련도 || 65,
+                    pos2: (player.부포지션 || "").toString().split(',').map(p => p.trim()).filter(Boolean),
+                    s2:   player.부포지션숙련도 || 0
+                };
+            });
+            savePlayerDB(newPlayerDB, true); // Firebase와 동기화하며 저장
+            playerMgmt.renderPlayerTable();
+            uploader.value = ''; 
+        };
+        reader.readAsArrayBuffer(file);
+    });
+    uploader.dataset.listenerAttached = 'true'; // 중복 방지
+}
+// --- [신규] 함수 끝 ---
+
+
 window.showNotification = function(message, type = 'success') {
     let notificationEl = document.getElementById('notification');
     if (!notificationEl) {
@@ -80,7 +152,6 @@ window.promptForAdminPassword = function() {
 }
 
 function switchTab(activeKey, force = false) {
-    // '선수관리'와 '모임배포' 탭만 관리자 권한 확인
     if ((activeKey === 'players' || activeKey === 'share') && !state.isAdmin && !force) {
         promptForAdminPassword();
         if (!state.isAdmin) return;
@@ -91,6 +162,9 @@ function switchTab(activeKey, force = false) {
     });
     if (activeKey === 'accounting') {
         accounting.renderForDate();
+    }
+    if (activeKey === 'players') { // 선수관리 탭을 누를 때 업로더 기능 활성화
+        initExcelUploader();
     }
 }
 window.refreshData = async function(collectionName) {
@@ -103,6 +177,7 @@ window.refreshData = async function(collectionName) {
     }
 };
 
+// ... (renderSharePageView 함수는 기존과 동일하게 유지) ...
 function renderSharePageView(shareData) {
     const { meetingInfo, teams: teamsObject, lineups } = shareData;
     const teams = Object.values(teamsObject || {});
@@ -188,6 +263,7 @@ function renderSharePageView(shareData) {
     });
 }
 
+
 document.addEventListener('DOMContentLoaded', async () => {
     const loadingOverlay = document.getElementById('loading-overlay');
     
@@ -267,31 +343,42 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (tabs[key]) tabs[key].addEventListener('click', () => switchTab(key));
         });
         
-onSnapshot(doc(db, "settings", "activeMeeting"), (doc) => {
-    const placeholder = document.getElementById('realtime-link-placeholder');
-    placeholder.innerHTML = ''; // 기존 버튼 삭제
-    if (doc.exists() && doc.data().shareId) {
-        const shareId = doc.data().shareId;
-        const linkText = doc.data().linkText || "오늘 모임 결과 확인하기";
-        
-        const link = document.createElement('a');
-        link.href = `${window.location.origin}${window.location.pathname}?shareId=${shareId}`;
-        link.target = "_blank";
-        link.className = 'realtime-link-button';
-        link.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clip-rule="evenodd" /></svg>${linkText}`;
-        
-        placeholder.appendChild(link);
-    }
-});
+        onSnapshot(doc(db, "settings", "activeMeeting"), (doc) => {
+            const placeholder = document.getElementById('realtime-link-placeholder');
+            placeholder.innerHTML = ''; 
+            if (doc.exists() && doc.data().shareId) {
+                const shareId = doc.data().shareId;
+                const linkText = doc.data().linkText || "오늘 모임 결과 확인하기";
+                
+                const link = document.createElement('a');
+                link.href = `${window.location.origin}${window.location.pathname}?shareId=${shareId}`;
+                link.target = "_blank";
+                link.className = 'realtime-link-button';
+                link.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clip-rule="evenodd" /></svg>${linkText}`;
+                
+                placeholder.appendChild(link);
+            }
+        });
 
         try {
-            const collectionsToFetch = ['players', 'attendance', 'expenses', 'locations'];
+            // [수정] 데이터 로딩 순서 변경
+            loadPlayerDB(); // 1. 로컬 저장소(브라우저)에서 선수 DB 로드
+
+            const collectionsToFetch = ['attendance', 'expenses', 'locations'];
             const snapshots = await Promise.all(collectionsToFetch.map(c => getDocs(collection(db, c))));
             
-            state.playerDB = {}; snapshots[0].forEach(doc => { state.playerDB[doc.id] = doc.data(); });
-            state.attendanceLog = snapshots[1].docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            state.expenseLog = snapshots[2].docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            state.locations = snapshots[3].docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            state.attendanceLog = snapshots[0].docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            state.expenseLog = snapshots[1].docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            state.locations = snapshots[2].docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            // 2. 만약 로컬에 선수 데이터가 없으면 Firebase에서 가져와서 로컬에 저장
+            if (Object.keys(state.playerDB).length === 0) {
+                console.log("로컬 선수 데이터가 없어 Firebase에서 가져옵니다.");
+                const playerSnapshot = await getDocs(collection(db, "players"));
+                const firebaseDB = {};
+                playerSnapshot.forEach(doc => { firebaseDB[doc.id] = doc.data(); });
+                savePlayerDB(firebaseDB, false); // Firebase와 다시 동기화할 필요는 없음
+            }
 
             onSnapshot(collection(db, "expenses"), (snapshot) => {
                 state.expenseLog = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
