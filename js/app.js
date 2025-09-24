@@ -25,6 +25,40 @@ const pages = {};
 const tabs = {};
 let pendingTabSwitch = null;
 
+// --- [수정] 헬퍼 함수들을 파일 최상단으로 이동 ---
+window.showNotification = function(message, type = 'success') {
+    let notificationEl = document.getElementById('notification');
+    if (!notificationEl) {
+        notificationEl = document.createElement('div');
+        notificationEl.id = 'notification';
+        document.body.appendChild(notificationEl);
+    }
+    notificationEl.textContent = message;
+    notificationEl.className = 'notification';
+    notificationEl.classList.add(type === 'success' ? 'notification-success' : 'notification-error');
+    notificationEl.classList.add('show');
+    setTimeout(() => {
+        notificationEl.classList.remove('show');
+    }, 3000);
+};
+
+window.debounce = function(func, delay) {
+    let timeout;
+    return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), delay);
+    };
+};
+
+window.shuffleLocal = function(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+};
+// --- 헬퍼 함수 끝 ---
+
+
 // --- 실시간 데이터 저장/동기화 함수 ---
 const saveDailyMeetingData = window.debounce(async () => {
     if (!state.isAdmin) return;
@@ -70,14 +104,12 @@ function loadAndSyncDailyMeetingData() {
     });
 }
 
-// --- 권한에 따른 UI 활성화/비활성화 함수 ---
 function updateUIAccess() {
     const isViewOnly = !state.isAdmin;
     document.getElementById('page-balancer').classList.toggle('view-only', isViewOnly);
     document.getElementById('page-lineup').classList.toggle('view-only', isViewOnly);
 }
 
-// --- 엑셀 업로드 관련 함수들 ---
 function loadPlayerDB() {
     const savedDB = localStorage.getItem('playerDB');
     if (savedDB) {
@@ -157,37 +189,6 @@ function initExcelUploader() {
     });
     uploader.dataset.listenerAttached = 'true';
 }
-
-window.showNotification = function(message, type = 'success') {
-    let notificationEl = document.getElementById('notification');
-    if (!notificationEl) {
-        notificationEl = document.createElement('div');
-        notificationEl.id = 'notification';
-        document.body.appendChild(notificationEl);
-    }
-    notificationEl.textContent = message;
-    notificationEl.className = 'notification';
-    notificationEl.classList.add(type === 'success' ? 'notification-success' : 'notification-error');
-    notificationEl.classList.add('show');
-    setTimeout(() => {
-        notificationEl.classList.remove('show');
-    }, 3000);
-};
-
-window.debounce = function(func, delay) {
-    let timeout;
-    return function(...args) {
-        clearTimeout(timeout);
-        timeout = setTimeout(() => func.apply(this, args), delay);
-    };
-};
-
-window.shuffleLocal = function(arr) {
-    for (let i = arr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-};
 
 function updateAdminUI() {
     document.querySelectorAll('.admin-control').forEach(el => {
