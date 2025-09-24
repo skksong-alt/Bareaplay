@@ -23,7 +23,59 @@ const db = getFirestore(app);
 let adminModal, passwordInput, modalConfirmBtn, modalCancelBtn;
 const pages = {};
 const tabs = {};
-let pendingTabSwitch = null; // [수정] 이동하려던 탭을 기억하는 변수
+let pendingTabSwitch = null;
+
+// --- 실시간 데이터 저장/동기화 함수 ---
+const saveDailyMeetingData = window.debounce(async () => {
+    if (!state.isAdmin) return;
+    const today = new Date().toISOString().split('T')[0];
+    const dataToSave = {
+        date: today,
+        teams: state.teams || [],
+        teamLineupCache: state.teamLineupCache || {},
+        lastUpdatedAt: serverTimestamp()
+    };
+    try {
+        await setDoc(doc(db, "dailyMeetings", today), dataToSave, { merge: true });
+        console.log(`${today} 모임 데이터가 저장되었습니다.`);
+    } catch (error) {
+        console.error("일일 모임 데이터 저장 실패:", error);
+    }
+}, 1000);
+
+function loadAndSyncDailyMeetingData() {
+    const today = new Date().toISOString().split('T')[0];
+    const meetingDocRef = doc(db, "dailyMeetings", today);
+
+    onSnapshot(meetingDocRef, (doc) => {
+        const hasLocalChanges = doc.metadata.hasPendingWrites;
+        if (hasLocalChanges) return; 
+
+        if (doc.exists()) {
+            console.log("외부 변경 감지, 데이터 동기화.");
+            const data = doc.data();
+            state.teams = data.teams || [];
+            state.teamLineupCache = data.teamLineupCache || {};
+
+            balancer.renderResults(state.teams);
+            lineup.renderTeamSelectTabs(state.teams);
+            window.showNotification("다른 기기 내용이 동기화되었습니다.");
+        } else {
+            console.log(`${today} 데이터 없음, 초기화.`);
+            state.teams = [];
+            state.teamLineupCache = {};
+            balancer.renderResults(state.teams);
+            lineup.renderTeamSelectTabs(state.teams);
+        }
+    });
+}
+
+// --- 권한에 따른 UI 활성화/비활성화 함수 ---
+function updateUIAccess() {
+    const isViewOnly = !state.isAdmin;
+    document.getElementById('page-balancer').classList.toggle('view-only', isViewOnly);
+    document.getElementById('page-lineup').classList.toggle('view-only', isViewOnly);
+}
 
 // --- 엑셀 업로드 관련 함수들 ---
 function loadPlayerDB() {
@@ -105,8 +157,6 @@ function initExcelUploader() {
     });
     uploader.dataset.listenerAttached = 'true';
 }
-// --- 함수 끝 ---
-
 
 window.showNotification = function(message, type = 'success') {
     let notificationEl = document.getElementById('notification');
@@ -151,6 +201,7 @@ function updateAdminUI() {
         adminLoginBtn.classList.toggle('bg-red-500', !state.isAdmin);
         adminLoginBtn.classList.toggle('hover:bg-red-600', !state.isAdmin);
     }
+    updateUIAccess();
 }
 
 window.promptForAdminPassword = function() {
@@ -181,6 +232,7 @@ function switchTab(activeKey, force = false) {
     }
     pendingTabSwitch = null; 
 }
+
 window.refreshData = async function(collectionName) {
     const snapshot = await getDocs(collection(db, collectionName));
     if (collectionName === 'players') {
@@ -284,6 +336,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.accounting = accounting;
     window.lineup = lineup;
     window.shareMgmt = shareMgmt;
+    window.saveDailyMeetingData = saveDailyMeetingData;
 
     for (const moduleName in modules) {
         if (modules[moduleName].init) {
@@ -371,11 +424,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
 
-        // [수정] 여기가 앱의 핵심 데이터 로딩 로직입니다.
         try {
-            loadPlayerDB(); // 1. 브라우저 저장소에서 선수 DB 먼저 로드
+            loadPlayerDB(); 
 
-            // 2. 'players'를 제외한 나머지 데이터만 Firebase에서 불러옴
             const collectionsToFetch = ['attendance', 'expenses', 'locations'];
             const snapshots = await Promise.all(collectionsToFetch.map(c => getDocs(collection(db, c))));
             
@@ -383,16 +434,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             state.expenseLog = snapshots[1].docs.map(doc => ({ id: doc.id, ...doc.data() }));
             state.locations = snapshots[2].docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            // 3. 만약 브라우저에 선수 데이터가 없었다면 Firebase에서 가져와서 브라우저에도 저장
             if (Object.keys(state.playerDB).length === 0) {
                 console.log("로컬 선수 데이터가 없어 Firebase에서 가져옵니다.");
                 const playerSnapshot = await getDocs(collection(db, "players"));
                 const firebaseDB = {};
                 playerSnapshot.forEach(doc => { firebaseDB[doc.id] = doc.data(); });
-                savePlayerDB(firebaseDB, false); // Firebase에 다시 쓸 필요는 없음
+                savePlayerDB(firebaseDB, false);
             }
 
-            // 실시간 데이터 감지 리스너들
             onSnapshot(collection(db, "expenses"), (snapshot) => {
                 state.expenseLog = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 if(pages.accounting && !pages.accounting.classList.contains('hidden')) { accounting.renderForDate(); }
@@ -409,9 +458,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (doc.exists() && memoArea) { memoArea.value = doc.data().content; }
             });
             
-            // 초기 렌더링
             playerMgmt.renderPlayerTable();
             accounting.renderForDate();
+            loadAndSyncDailyMeetingData();
 
         } catch (error) {
             console.error("초기 데이터 로딩 실패:", error);

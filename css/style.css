@@ -1,3 +1,4 @@
+/* style.css */
 body {
     font-family: 'Inter', 'Noto Sans KR', sans-serif;
     background-color: #f0f2f5;
@@ -37,6 +38,26 @@ body {
 .team-tab-btn.team-tab-btn-3.active { background-color: #7B1FA2; border-color: #7B1FA2; }
 .team-tab-btn.team-tab-btn-4.active { background-color: #43A047; border-color: #43A047; }
 .team-tab-btn.team-tab-btn-5.active { background-color: #F4511E; border-color: #F4511E; }
+.realtime-link-button { display: inline-block; padding: 8px 16px; background-color: #16a34a; color: white; font-weight: bold; font-size: 0.9rem; border-radius: 8px; text-decoration: none; transition: all 0.2s ease; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.realtime-link-button:hover { background-color: #15803d; transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
+.realtime-link-button svg { display: inline-block; vertical-align: middle; margin-right: 6px; width: 16px; height: 16px; }
+
+/* [추가] 관리자가 아닐 때 UI 비활성화를 위한 스타일 */
+.view-only .admin-control,
+.view-only button,
+.view-only input,
+.view-only select,
+.view-only textarea {
+    pointer-events: none !important;
+    opacity: 0.8;
+}
+.view-only [draggable="true"] {
+    cursor: not-allowed !important;
+}
+.view-only .player-tag:hover {
+    transform: none;
+    box-shadow: none;
+}
 
 @media print {
     body > .container, body > #admin-modal, body > #notification, body > #loading-overlay { display: none !important; }
@@ -63,35 +84,9 @@ body {
     .print-rester-list h4 { font-size: 16px; font-weight: bold; margin-top: 10px; }
     a { color: #000; text-decoration: none; }
 }
-.realtime-link-button {
-    display: inline-block;
-    padding: 8px 16px;
-    background-color: #16a34a; /* A darker green */
-    color: white;
-    font-weight: bold;
-    font-size: 0.9rem;
-    border-radius: 8px;
-    text-decoration: none;
-    transition: all 0.2s ease;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-.realtime-link-button:hover {
-    background-color: #15803d;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-}
-.realtime-link-button svg {
-    display: inline-block;
-    vertical-align: middle;
-    margin-right: 6px;
-    width: 16px;
-    height: 16px;
-}
-/* style.css 파일 맨 아래에 이 코드를 추가하세요 */
 
 /* 모바일 반응형 테이블을 위한 CSS */
 @media (max-width: 768px) {
-    /* 회계 로그 테이블 */
     #accounting-log-body tr, #expense-log-body tr {
         display: block;
         margin-bottom: 1rem;
@@ -102,7 +97,7 @@ body {
     }
     
     .w-full thead {
-        display: none; /* PC용 테이블 헤더 숨기기 */
+        display: none;
     }
 
     #accounting-log-body td, #expense-log-body td {
@@ -118,12 +113,11 @@ body {
     }
 
     #accounting-log-body td::before, #expense-log-body td::before {
-        content: attr(data-label); /* data-label 속성값으로 라벨 생성 */
+        content: attr(data-label);
         font-weight: 600;
         margin-right: 1rem;
     }
     
-    /* 비고, 금액 등 입력 필드가 라벨과 함께 너무 길어지는 것 방지 */
     #accounting-log-body td input, #accounting-log-body td select,
     #expense-log-body td input {
         width: 60%;

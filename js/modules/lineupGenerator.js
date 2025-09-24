@@ -3,7 +3,7 @@ let state;
 let generateLineupButton, lineupDisplay, pitchContainer, restersPanel, unassignedPanel, loadingLineupSpinner, placeholderLineup;
 let teamSelectTabsContainer, lineupMembersTextarea;
 let currentQuarter = 0;
-let activeTeamIndex = -1; 
+let activeTeamIndex = -1;
 
 const posCellMap = { '4-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 75}, {pos: 'CB', x: 65, y: 80}, {pos: 'CB', x: 35, y: 80}, {pos: 'LB', x: 15, y: 75}, {pos: 'RW', x: 85, y: 45}, {pos: 'CM', x: 65, y: 55}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 15, y: 45}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-3-3': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 88, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 12, y: 78}, {pos: 'CM', x: 50, y: 65}, {pos: 'MF', x: 70, y: 50}, {pos: 'MF', x: 30, y: 50}, {pos: 'RW', x: 80, y: 25}, {pos: 'FW', x: 50, y: 18}, {pos: 'LW', x: 20, y: 25} ], '3-5-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 75, y: 80}, {pos: 'CB', x: 50, y: 85}, {pos: 'CB', x: 25, y: 80}, {pos: 'RW', x: 90, y: 50}, {pos: 'CM', x: 65, y: 55}, {pos: 'MF', x: 50, y: 65}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 10, y: 50}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-2-3-1': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 15, y: 78}, {pos: 'MF', x: 60, y: 65}, {pos: 'MF', x: 40, y: 65}, {pos: 'RW', x: 80, y: 40}, {pos: 'MF', x: 50, y: 45}, {pos: 'LW', x: 20, y: 40}, {pos: 'FW', x: 50, y: 18} ] };
 
@@ -21,14 +21,15 @@ function createPlayerMarker(name, pos, id) {
     marker.dataset.name = name;
     marker.dataset.pos = pos;
     marker.dataset.id = `${pos}-${id}`;
-    marker.draggable = name !== '미배정';
+    marker.draggable = name !== '미배정' && state.isAdmin;
+    if (state.isAdmin && name !== '미배정') marker.style.cursor = 'grab';
 
     let icon = '❓', bgColor = '#78909C';
     if (pos === "GK") { icon = "🧤"; bgColor = "#00C853"; } 
     else if (["LB", "RB", "CB", "DF"].includes(pos)) { icon = "🛡"; bgColor = "#03A9F4"; } 
     else if (["MF", "CM"].includes(pos)) { icon = "⚙"; bgColor = "#FFEB3B"; } 
     else if (["LW", "RW", "FW"].includes(pos)) { icon = "🎯"; bgColor = "#FF9800"; }
-    else if (pos === 'sub' || pos === 'rest') { icon = (pos === 'sub' ? '🔄' : '🛌'); bgColor = (pos === 'sub' ? '#607D8B' : '#9E9E9E'); marker.style.position = 'relative'; marker.style.transform = 'none'; marker.style.cursor = 'grab'; }
+    else if (pos === 'sub' || pos === 'rest') { icon = (pos === 'sub' ? '🔄' : '🛌'); bgColor = (pos === 'sub' ? '#607D8B' : '#9E9E9E'); marker.style.position = 'relative'; marker.style.transform = 'none'; if(state.isAdmin) marker.style.cursor = 'grab'; }
     
     marker.innerHTML = (name === '미배정') ? `<div class="player-icon" style="background-color: ${bgColor}; border-style: dashed;">${icon}</div><div class="player-name">미배정</div>` : `<div class="player-icon" style="background-color: ${bgColor};">${icon}</div><div class="player-name">${name}</div>`;
     return marker;
@@ -83,6 +84,7 @@ function addDragAndDropHandlers() {
             if (state.teamLineupCache && activeTeamIndex !== -1) {
                 state.teamLineupCache[activeTeamIndex] = state.lineupResults;
             }
+            window.saveDailyMeetingData();
             window.showNotification(`${draggingName} ↔ ${targetName} 위치 변경!`);
         });
     });
@@ -139,7 +141,6 @@ export function renderTeamSelectTabs(teams) {
             lineupDisplay.classList.add('hidden');
             placeholderLineup.classList.remove('hidden');
         }
-        window.showNotification(`팀 ${index + 1}이 선택되었습니다.`);
     };
 
     teams.forEach((team, index) => {
@@ -152,7 +153,17 @@ export function renderTeamSelectTabs(teams) {
     });
 
     if (teams.length > 0) {
-        handleTabClick(teams[0], 0);
+        const firstActiveTab = document.querySelector('.team-tab-btn.active');
+        if (!firstActiveTab) {
+             handleTabClick(teams[0], 0);
+        } else {
+             const currentIdx = parseInt(firstActiveTab.dataset.teamIndex, 10);
+             if(currentIdx >= teams.length) handleTabClick(teams[0], 0);
+             else handleTabClick(teams[currentIdx], currentIdx);
+        }
+    } else {
+        lineupDisplay.classList.add('hidden');
+        placeholderLineup.classList.remove('hidden');
     }
 }
 
@@ -198,7 +209,7 @@ function executeLineupGeneration(members, formations, isSilent = false) {
             const lineups = []; const resters = [];
             let restQueuePointer = 0;
             let secondaryGkUsage = {};
-            let fillerGkUsage = {}; // [BUG FIX] '땜빵' 골키퍼 사용 기록
+            let fillerGkUsage = {};
             
             const pos1Usage = {};
             const pos2Usage = {};
@@ -271,9 +282,8 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                             } else if (isPos2 && pos2Usage[playerName] < MAX_POS2_PLAYS) {
                                 fitScore = (player.s2 || 0);
                             } else if (!isPos1 && !isPos2) {
-                                // [BUG FIX] 땜빵 GK로 이미 뛰었는지 확인
                                 if (pos === 'GK' && fillerGkUsage[playerName]) {
-                                    fitScore = -1; // 이미 뛴 땜빵 GK는 배정 불가
+                                    fitScore = -1;
                                 } else {
                                     fitScore = 1;
                                 }
@@ -286,21 +296,22 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                     }
                     
                     assignment[pos].push(bestPlayer);
-                    availablePlayers.splice(availablePlayers.indexOf(bestPlayer), 1);
+                    if (bestPlayer) availablePlayers.splice(availablePlayers.indexOf(bestPlayer), 1);
 
-                    const playerInfo = localPlayerDB[bestPlayer];
-                    const isPrimaryGk = primaryGks.includes(bestPlayer);
-                    const isSecondaryGk = secondaryGks.includes(bestPlayer);
+                    if(bestPlayer) {
+                        const playerInfo = localPlayerDB[bestPlayer];
+                        const isPrimaryGk = primaryGks.includes(bestPlayer);
+                        const isSecondaryGk = secondaryGks.includes(bestPlayer);
 
-                    if ((playerInfo.pos1 || []).includes(pos)) {
-                        pos1Usage[bestPlayer]++;
-                    } else if ((playerInfo.pos2 || []).includes(pos)) {
-                        pos2Usage[bestPlayer]++;
-                    }
-                    
-                    // [BUG FIX] 땜빵 선수가 GK로 배정되면 기록
-                    if (pos === 'GK' && !isPrimaryGk && !isSecondaryGk) {
-                        fillerGkUsage[bestPlayer] = 1;
+                        if ((playerInfo.pos1 || []).includes(pos)) {
+                            pos1Usage[bestPlayer]++;
+                        } else if ((playerInfo.pos2 || []).includes(pos)) {
+                            pos2Usage[bestPlayer]++;
+                        }
+                        
+                        if (pos === 'GK' && !isPrimaryGk && !isSecondaryGk) {
+                            fillerGkUsage[bestPlayer] = 1;
+                        }
                     }
                 }
                 lineups.push(assignment);
@@ -323,7 +334,7 @@ export function init(dependencies) {
     state.teamLineupCache = {};
     
     const pageElement = document.getElementById('page-lineup');
-    pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">라인업 조건</h2><div class="mb-4"><label class="block text-md font-semibold text-gray-700 mb-2">팀 선택</label><div id="team-select-tabs-container" class="flex flex-wrap gap-2"><p class="text-sm text-gray-500">팀 배정기에서 먼저 팀을 생성해주세요.</p></div><textarea id="lineup-members" class="hidden"></textarea></div><div class="grid grid-cols-2 gap-4 mb-6"><div><label for="formation-q1" class="block text-sm font-medium">1쿼터</label><select id="formation-q1" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q2" class="block text-sm font-medium">2쿼터</label><select id="formation-q2" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q3" class="block text-sm font-medium">3쿼터</label><select id="formation-q3" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q4" class="block text-sm font-medium">4쿼터</label><select id="formation-q4" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q5" class="block text-sm font-medium">5쿼터</label><select id="formation-q5" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q6" class="block text-sm font-medium">6쿼터</label><select id="formation-q6" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div></div><div class="mt-8"><button id="generateLineupButton" class="w-full bg-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-teal-700 transition-transform transform hover:scale-105 shadow-lg">라인업 생성!</button></div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">라인업 결과</h2><div id="loading-lineup" class="hidden"><svg class="animate-spin h-6 w-6 text-teal-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div></div><div id="result-container-lineup"><div id="placeholder-lineup" class="flex items-center justify-center text-gray-400 min-h-[60vh]"><p>조건을 입력하고 라인업 생성을 눌러주세요.</p></div><div id="lineup-display" class="hidden"><div class="flex space-x-2 border-b mb-4"><button class="lineup-q-tab active-q-tab py-2 px-4 font-semibold" data-q="0">1쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="1">2쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="2">3쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="3">4쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="4">5쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="5">6쿼터</button></div><div class="grid grid-cols-1 md:grid-cols-3 gap-4"><div class="md:col-span-2"><div id="pitch-container"></div></div><div id="lineup-sidebar" class="md:col-span-1 p-4 bg-gray-50 rounded-lg space-y-4"><div id="resters-panel"></div><div id="unassigned-panel"></div></div></div></div></div></div></div>`;
+    pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">라인업 조건</h2><div class="mb-4"><label class="block text-md font-semibold text-gray-700 mb-2">팀 선택</label><div id="team-select-tabs-container" class="flex flex-wrap gap-2"><p class="text-sm text-gray-500">팀 배정기에서 먼저 팀을 생성해주세요.</p></div><textarea id="lineup-members" class="hidden"></textarea></div><div class="grid grid-cols-2 gap-4 mb-6"><div><label for="formation-q1" class="block text-sm font-medium">1쿼터</label><select id="formation-q1" class="mt-1 w-full p-2 border rounded-lg bg-white admin-control"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q2" class="block text-sm font-medium">2쿼터</label><select id="formation-q2" class="mt-1 w-full p-2 border rounded-lg bg-white admin-control"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q3" class="block text-sm font-medium">3쿼터</label><select id="formation-q3" class="mt-1 w-full p-2 border rounded-lg bg-white admin-control"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q4" class="block text-sm font-medium">4쿼터</label><select id="formation-q4" class="mt-1 w-full p-2 border rounded-lg bg-white admin-control"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q5" class="block text-sm font-medium">5쿼터</label><select id="formation-q5" class="mt-1 w-full p-2 border rounded-lg bg-white admin-control"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div><div><label for="formation-q6" class="block text-sm font-medium">6쿼터</label><select id="formation-q6" class="mt-1 w-full p-2 border rounded-lg bg-white admin-control"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option>4-2-3-1</option></select></div></div><div class="mt-8"><button id="generateLineupButton" class="w-full bg-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-teal-700 transition-transform transform hover:scale-105 shadow-lg admin-control">라인업 생성!</button></div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">라인업 결과</h2><div id="loading-lineup" class="hidden"><svg class="animate-spin h-6 w-6 text-teal-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div></div><div id="result-container-lineup"><div id="placeholder-lineup" class="flex items-center justify-center text-gray-400 min-h-[60vh]"><p>조건을 입력하고 라인업 생성을 눌러주세요.</p></div><div id="lineup-display" class="hidden"><div class="flex space-x-2 border-b mb-4"><button class="lineup-q-tab active-q-tab py-2 px-4 font-semibold" data-q="0">1쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="1">2쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="2">3쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="3">4쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="4">5쿼터</button><button class="lineup-q-tab py-2 px-4 font-semibold" data-q="5">6쿼터</button></div><div class="grid grid-cols-1 md:grid-cols-3 gap-4"><div class="md:col-span-2"><div id="pitch-container"></div></div><div id="lineup-sidebar" class="md:col-span-1 p-4 bg-gray-50 rounded-lg space-y-4"><div id="resters-panel"></div><div id="unassigned-panel"></div></div></div></div></div></div></div>`;
     
     generateLineupButton = document.getElementById('generateLineupButton');
     lineupDisplay = document.getElementById('lineup-display');
@@ -360,6 +371,7 @@ export function init(dependencies) {
                 firstQuarterTab.classList.add('active-q-tab');
                 renderQuarter(0);
             }
+            window.saveDailyMeetingData();
             window.showNotification(`라인업 생성 완료! (실력차: ${result.score.toFixed(1)})`);
         }
         resetLineupUI();
