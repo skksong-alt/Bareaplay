@@ -36,7 +36,6 @@ function renderFullPlayerChecklist() {
     });
 }
 
-
 function renderAttendanceLogTable(logs) {
     if(!logBody) return;
     logBody.innerHTML = '';
@@ -55,7 +54,14 @@ function renderAttendanceLogTable(logs) {
         const docId = log.id;
         const row = document.createElement('tr');
         row.className = 'bg-white border-b';
-        row.innerHTML = `<td class="py-2 px-4">${log.date}</td><td class="py-2 px-4 font-medium text-gray-900">${log.name}</td><td class="py-2 px-4"><select data-id="${docId}" class="log-status-select p-1 border rounded-md ${getStatusColor(log.paymentStatus)} admin-control" ${!state.isAdmin ? 'disabled': ''}><option value="" ${!log.paymentStatus ? 'selected' : ''}></option><option value="●" ${log.paymentStatus === '●' ? 'selected' : ''}>● 완납</option><option value="△" ${log.paymentStatus === '△' ? 'selected' : ''}>△ 일부</option><option value="✕" ${log.paymentStatus === '✕' ? 'selected' : ''}>✕ 미납</option></select></td><td class="py-2 px-4"><input type="number" data-id="${docId}" class="log-amount-input w-24 p-1 border rounded-md admin-control" value="${log.paymentAmount || ''}" ${!state.isAdmin ? 'disabled': ''}></td><td class="py-2 px-4"><input type="text" data-id="${docId}" class="log-note-input w-full p-1 border rounded-md admin-control" value="${log.note || ''}" ${!state.isAdmin ? 'disabled': ''}></td>`;
+        // [수정] 모바일 뷰를 위해 각 td에 data-label 속성 추가
+        row.innerHTML = `
+            <td data-label="날짜" class="py-2 px-4">${log.date}</td>
+            <td data-label="이름" class="py-2 px-4 font-medium text-gray-900">${log.name}</td>
+            <td data-label="납부 상태"><select data-id="${docId}" class="log-status-select p-1 border rounded-md ${getStatusColor(log.paymentStatus)} admin-control" ${!state.isAdmin ? 'disabled': ''}><option value="" ${!log.paymentStatus ? 'selected' : ''}></option><option value="●" ${log.paymentStatus === '●' ? 'selected' : ''}>● 완납</option><option value="△" ${log.paymentStatus === '△' ? 'selected' : ''}>△ 일부</option><option value="✕" ${log.paymentStatus === '✕' ? 'selected' : ''}>✕ 미납</option></select></td>
+            <td data-label="납부액"><input type="number" data-id="${docId}" class="log-amount-input w-24 p-1 border rounded-md admin-control" value="${log.paymentAmount || ''}" ${!state.isAdmin ? 'disabled': ''}></td>
+            <td data-label="비고"><input type="text" data-id="${docId}" class="log-note-input w-full p-1 border rounded-md admin-control" value="${log.note || ''}" ${!state.isAdmin ? 'disabled': ''}></td>
+        `;
         logBody.appendChild(row);
     });
     logFoot.innerHTML = `<tr><td colspan="3" class="py-2 px-4 text-right">조회 기간 합계</td><td class="py-2 px-4 font-bold">${totalAmount.toLocaleString()}</td><td class="py-2 px-4"></td></tr>`;
@@ -78,7 +84,13 @@ function renderExpenseLog(logs) {
         totalAmount += log.amount;
         const row = document.createElement('tr');
         row.className = 'bg-white border-b';
-        row.innerHTML = `<td class="py-2 px-4">${log.date}</td><td class="py-2 px-4 font-medium text-gray-900">${log.item}</td><td class="py-2 px-4">${log.amount.toLocaleString()}</td><td class="py-2 px-4"><button data-id="${log.id}" class="delete-expense-btn text-red-500 hover:underline admin-control" ${!state.isAdmin ? 'disabled' : ''}>삭제</button></td>`;
+        // [수정] 모바일 뷰를 위해 각 td에 data-label 속성 추가
+        row.innerHTML = `
+            <td data-label="날짜" class="py-2 px-4">${log.date}</td>
+            <td data-label="항목" class="py-2 px-4 font-medium text-gray-900">${log.item}</td>
+            <td data-label="금액" class="py-2 px-4">${log.amount.toLocaleString()}</td>
+            <td data-label="관리"><button data-id="${log.id}" class="delete-expense-btn text-red-500 hover:underline admin-control" ${!state.isAdmin ? 'disabled' : ''}>삭제</button></td>
+        `;
         expenseLogBody.appendChild(row);
     });
     expenseLogFoot.innerHTML = `<tr><td colspan="2" class="py-2 px-4 text-right">조회 기간 합계</td><td class="py-2 px-4 font-bold">${totalAmount.toLocaleString()}</td><td></td></tr>`;
@@ -193,7 +205,6 @@ export function renderForDate() {
     const filteredAttendance = state.attendanceLog.filter(log => (!startDate || log.date >= startDate) && (!endDate || log.date <= endDate));
     
     renderAttendanceLogTable(filteredAttendance);
-    // [수정] 지출 내역은 날짜 필터 없이 항상 전체를 표시하도록 변경
     renderExpenseLog(state.expenseLog);
     
     calculateAndRenderTotalBalance();
@@ -351,21 +362,21 @@ export function init(dependencies) {
         await setDoc(doc(db, "attendance", docId), updatedField, { merge: true });
     }, 500);
 
-    if(logBody) logBody.addEventListener('input', (e) => {
+    // [수정] 한글 입력 문제를 해결하기 위해 'input' 이벤트를 'change' 이벤트로 변경
+    if(logBody) logBody.addEventListener('change', (e) => {
         const target = e.target;
         const docId = target.dataset.id;
         if (!docId) return;
+        
         let updatedField = {};
-        if (target.classList.contains('log-status-select')) updatedField = { paymentStatus: target.value };
-        else if (target.classList.contains('log-amount-input')) updatedField = { paymentAmount: target.value };
-        else if (target.classList.contains('log-note-input')) updatedField = { note: target.value };
-        if (Object.keys(updatedField).length > 0) debouncedUpdate(docId, updatedField);
-    });
-
-    if(logBody) logBody.addEventListener('change', (e) => {
-        if (e.target.classList.contains('log-status-select')) {
+        if (target.classList.contains('log-status-select')) {
+            updatedField = { paymentStatus: target.value };
             e.target.className = `log-status-select p-1 border rounded-md ${getStatusColor(e.target.value)} admin-control`;
         }
+        else if (target.classList.contains('log-amount-input')) updatedField = { paymentAmount: target.value };
+        else if (target.classList.contains('log-note-input')) updatedField = { note: target.value };
+        
+        if (Object.keys(updatedField).length > 0) debouncedUpdate(docId, updatedField);
     });
 
     const debouncedMemoSave = window.debounce(async (content) => {
