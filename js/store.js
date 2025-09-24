@@ -8,7 +8,7 @@ export const state = {
     lineupResults: null,
     memoContent: "",
     isAdmin: false,
-    ADMIN_PASSWORD: "0000"
+    ADMIN_PASSWORD: "2580"
 };
 
 export function setAdmin(status) {
