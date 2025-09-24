@@ -80,7 +80,6 @@ function addDragAndDropHandlers() {
             
             renderQuarter(currentQuarter);
             
-            // [신규] 수정된 결과를 캐시에 즉시 저장
             if (state.teamLineupCache && activeTeamIndex !== -1) {
                 state.teamLineupCache[activeTeamIndex] = state.lineupResults;
             }
@@ -200,7 +199,6 @@ function executeLineupGeneration(members, formations, isSilent = false) {
             let restQueuePointer = 0;
             let secondaryGkUsage = {};
             
-            // [신규] 선수별 포지션 출전 횟수 추적 객체
             const pos1Usage = {};
             const pos2Usage = {};
             members.forEach(m => {
@@ -208,8 +206,8 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                 pos2Usage[m] = 0;
             });
 
-            const MAX_POS1_PLAYS = 4; // 주 포지션 최대 출전 횟수
-            const MAX_POS2_PLAYS = 3; // 부 포지션 최대 출전 횟수
+            const MAX_POS1_PLAYS = 4;
+            const MAX_POS2_PLAYS = 3;
             
             for (let q = 0; q < 6; q++) {
                 const formation = formations[q];
@@ -256,21 +254,27 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                         assignment[pos].push(null); continue;
                     }
 
-                    // --- 수정된 필드 플레이어 배정 로직 ---
                     let bestPlayer = availablePlayers[0], bestFit = -1;
                     for (const playerName of availablePlayers) {
                         const player = localPlayerDB[playerName];
                         let fitScore = 0;
 
-                        const isPos1 = (player.pos1 || []).includes(pos);
-                        const isPos2 = (player.pos2 || []).includes(pos);
+                        // --- BUG FIX STARTS HERE ---
+                        // GK 포지션을 배정할 때, 이미 뛴 부포지션 GK는 아닌지 확인
+                        if (pos === 'GK' && secondaryGks.includes(playerName) && secondaryGkUsage[playerName]) {
+                            fitScore = -1; // 이미 뛴 부포지션 GK는 배정되지 않도록 점수를 매우 낮게 설정
+                        } else {
+                        // --- BUG FIX ENDS HERE ---
+                            const isPos1 = (player.pos1 || []).includes(pos);
+                            const isPos2 = (player.pos2 || []).includes(pos);
 
-                        if (isPos1 && pos1Usage[playerName] < MAX_POS1_PLAYS) {
-                            fitScore = 100 + (player.s1 || 65);
-                        } else if (isPos2 && pos2Usage[playerName] < MAX_POS2_PLAYS) {
-                            fitScore = (player.s2 || 0);
-                        } else if (!isPos1 && !isPos2) {
-                            fitScore = 1;
+                            if (isPos1 && pos1Usage[playerName] < MAX_POS1_PLAYS) {
+                                fitScore = 100 + (player.s1 || 65);
+                            } else if (isPos2 && pos2Usage[playerName] < MAX_POS2_PLAYS) {
+                                fitScore = (player.s2 || 0);
+                            } else if (!isPos1 && !isPos2) {
+                                fitScore = 1;
+                            }
                         }
 
                         if (fitScore > bestFit) {
