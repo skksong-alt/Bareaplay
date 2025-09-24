@@ -88,7 +88,7 @@ function addDragAndDropHandlers() {
 
 function renderQuarter(qIndex) {
     if (!state.lineupResults || !state.lineupResults.lineups || !state.lineupResults.lineups[qIndex]) {
-        pitchContainer.innerHTML = createPitchHTML(); // 라인업 없어도 경기장은 표시
+        pitchContainer.innerHTML = createPitchHTML();
         return;
     }
     pitchContainer.innerHTML = createPitchHTML();
@@ -164,7 +164,8 @@ export function renderTeamSelectTabs(teams) {
     }
 }
 
-export function executeLineupGeneration(members, formations, isSilent = false) {
+// [수정] 함수 정의 앞에 있던 export를 제거하고, 파일 맨 아래에서 한번에 export 하도록 변경
+function executeLineupGeneration(members, formations, isSilent = false) {
     return new Promise(resolve => {
         if (members.length < 11 && !isSilent) {
             window.showNotification("최소 11명의 선수가 필요합니다.", 'error');
@@ -237,7 +238,6 @@ export function executeLineupGeneration(members, formations, isSilent = false) {
         resolve(bestLineup);
     });
 }
-export { executeLineupGeneration };
 
 export function init(dependencies) {
     state = dependencies.state;
@@ -292,7 +292,6 @@ export function init(dependencies) {
         }
     });
 
-    // [추가] 보기 모드에서 클릭 시 관리자 로그인 요청
     pageElement.addEventListener('click', (e) => {
         if (pageElement.classList.contains('view-only')) {
             if (e.target.closest('select, button')) {
@@ -307,3 +306,6 @@ export function init(dependencies) {
 export function getPosCellMap() {
     return posCellMap;
 }
+
+// [수정] 파일 맨 아래에서 한번에 export
+export { executeLineupGeneration };

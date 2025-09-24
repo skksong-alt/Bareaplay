@@ -1,5 +1,5 @@
 // sw.js
-const CACHE_NAME = 'bareaplay-cache-v9'; // 캐시 버전 업데이트
+const CACHE_NAME = 'bareaplay-cache-v10'; // 캐시 버전 업데이트
 const urlsToCache = [
     '/',
     '/index.html',
