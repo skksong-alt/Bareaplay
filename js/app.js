@@ -1,6 +1,8 @@
 // js/app.js
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
 import { getFirestore, collection, doc, onSnapshot, getDocs, getDoc, setDoc, deleteDoc, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
+import { getDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 import { state, setAdmin } from './store.js';
 import * as playerMgmt from './modules/playerManagement.js';
 import * as balancer from './modules/teamBalancer.js';
@@ -19,6 +21,7 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
 
 let adminModal, passwordInput, modalConfirmBtn, modalCancelBtn;
 const pages = {};
@@ -350,18 +353,38 @@ document.addEventListener('DOMContentLoaded', async () => {
         passwordInput = document.getElementById('admin-password-input');
         modalConfirmBtn = document.getElementById('modal-confirm-btn');
         modalCancelBtn = document.getElementById('modal-cancel-btn');
-        modalConfirmBtn.addEventListener('click', () => {
-            if (passwordInput.value === state.ADMIN_PASSWORD) {
-                setAdmin(true);
-                window.showNotification('관리자 인증에 성공했습니다.', 'success');
-                updateAdminUI();
-                adminModal.classList.add('hidden');
-                if (pendingTabSwitch) { switchTab(pendingTabSwitch, true); }
-            } else { window.showNotification('승인번호가 올바르지 않습니다.', 'error'); }
-        });
+        // 'Google 계정으로 로그인' 버튼(새로 추가한 버튼)을 찾습니다.
+        const googleLoginBtn = document.getElementById('google-login-btn');
+        
+        if (googleLoginBtn) {
+            googleLoginBtn.addEventListener('click', async () => {
+                const provider = new GoogleAuthProvider();
+                try {
+                    // Google 로그인 팝업창을 띄웁니다.
+                    const result = await signInWithPopup(auth, provider);
+                    const user = result.user;
+                    
+                    // 로그인이 성공하면, 이 사용자가 'admins' 목록에 있는지 확인합니다.
+                    // (지금은 등록 단계이므로, 확인 없이 무조건 성공 처리합니다)
+                    console.log("로그인 성공! UID:", user.uid);
+                    window.showNotification('로그인 성공! 관리자 등록을 진행합니다.');
+
+                    // (임시) 로그인 성공 시 관리자 모드 활성화
+                    setAdmin(true);
+                    updateAdminUI();
+                    adminModal.classList.add('hidden');
+                    if (pendingTabSwitch) { switchTab(pendingTabSwitch, true); }
+
+                } catch (error) {
+                    console.error("Google 로그인 실패:", error);
+                    window.showNotification('Google 로그인에 실패했습니다.', 'error');
+                }
+            });
+        }
+        
+        // '취소' 버튼은 기존과 동일하게 작동합니다.
         modalCancelBtn.addEventListener('click', () => adminModal.classList.add('hidden'));
-        adminModal.addEventListener('click', (e) => { if (e.target === adminModal) adminModal.classList.add('hidden'); });
-        passwordInput.addEventListener('keyup', (e) => { if (e.key === 'Enter') modalConfirmBtn.click(); });
+        adminModal.addEventListener('click', (e) => { e.target === adminModal && adminModal.classList.add('hidden'); });
         Object.keys(tabs).forEach(key => { if (tabs[key]) tabs[key].addEventListener('click', () => switchTab(key)); });
         onSnapshot(doc(db, "settings", "activeMeeting"), (doc) => {
             const placeholder = document.getElementById('realtime-link-placeholder');
