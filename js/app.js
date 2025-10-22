@@ -243,9 +243,7 @@ window.promptForAdminPassword = function() {
         window.showNotification('이미 관리자 권한으로 로그인되어 있습니다.');
         return;
     }
-    passwordInput.value = '';
     adminModal.classList.remove('hidden');
-    passwordInput.focus();
 }
 
 function switchTab(activeKey, force = false) {
@@ -359,20 +357,29 @@ document.addEventListener('DOMContentLoaded', async () => {
             googleLoginBtn.addEventListener('click', async () => {
                 const provider = new GoogleAuthProvider();
                 try {
-                    // Google 로그인 팝업창을 띄웁니다.
+ if (googleLoginBtn) {
+            googleLoginBtn.addEventListener('click', async () => {
+                const provider = new GoogleAuthProvider();
+                try {
+                    // 🔽🔽🔽 이 아래 내용을 통째로 붙여넣으세요 🔽🔽🔽
+
+                    // 1. Google 로그인 팝업창을 띄웁니다.
                     const result = await signInWithPopup(auth, provider);
                     const user = result.user;
                     
-                    // 로그인이 성공하면, 이 사용자가 'admins' 목록에 있는지 확인합니다.
-                    // (지금은 등록 단계이므로, 확인 없이 무조건 성공 처리합니다)
-                    console.log("로그인 성공! UID:", user.uid);
-                    window.showNotification('로그인 성공! 관리자 등록을 진행합니다.');
+                    // 2. (임시) UID를 얻기 위해, 일단 로그인만 성공하면 무조건 관리자로 인정합니다.
+                    
+                    // 3. (중요!) 4명의 관리자가 자기 UID를 쉽게 복사할 수 있도록 경고창을 띄웁니다.
+                    console.log("임시 로그인 성공! UID:", user.uid, "이메일:", user.email);
+                    window.alert("로그인 성공! 관리자님께 이 UID를 전달해주세요: \n\n" + user.uid);
 
-                    // (임시) 로그인 성공 시 관리자 모드 활성화
+                    // 4. (임시) 관리자 모드 활성화
                     setAdmin(true);
                     updateAdminUI();
                     adminModal.classList.add('hidden');
                     if (pendingTabSwitch) { switchTab(pendingTabSwitch, true); }
+                    
+                    // 🔼🔼🔼 여기까지 🔼🔼🔼
 
                 } catch (error) {
                     console.error("Google 로그인 실패:", error);
