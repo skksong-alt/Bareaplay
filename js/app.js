@@ -26,6 +26,7 @@ let adminModal, passwordInput, modalConfirmBtn, modalCancelBtn;
 const pages = {};
 const tabs = {};
 let pendingTabSwitch = null;
+let isSavingLocally = false;
 
 window.showNotification = function(message, type = 'success') {
     let notificationEl = document.getElementById('notification');
@@ -60,6 +61,7 @@ window.shuffleLocal = function(arr) {
 
 const saveDailyMeetingData = window.debounce(async () => {
     if (!state.isAdmin) return;
+isSavingLocally = true;
     const today = new Date().toISOString().split('T')[0];
 
     // [수정] Firestore 저장을 위해 Nested Array를 객체로 변환
@@ -95,6 +97,7 @@ const saveDailyMeetingData = window.debounce(async () => {
     } catch (error) {
         console.error("일일 모임 데이터 저장 실패:", error);
         window.showNotification(`저장 실패: ${error.message}`, 'error');
+isSavingLocally = false;
     }
 }, 1000);
 
@@ -103,6 +106,10 @@ function loadAndSyncDailyMeetingData() {
     const meetingDocRef = doc(db, "dailyMeetings", today);
 
     onSnapshot(meetingDocRef, (doc) => {
+if (isSavingLocally) {
+            isSavingLocally = false; // 2. 깃발을 'false'로 리셋
+            return; // 3. 동기화 로직을 실행하지 않고 종료
+        }
         const hasLocalChanges = doc.metadata.hasPendingWrites;
         if (hasLocalChanges) return;
 
