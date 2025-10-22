@@ -109,20 +109,32 @@ export function renderResults(teams) {
 
 function calculateScore(teamArr, W) {
     if (teamArr.some(t => t.length === 0)) return Infinity;
-    const sums = teamArr.map(t => t.reduce((acc, p) => acc + (p.s1 || 0), 0));
+
+    // [수정] 총합(sums) 대신 '평균'(averages)을 계산합니다.
+    const averages = teamArr.map(t => {
+        const sum = t.reduce((acc, p) => acc + (p.s1 || 0), 0);
+        return (t.length > 0) ? (sum / t.length) : 0;
+    });
+            
     const posStats = teamArr.map(team => {
         const c = { GK: 0, DF: 0, MF: 0, FW: 0 };
         team.forEach(p => { let gg = allPosGroup([...(p.pos1 || []), ...(p.pos2 || [])]); if (gg.includes('GK')) c.GK++; if (gg.includes('DF')) c.DF++; if (gg.includes('MF')) c.MF++; if (gg.includes('FW')) c.FW++; });
         return c;
     });
-    const sumMaxMin = sums.length > 1 ? Math.max(...sums) - Math.min(...sums) : 0;
+
+    // [수정] '총합'의 차이(sumMaxMin) 대신 '평균'의 차이(avgMaxMin)를 사용합니다.
+    // (평균은 0-100 사이의 값이므로 가중치를 5배 정도 곱해 다른 요소들과 스케일을 맞춥니다.)
+    const avgMaxMin = averages.length > 1 ? Math.max(...averages) - Math.min(...averages) : 0;
+            
     const sizeMaxMin = teamArr.length > 1 ? Math.max(...teamArr.map(t => t.length)) - Math.min(...teamArr.map(t => t.length)) : 0;
     let posDiffSum = 0;
     ['GK', 'DF', 'MF', 'FW'].forEach(pg => {
         const arr = posStats.map(c => c[pg]);
         if (arr.length > 1) { posDiffSum += (Math.max(...arr) - Math.min(...arr)); }
     });
-    return (sumMaxMin * W.SKILL) + (posDiffSum * W.POS) + (sizeMaxMin * W.SIZE * 5);
+
+    // [수정] sumMaxMin 대신 avgMaxMin을 사용합니다.
+    return (avgMaxMin * W.SKILL * 5) + (posDiffSum * W.POS) + (sizeMaxMin * W.SIZE * 5);
 }
 
 function tournamentSelection(rankedPop, k = 5) {
