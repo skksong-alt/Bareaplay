@@ -368,20 +368,28 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const result = await signInWithPopup(auth, provider);
                     const user = result.user;
                     
-                    // 2. (임시) UID를 얻기 위해, 일단 로그인만 성공하면 무조건 관리자로 인정합니다.
-                    
-                    // 3. (중요!) 4명의 관리자가 자기 UID를 쉽게 복사할 수 있도록 경고창을 띄웁니다.
-                    console.log("임시 로그인 성공! UID:", user.uid, "이메일:", user.email);
-                    window.alert("로그인 성공! 관리자님께 이 UID를 전달해주세요: \n\n" + user.uid);
+                    // 2. Firestore 'admins' 컬렉션에서 로그인한 사용자의 UID 문서를 찾아봅니다.
+                    const adminDocRef = doc(db, "admins", user.uid);
+                    const adminDoc = await getDoc(adminDocRef);
 
-                    // 4. (임시) 관리자 모드 활성화
-                    setAdmin(true);
-                    updateAdminUI();
-                    adminModal.classList.add('hidden');
-                    if (pendingTabSwitch) { switchTab(pendingTabSwitch, true); }
+                    // 3. 'admins' 목록에 해당 UID 문서가 존재하는지 확인합니다.
+                    if (adminDoc.exists()) {
+                        // 4. 관리자가 맞습니다! (UI 활성화)
+                        console.log("관리자 인증 성공! UID:", user.uid);
+                        setAdmin(true);
+                        window.showNotification('관리자 인증에 성공했습니다.', 'success');
+                        updateAdminUI();
+                        adminModal.classList.add('hidden');
+                        if (pendingTabSwitch) { switchTab(pendingTabSwitch, true); }
+                    } else {
+                        // 5. 관리자가 아닙니다. (UI 비활성화)
+                        console.log("관리자가 아닌 사용자 로그인 시도:", user.uid);
+                        window.showNotification('관리자 계정이 아닙니다.', 'error');
+                        // (setAdmin(true)를 호출하지 않으므로 관리자 모드가 켜지지 않습니다)
+                    }
 
                 } catch (error) {
-                    // 5. 'try'의 짝이 되는 'catch'입니다.
+                    // 6. 'try'의 짝이 되는 'catch'입니다.
                     console.error("Google 로그인 실패:", error);
                     window.showNotification('Google 로그인에 실패했습니다.', 'error');
                 }
