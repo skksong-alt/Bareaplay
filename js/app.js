@@ -10,7 +10,7 @@ import * as accounting from './modules/accounting.js';
 import * as shareMgmt from './modules/shareManagement.js';
 
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
+    apiKey: "AIzaSyD_2tm5-hYbCeU8yi0QiWW9Oqm0O7oPBco",
     authDomain: "team-barea.firebaseapp.com",
     projectId: "team-barea",
     storageBucket: "team-barea.appspot.com",
@@ -347,22 +347,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         Object.assign(pages, { players: document.getElementById('page-players'), balancer: document.getElementById('page-balancer'), lineup: document.getElementById('page-lineup'), accounting: document.getElementById('page-accounting'), share: document.getElementById('page-share') });
         Object.assign(tabs, { players: document.getElementById('tab-players'), balancer: document.getElementById('tab-balancer'), lineup: document.getElementById('tab-lineup'), accounting: document.getElementById('tab-accounting'), share: document.getElementById('tab-share') });
         adminModal = document.getElementById('admin-modal');
-        passwordInput = document.getElementById('admin-password-input');
-        modalConfirmBtn = document.getElementById('modal-confirm-btn');
-        modalCancelBtn = document.getElementById('modal-cancel-btn');
-        // 'Google 계정으로 로그인' 버튼(새로 추가한 버튼)을 찾습니다.
+        // passwordInput, modalConfirmBtn 변수는 비밀번호 방식이라 삭제했습니다.
+        modalCancelBtn = document.getElementById('modal-cancel-btn'); 
+
+        // 'Google 계정으로 로그인' 버튼을 찾습니다.
         const googleLoginBtn = document.getElementById('google-login-btn');
         
         if (googleLoginBtn) {
             googleLoginBtn.addEventListener('click', async () => {
                 const provider = new GoogleAuthProvider();
                 try {
- if (googleLoginBtn) {
-            googleLoginBtn.addEventListener('click', async () => {
-                const provider = new GoogleAuthProvider();
-                try {
-                    // 🔽🔽🔽 이 아래 내용을 통째로 붙여넣으세요 🔽🔽🔽
-
                     // 1. Google 로그인 팝업창을 띄웁니다.
                     const result = await signInWithPopup(auth, provider);
                     const user = result.user;
@@ -378,20 +372,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                     updateAdminUI();
                     adminModal.classList.add('hidden');
                     if (pendingTabSwitch) { switchTab(pendingTabSwitch, true); }
-                    
-                    // 🔼🔼🔼 여기까지 🔼🔼🔼
 
                 } catch (error) {
+                    // 5. 'try'의 짝이 되는 'catch'입니다.
                     console.error("Google 로그인 실패:", error);
                     window.showNotification('Google 로그인에 실패했습니다.', 'error');
                 }
             });
         }
         
-        // '취소' 버튼은 기존과 동일하게 작동합니다.
+        // '취소' 버튼과 팝업창 바깥쪽을 클릭했을 때의 동작입니다.
         modalCancelBtn.addEventListener('click', () => adminModal.classList.add('hidden'));
-        adminModal.addEventListener('click', (e) => { e.target === adminModal && adminModal.classList.add('hidden'); });
+        adminModal.addEventListener('click', (e) => { if (e.target === adminModal) adminModal.classList.add('hidden'); });
+
+        // 탭 버튼들에 클릭 이벤트를 추가합니다.
         Object.keys(tabs).forEach(key => { if (tabs[key]) tabs[key].addEventListener('click', () => switchTab(key)); });
+
         onSnapshot(doc(db, "settings", "activeMeeting"), (doc) => {
             const placeholder = document.getElementById('realtime-link-placeholder');
             placeholder.innerHTML = '';
