@@ -189,7 +189,7 @@ function executeLineupGeneration(members, formations, isSilent = false) {
             const lineups = []; const resters = []; let restQueuePointer = 0;
             let secondaryGkUsage = {}; let fillerGkUsage = {}; const pos1Usage = {}; const pos2Usage = {};
             members.forEach(m => { pos1Usage[m] = 0; pos2Usage[m] = 0; });
-            const MAX_POS1_PLAYS = 4; const MAX_POS2_PLAYS = 3;
+            const MAX_POS1_PLAYS = 4; const MAX_POS2_PLAYS = 4;
             for (let q = 0; q < 6; q++) {
                 const formation = formations[q]; const slots = posCellMap[formation]?.map(c => c.pos) || []; const numToRest = members.length - slots.length;
                 const quarterResters = [...new Set(fullRestQueue.slice(restQueuePointer, restQueuePointer + numToRest))];
@@ -210,16 +210,27 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                     if (pos === 'GK' && assignment['GK']) continue;
                     assignment[pos] = assignment[pos] || [];
                     if (availablePlayers.length === 0) { assignment[pos].push(null); continue; }
-                    let bestPlayer = availablePlayers[0], bestFit = -1;
-                    for (const playerName of availablePlayers) {
-                        const player = localPlayerDB[playerName]; let fitScore = 0;
-                        if (pos === 'GK' && secondaryGks.includes(playerName) && secondaryGkUsage[playerName]) { fitScore = -1; } 
-                        else {
-                            const isPos1 = (player.pos1 || []).includes(pos); const isPos2 = (player.pos2 || []).includes(pos);
-                            if (isPos1 && pos1Usage[playerName] < MAX_POS1_PLAYS) { fitScore = 100 + (player.s1 || 65); } 
-                            else if (isPos2 && pos2Usage[playerName] < MAX_POS2_PLAYS) { fitScore = (player.s2 || 0); } 
-                            else if (!isPos1 && !isPos2) { if (pos === 'GK' && fillerGkUsage[playerName]) { fitScore = -1; } else { fitScore = 1; } }
-                        }
+let bestPlayer = availablePlayers[0], bestFit = -1;
+                        for (const playerName of availablePlayers) {
+                            const player = localPlayerDB[playerName]; let fitScore = 0;
+                            if (pos === 'GK' && secondaryGks.includes(playerName) && secondaryGkUsage[playerName]) { fitScore = -1; } 
+                            else {
+                                // [수정 시작] ◀◀ 2. 로직 수정
+                                const isPos1 = (player.pos1 || []).includes(pos);
+                                const isPos2 = (player.pos2 || []).includes(pos);
+                                const pos1Used = pos1Usage[playerName] || 0;
+                                const pos2Used = pos2Usage[playerName] || 0;
+
+                                if (isPos1 && pos1Used < MAX_POS1_PLAYS) { 
+                                    fitScore = 100 + (player.s1 || 65); // 우선 1: 주포지션
+                                } 
+                                else if (isPos2 && pos2Used < MAX_POS2_PLAYS) { 
+                                    fitScore = 50 + (player.s2 || 0); // 우선 2: 부포지션 (기본 점수 50점 부여)
+                                } 
+                                else if (!isPos1 && !isPos2) { // 우선 3: 땜빵
+                                    if (pos === 'GK' && fillerGkUsage[playerName]) { fitScore = -1; } 
+                                    else { fitScore = 1; }
+                                }
                         if (fitScore > bestFit) { bestFit = fitScore; bestPlayer = playerName; }
                     }
                     assignment[pos].push(bestPlayer);

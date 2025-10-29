@@ -1,5 +1,5 @@
 // sw.js
-const CACHE_NAME = 'bareaplay-cache-v11'; // 캐시 버전 업데이트
+const CACHE_NAME = 'bareaplay-cache-v12'; // 캐시 버전 업데이트
 const urlsToCache = [
     '/',
     '/index.html',
@@ -30,6 +30,7 @@ self.addEventListener('install', (event) => {
         return Promise.all(promises);
       })
   );
+self.skipWaiting();
 });
 
 self.addEventListener('fetch', (event) => {
@@ -57,6 +58,6 @@ self.addEventListener('activate', (event) => {
           }
         })
       );
-    })
+    }).then(() => self.clients.claim())
   );
 });
