@@ -231,6 +231,7 @@ let bestPlayer = availablePlayers[0], bestFit = -1;
                                     if (pos === 'GK' && fillerGkUsage[playerName]) { fitScore = -1; } 
                                     else { fitScore = 1; }
                                 }
+}
                         if (fitScore > bestFit) { bestFit = fitScore; bestPlayer = playerName; }
                     }
                     assignment[pos].push(bestPlayer);
@@ -320,5 +321,4 @@ export function getPosCellMap() {
     return posCellMap;
 }
 
-// [수정] 파일 맨 아래에서 한번에 export
 export { executeLineupGeneration };
