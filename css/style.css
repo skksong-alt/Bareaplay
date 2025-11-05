@@ -97,26 +97,43 @@ body {
     .w-full thead {
         display: none;
     }
+
+    /* [수정] <td>의 flex 레이아웃을 block(수직) 레이아웃으로 변경 */
     #accounting-log-body td, #expense-log-body td {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
+        display: block; /* 1. flex 대신 block 사용 */
         padding: 0.5rem 0.25rem;
         border-bottom: 1px solid #f3f4f6;
+        /* 2. flex 속성 제거 (justify-content, align-items) */
     }
+
     #accounting-log-body td:last-child, #expense-log-body td:last-child {
         border-bottom: none;
     }
+
+    /* [수정] 라벨(::before)이 인풋 위에 오도록 스타일링 */
     #accounting-log-body td::before, #expense-log-body td::before {
         content: attr(data-label);
         font-weight: 600;
-        margin-right: 1rem;
+        display: block; /* 3. 라벨을 block 요소로 만들어 한 줄 차지 */
+        margin-bottom: 0.25rem; /* 4. 라벨과 인풋 사이 간격 */
+        color: #374151; /* (글자색 진하게) */
+        /* 5. flex-item 속성 제거 (margin-right) */
     }
+
+    /* [수정] 인풋/셀렉트 박스가 100% 너비를 갖도록 함 */
     #accounting-log-body td input, #accounting-log-body td select,
     #expense-log-body td input {
-        width: 60%;
-        text-align: right;
+        width: 100%; /* 6. 60% 대신 100%로 변경 */
+        text-align: left; /* 7. right 대신 left 정렬 */
     }
+    
+    /* [추가] 텍스트만 있는 셀 (날짜, 이름 등)은 깔끔하게 보이도록 */
+    #accounting-log-body td:not(:has(input)):not(:has(select)),
+    #expense-log-body td:not(:has(input)):not(:has(select)) {
+        padding-top: 0.75rem;
+        padding-bottom: 0.75rem;
+    }
+
     #accounting-log-foot tr, #expense-log-foot tr {
         font-size: 1.1rem;
     }

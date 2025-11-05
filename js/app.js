@@ -1,7 +1,7 @@
 // js/app.js
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
 import { getFirestore, collection, doc, onSnapshot, getDocs, getDoc, setDoc, deleteDoc, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
 import { state, setAdmin } from './store.js';
 import * as playerMgmt from './modules/playerManagement.js';
 import * as balancer from './modules/teamBalancer.js';
@@ -364,6 +364,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             googleLoginBtn.addEventListener('click', async () => {
                 const provider = new GoogleAuthProvider();
                 try {
+await setPersistence(auth, browserLocalPersistence);
                     // 1. Google 로그인 팝업창을 띄웁니다.
                     const result = await signInWithPopup(auth, provider);
                     const user = result.user;
@@ -402,7 +403,39 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // 탭 버튼들에 클릭 이벤트를 추가합니다.
         Object.keys(tabs).forEach(key => { if (tabs[key]) tabs[key].addEventListener('click', () => switchTab(key)); });
+onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                // 1. 사용자가 이전에 로그인했음 (세션이 복원됨)
+                console.log("자동 로그인 사용자 발견:", user.uid);
+                try {
+                    // 2. Firestore 'admins' 컬렉션에서 이 사용자가 관리자인지 확인
+                    const adminDocRef = doc(db, "admins", user.uid);
+                    const adminDoc = await getDoc(adminDocRef);
 
+                    if (adminDoc.exists()) {
+                        // 3. 관리자입니다!
+                        console.log("관리자 자동 로그인 성공.");
+                        setAdmin(true);
+                        updateAdminUI(); // UI를 관리자 모드로 즉시 업데이트
+                        adminModal.classList.add('hidden'); // 혹시 모달이 떠있다면 닫기
+                    } else {
+                        // 4. 관리자가 아닌 사용자가 로그인되어 있음
+                        console.log("관리자가 아닌 사용자 세션 발견.");
+                        setAdmin(false);
+                        updateAdminUI();
+                    }
+                } catch (error) {
+                    console.error("자동 로그인 중 관리자 확인 실패:", error);
+                    setAdmin(false);
+                    updateAdminUI();
+                }
+            } else {
+                // 5. 사용자가 로그인되어 있지 않음
+                console.log("로그인된 사용자 없음.");
+                setAdmin(false);
+                updateAdminUI();
+            }
+        });
         onSnapshot(doc(db, "settings", "activeMeeting"), (doc) => {
             const placeholder = document.getElementById('realtime-link-placeholder');
             placeholder.innerHTML = '';
