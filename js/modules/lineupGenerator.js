@@ -170,7 +170,7 @@ export function renderTeamSelectTabs(teams) {
     const previouslyActiveIndex = activeTeamIndex;
     teamSelectTabsContainer.innerHTML = '';
     
-    const handleTabClick = (team, index) => {
+const handleTabClick = (team, index) => {
         activeTeamIndex = index;
         document.querySelectorAll('.team-tab-btn').forEach(btn => btn.classList.remove('active'));
         const currentButton = document.querySelector(`.team-tab-btn[data-team-index="${index}"]`);
@@ -179,6 +179,18 @@ export function renderTeamSelectTabs(teams) {
         
         if (state.teamLineupCache && state.teamLineupCache[index]) {
             state.lineupResults = state.teamLineupCache[index];
+            
+            // [수정] ◀◀ 1. 캐시된 포메이션을 UI 드롭다운에 복원
+            // 이 코드가 없으면 UI와 데이터가 일치하지 않아 
+            // 팀1/팀2 라인업이 섞이거나 PDF 생성이 실패합니다.
+            if (state.lineupResults.formations && state.lineupResults.formations.length === 6) {
+                const formationSelects = document.querySelectorAll('#page-lineup select');
+                formationSelects.forEach((select, qIndex) => {
+                    select.value = state.lineupResults.formations[qIndex];
+                });
+            }
+            // [수정 끝] ◀◀
+
             lineupDisplay.classList.remove('hidden');
             placeholderLineup.classList.add('hidden');
             document.querySelector('.lineup-q-tab[data-q="0"]').click();
