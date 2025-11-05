@@ -193,7 +193,21 @@ const handleTabClick = (team, index) => {
 
             lineupDisplay.classList.remove('hidden');
             placeholderLineup.classList.add('hidden');
-            document.querySelector('.lineup-q-tab[data-q="0"]').click();
+            
+            // [수정 시작] ◀◀◀
+            // (기존: document.querySelector('.lineup-q-tab[data-q="0"]').click();)
+            
+            // 1쿼터가 아닌, 현재 활성화된 쿼터 탭을 다시 클릭합니다.
+            // (currentQuarter 변수는 탭 클릭 시 이미 전역으로 업데이트되고 있습니다)
+            const activeQuarterTab = document.querySelector(`.lineup-q-tab[data-q="${currentQuarter}"]`);
+            if (activeQuarterTab) {
+                activeQuarterTab.click();
+            } else {
+                // 혹시 모를 오류 대비, 1쿼터로 폴백
+                document.querySelector('.lineup-q-tab[data-q="0"]').click();
+            }
+            // [수정 끝] ◀◀◀
+
         } else {
             state.lineupResults = null;
             lineupDisplay.classList.add('hidden');
