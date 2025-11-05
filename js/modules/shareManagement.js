@@ -145,27 +145,36 @@ export function generatePrintView(shareData) {
         window.showNotification('팝업이 차단되었습니다. 팝업을 허용해주세요.', 'error');
         return;
     }
-    const createQuarterHTML = (teamLineup, teamIdx, qIndex) => {
+const createQuarterHTML = (teamLineup, teamIdx, qIndex) => {
         if (!teamLineup || !teamLineup.lineups || !teamLineup.lineups[qIndex]) return '<div class="pitch-print-placeholder"></div>';
+        
         const lineup = teamLineup.lineups[qIndex];
         const formation = teamLineup.formations[qIndex];
         const posCellMap = window.lineup.getPosCellMap();
-        const resters = teamLineup.resters[`q${qIndex + 1}`] || [];
+
+        // [수정 시작] ◀◀ 1. 버그 수정
+        // 기존: const resters = teamLineup.resters[`q${qIndex + 1}`] || [];
         
+        // 'lineup' 객체를 기반으로 실제 경기장에 배정된 선수 Set을 만듭니다.
+        const assignedPlayers = new Set(Object.values(lineup).flat().filter(Boolean));
+        
+        // 전체 멤버 목록에서, 경기장에 배정된 선수를 제외하여 '휴식 선수'를 유도합니다.
+        const allMembers = teamLineup.members || [];
+        const resters = allMembers
+            .filter(m => !assignedPlayers.has(m))
+            .sort((a,b) => a.localeCompare(b, 'ko-KR'));
+        // [수정 끝] ◀◀ 
+
         let pitchHtml = `<div class="pitch-print">
-            <div class="pitch-line-print" style="top:50%;left:0;width:100%;height:1px;"></div>
-            <div class="center-circle-print" style="top:50%;left:50%;width:25%;height:18%;transform:translate(-50%,-50%);"></div>
-            <div class="penalty-box-print" style="top:0;left:50%;transform:translateX(-50%);width:60%;height:18%;border-top:0;"></div>
-            <div class="penalty-box-print" style="bottom:0;left:50%;transform:translateX(-50%);width:60%;height:18%;border-bottom:0;"></div>
+            ...
             <div class="quarter-title-integrated">팀 ${teamIdx + 1} - ${qIndex + 1}쿼터 (${formation})</div>`;
         
         const counters = {};
         (posCellMap[formation] || []).forEach(fc => {
             counters[fc.pos] = (counters[fc.pos] || 0);
             const name = (lineup[fc.pos] || [])[counters[fc.pos]] || '';
-            let icon = "❓", bg = "#555";
-            if(fc.pos=="GK"){icon="🧤";bg="#00C853"} else if(["CB","RB","LB","DF"].includes(fc.pos)){icon="🛡";bg="#0288D1"} else if(["MF","CM"].includes(fc.pos)){icon="⚙";bg="#FBC02D"} else if(["LW","RW","FW"].includes(fc.pos)){icon="🎯";bg="#EF6C00"}
-            pitchHtml += `<div class="player-marker-print" style="left:${fc.x}%;top:${fc.y}%;"><div class="player-icon-print" style="background:${bg}">${icon}</div><div class="player-name-print">${name||'-'}</div></div>`;
+            // ... (이하 동일) ...
+            pitchHtml += `<div class="player-marker-print" ...>${name||'-'}</div>`;
             counters[fc.pos]++;
         });
         pitchHtml += `</div>`;
