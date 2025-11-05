@@ -52,38 +52,68 @@ function addDragAndDropHandlers() {
         d.addEventListener('dragend', () => d.classList.remove('dragging'));
     });
 
-    targets.forEach(target => {
-        target.addEventListener('dragover', e => { e.preventDefault(); if(target !== document.querySelector('.dragging')) target.classList.add('drop-target'); });
-        target.addEventListener('dragleave', () => target.classList.remove('drop-target'));
-        target.addEventListener('drop', e => {
-            e.preventDefault(); target.classList.remove('drop-target');
+target.addEventListener('drop', e => {
+            e.preventDefault(); 
+            target.classList.remove('drop-target');
+            
             const dragging = document.querySelector('.dragging');
             if (!dragging || target === dragging) return;
+
+            // --- 1. 현재 쿼터의 데이터 가져오기 ---
             const lineup = state.lineupResults.lineups[currentQuarter];
             const resters = state.lineupResults.resters[currentQuarter];
+            
+            // --- 2. 드래그하는 대상(Dragging) 정보 ---
             const draggingName = dragging.dataset.name;
-            const targetName = target.dataset.name;
             const draggingPosType = dragging.dataset.pos;
+            const d_loc_lineup = findInLineup(lineup, draggingName);
+            const d_loc_rest = resters.indexOf(draggingName);
+
+            // --- 3. 드롭되는 대상(Target) 정보 ---
+            const targetName = target.dataset.name;
             const targetPosType = target.dataset.pos;
-            if (draggingPosType !== 'rest' && draggingPosType !== 'sub') {
-                const d_loc = findInLineup(lineup, draggingName);
-                if (!d_loc) return;
-                if (targetPosType !== 'rest' && targetPosType !== 'sub') {
-                    const t_loc = findInLineup(lineup, targetName);
-                    if (t_loc) {
-                        lineup[d_loc.pos][d_loc.idx] = targetName;
-                        lineup[t_loc.pos][t_loc.idx] = draggingName;
-                    }
+            const t_loc_lineup = findInLineup(lineup, targetName);
+            const t_loc_rest = resters.indexOf(targetName);
+
+            let message = `${draggingName} ↔ ${targetName} 교체!`;
+
+            // --- 4. 상황별 로직 분기 ---
+            if (draggingPosType !== 'rest' && targetPosType !== 'rest') {
+                // Case 1: Pitch -> Pitch (경기장 내 선수끼리 교체)
+                if (d_loc_lineup && t_loc_lineup) {
+                    lineup[d_loc_lineup.pos][d_loc_lineup.idx] = targetName;
+                    lineup[t_loc_lineup.pos][t_loc_lineup.idx] = draggingName;
                 }
-            } 
+            } else if (draggingPosType !== 'rest' && targetPosType === 'rest') {
+                // Case 2: Pitch -> Rest (경기장 선수를 휴식으로)
+                if (d_loc_lineup && t_loc_rest > -1) {
+                    const playerFromPitch = lineup[d_loc_lineup.pos].splice(d_loc_lineup.idx, 1)[0];
+                    const playerFromRest = resters.splice(t_loc_rest, 1)[0];
+                    
+                    lineup[d_loc_lineup.pos].push(playerFromRest); // 휴식 선수를 라인업에 추가
+                    resters.push(playerFromPitch); // 라인업 선수를 휴식에 추가
+                }
+            } else if (draggingPosType === 'rest' && targetPosType !== 'rest') {
+                // Case 3: Rest -> Pitch (휴식 선수를 경기장으로)
+                if (d_loc_rest > -1 && t_loc_lineup) {
+                    const playerFromRest = resters.splice(d_loc_rest, 1)[0];
+                    const playerFromPitch = lineup[t_loc_lineup.pos].splice(t_loc_lineup.idx, 1)[0];
+
+                    resters.push(playerFromPitch); // 라인업 선수를 휴식에 추가
+                    lineup[t_loc_lineup.pos].push(playerFromRest); // 휴식 선수를 라인업에 추가
+                }
+            }
+            // Case 4: Rest -> Rest (휴식 선수끼리 교체)
+            // (데이터 변경 없음, 화면만 갱신됨)
+            
+            // --- 5. 화면 다시 그리고 데이터 저장 ---
             renderQuarter(currentQuarter);
             if (state.teamLineupCache && activeTeamIndex !== -1) {
                 state.teamLineupCache[activeTeamIndex] = state.lineupResults;
             }
             window.saveDailyMeetingData();
-            window.showNotification(`${draggingName} ↔ ${targetName} 위치 변경!`);
+            window.showNotification(message);
         });
-    });
 }
 
 function renderQuarter(qIndex) {
@@ -216,20 +246,31 @@ let bestPlayer = availablePlayers[0], bestFit = -1;
                             if (pos === 'GK' && secondaryGks.includes(playerName) && secondaryGkUsage[playerName]) { fitScore = -1; } 
                             else {
                                 // [수정 시작] ◀◀ 2. 로직 수정
-                                const isPos1 = (player.pos1 || []).includes(pos);
+const isPos1 = (player.pos1 || []).includes(pos);
                                 const isPos2 = (player.pos2 || []).includes(pos);
                                 const pos1Used = pos1Usage[playerName] || 0;
                                 const pos2Used = pos2Usage[playerName] || 0;
 
-                                if (isPos1 && pos1Used < MAX_POS1_PLAYS) { 
-                                    fitScore = 100 + (player.s1 || 65); // 우선 1: 주포지션
+                                // --- 개선된 fitScore 로직 ---
+                                if (isPos1) {
+                                    // 1. 주 포지션: 뛸수록 점수 감소 (100% -> 80% -> 60% ...)
+                                    let usagePenalty = Math.max(0.2, 1.0 - (pos1Used * 0.2));
+                                    fitScore = (100 + (player.s1 || 65)) * usagePenalty; 
                                 } 
-                                else if (isPos2 && pos2Used < MAX_POS2_PLAYS) { 
-                                    fitScore = 50 + (player.s2 || 0); // 우선 2: 부포지션 (기본 점수 50점 부여)
+                                else if (isPos2) {
+                                    // 2. 부 포지션: 뛸수록 점수 감소
+                                    let usagePenalty = Math.max(0.2, 1.0 - (pos2Used * 0.2));
+                                    fitScore = (50 + (player.s2 || 0)) * usagePenalty;
                                 } 
-                                else if (!isPos1 && !isPos2) { // 우선 3: 땜빵
-                                    if (pos === 'GK' && fillerGkUsage[playerName]) { fitScore = -1; } 
-                                    else { fitScore = 1; }
+                                else if (!isPos1 && !isPos2) { 
+                                    // 3. 땜빵
+                                    if (pos === 'GK' && fillerGkUsage[playerName]) { 
+                                        fitScore = -1; // GK 땜빵은 한번만
+                                    } else {
+                                        // 땜빵 점수: (기존 1점) -> (선수의 기본 능력치 / 10점)
+                                        // (기왕 땜빵할 거면 잘하는 선수가 하도록)
+                                        fitScore = (player.s1 || 65) / 10; 
+                                    }
                                 }
 }
                         if (fitScore > bestFit) { bestFit = fitScore; bestPlayer = playerName; }
