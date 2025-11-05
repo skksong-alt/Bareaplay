@@ -254,7 +254,8 @@ export function init(dependencies) {
     state.currentAttendees = [];
 
     const pageElement = document.getElementById('page-accounting');
-    pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 space-y-8"><div class="bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">출석 기록 관리</h2><button id="admin-login-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1 px-3 rounded-lg">관리자 로그인</button></div><div class="mb-4"><label for="attendance-date" class="block text-md font-semibold text-gray-700 mb-2">날짜 선택</label><input type="date" id="attendance-date" class="w-full p-2 border rounded-lg"></div><div class="mb-4"><div class="flex justify-between items-center mb-2"><label class="block text-md font-semibold text-gray-700">참석자 선택</label><div class="space-x-2"><button id="check-all-btn" class="text-xs text-indigo-600 hover:underline admin-control" disabled>모두 선택</button><button id="uncheck-all-btn" class="text-xs text-gray-500 hover:underline admin-control" disabled>모두 해제</button></div></div><div id="attendance-checklist" class="max-h-60 overflow-y-auto border rounded-lg p-3 space-y-2"></div></div><button id="record-attendance-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition-transform transform hover:scale-105 shadow-lg admin-control" disabled>선택한 날짜 출석 저장</button></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">💰 총 잔액</h2><p id="total-balance" class="text-4xl font-bold text-indigo-600">0 Dhs</p></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">📊 월별 요약</h2><div class="w-full"><canvas id="accountingChart"></canvas></div></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">Remark / 특정 메모</h2><textarea id="memo-area" class="w-full p-3 border rounded-lg admin-control bg-gray-50" rows="5" placeholder="미납자 정보, 주요 공지 등..." disabled></textarea><p class="text-xs text-gray-500 mt-2">메모는 자동으로 저장됩니다.</p>
+// [수정] 이 코드 블록 전체를 복사하여 pageElement.innerHTML = ...; 부분을 통째로 붙여넣으세요.
+    pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 space-y-8"><div class="bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">출석 기록 관리</h2><button id="admin-login-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1 px-3 rounded-lg">관리자 로그인</button></div><div class="mb-4"><label for="attendance-date" class="block text-md font-semibold text-gray-700 mb-2">날짜 선택</label><input type="date" id="attendance-date" class="w-full p-2 border rounded-lg"></div><div class="mb-4"><div class="flex justify-between items-center mb-2"><label class="block text-md font-semibold text-gray-700">참석자 선택</label><div class="space-x-2"><button id="check-all-btn" class="text-xs text-indigo-600 hover:underline admin-control" disabled>모두 선택</button><button id="uncheck-all-btn" class="text-xs text-gray-500 hover:underline admin-control" disabled>모두 해제</button></div></div><div id="attendance-checklist" class="max-h-60 overflow-y-auto border rounded-lg p-3 space-y-2"></div><div class="flex space-x-2 mt-2"><input type="text" id="manual-attendee-name" class="flex-grow bg-gray-50 border border-gray-300 text-sm rounded-lg p-2 admin-control" placeholder="수동 추가..."><button type="button" id="manual-attendee-add-btn" class="text-white bg-indigo-600 hover:bg-indigo-700 font-medium rounded-lg text-sm px-4 py-2 admin-control">추가</button></div></div><button id="record-attendance-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition-transform transform hover:scale-105 shadow-lg admin-control" disabled>선택한 날짜 출석 저장</button></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">💰 총 잔액</h2><p id="total-balance" class="text-4xl font-bold text-indigo-600">0 Dhs</p></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">📊 월별 요약</h2><div class="w-full"><canvas id="accountingChart"></canvas></div></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">Remark / 특정 메모</h2><textarea id="memo-area" class="w-full p-3 border rounded-lg admin-control bg-gray-50" rows="5" placeholder="미납자 정보, 주요 공지 등..." disabled></textarea><p class="text-xs text-gray-500 mt-2">메모는 자동으로 저장됩니다.</p>
         <div class="mt-4 p-4 bg-gray-50 rounded-lg space-y-3">
             <div>
                 <label for="filter-start-date" class="block text-sm font-medium text-gray-700 mb-1">조회 기간</label>
@@ -302,13 +303,13 @@ export function init(dependencies) {
     const today = new Date().toISOString().split('T')[0];
     if(attendanceDate) attendanceDate.value = today;
 
-    if(attendanceDate) attendanceDate.addEventListener('change', () => {
+   if(attendanceDate) attendanceDate.addEventListener('change', () => {
         state.currentAttendees = [];
         const selectedDate = attendanceDate.value;
         filterStartDateEl.value = selectedDate;
         filterEndDateEl.value = selectedDate;
-        filterPeriodSelectEl.value = 'all';
-        renderForDate();
+        // filterPeriodSelectEl.value = 'all'; // <-- 이 줄을 삭제하거나 주석 처리합니다.
+        renderForDate(); // 이제 renderForDate()가 올바른 날짜로 필터링합니다.
     });
 
     if(adminLoginBtn) adminLoginBtn.addEventListener('click', window.promptForAdminPassword);
@@ -343,7 +344,33 @@ export function init(dependencies) {
         const filteredExpenses = state.expenseLog.filter(log => (!startDate || log.date >= startDate) && (!endDate || log.date <= endDate));
         downloadExcel(filteredAttendance, filteredExpenses);
     });
+const manualAttendeeName = document.getElementById('manual-attendee-name');
+    const manualAttendeeAddBtn = document.getElementById('manual-attendee-add-btn');
 
+    if (manualAttendeeAddBtn) {
+        manualAttendeeAddBtn.addEventListener('click', () => {
+            const name = manualAttendeeName.value.trim();
+            if (!name) return;
+
+            // 이미 목록에 있는지 확인
+            if (document.getElementById(`check-${name}`)) {
+                window.showNotification('이미 목록에 있습니다.', 'error');
+                return;
+            }
+
+            // 새 체크박스 생성
+            const div = document.createElement('div');
+            div.className = 'flex items-center';
+            div.innerHTML = `<input id="check-${name}" type="checkbox" value="${name}" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 admin-control" checked ${!state.isAdmin ? 'disabled' : ''}><label for="check-${name}" class="ml-2 text-sm font-medium text-gray-900">${name} (수동)</label>`;
+            
+            // 목록이 비어있었다면 안내 문구 제거
+            const placeholder = checklistContainer.querySelector('p');
+            if (placeholder) placeholder.remove();
+
+            checklistContainer.appendChild(div);
+            manualAttendeeName.value = '';
+        });
+    }
     if(expenseLogBody) {
         expenseLogBody.addEventListener('click', async (e) => {
             if (e.target.classList.contains('delete-expense-btn')) {
