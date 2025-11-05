@@ -52,7 +52,25 @@ function addDragAndDropHandlers() {
         d.addEventListener('dragend', () => d.classList.remove('dragging'));
     });
 
-target.addEventListener('drop', e => {
+    // [수정] 'targets' NodeList를 순회하는 forEach 루프를 추가합니다.
+    targets.forEach(target => {
+        
+        // [추가] 'dragover' 이벤트 (drop을 허용하기 위해 e.preventDefault()가 필수입니다)
+        target.addEventListener('dragover', e => {
+            e.preventDefault();
+            const dragging = document.querySelector('.dragging');
+            if (dragging && target !== dragging) { // 자기 자신 위에는 드롭 타겟 표시 안 함
+                target.classList.add('drop-target');
+            }
+        });
+
+        // [추가] 'dragleave' 이벤트 (드롭 영역에서 벗어났을 때)
+        target.addEventListener('dragleave', () => {
+            target.classList.remove('drop-target');
+        });
+
+        // [수정] 기존 drop 핸들러를 forEach 루프 안으로 이동
+        target.addEventListener('drop', e => {
             e.preventDefault(); 
             target.classList.remove('drop-target');
             
@@ -113,7 +131,8 @@ target.addEventListener('drop', e => {
             }
             window.saveDailyMeetingData();
             window.showNotification(message);
-        });
+        }); // <-- drop 핸들러 종료
+    }); // <-- [수정] forEach 루프 종료
 }
 
 function renderQuarter(qIndex) {
