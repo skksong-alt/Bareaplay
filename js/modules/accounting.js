@@ -21,21 +21,42 @@ function renderFullPlayerChecklist() {
     if (!checklistContainer) return;
     checklistContainer.innerHTML = '';
     const selectedDate = attendanceDate.value;
-    const attendeesForDate = new Set(state.attendanceLog.filter(log => log.date === selectedDate).map(log => log.name));
     
-    const playerNames = state.currentAttendees && state.currentAttendees.length > 0
-        ? [...state.currentAttendees].sort((a, b) => a.localeCompare(b, 'ko-KR'))
-        : Object.keys(state.playerDB).sort((a, b) => a.localeCompare(b, 'ko-KR'));
+    // 1. 해당 날짜에 이미 저장된 출석 로그를 가져옵니다.
+    const loggedAttendees = state.attendanceLog
+                                .filter(log => log.date === selectedDate)
+                                .map(log => log.name);
+    const loggedAttendeesSet = new Set(loggedAttendees);
+
+    let playerNames;
+    let checkStatusSet;
+
+    if (state.currentAttendees && state.currentAttendees.length > 0) {
+        // Case A: '팀 배정기'에서 방금 명단을 생성한 경우
+        playerNames = [...state.currentAttendees].sort((a, b) => a.localeCompare(b, 'ko-KR'));
+        checkStatusSet = new Set(playerNames); // 이 명단 기준으로 체크
+    } else {
+        // Case B: 날짜를 변경했거나, '팀 배정기'를 거치지 않은 경우
+        // 해당 날짜의 로그를 기반으로 명단을 구성합니다. (로그가 없으면 빈 배열)
+        playerNames = [...loggedAttendees].sort((a, b) => a.localeCompare(b, 'ko-KR'));
+        checkStatusSet = loggedAttendeesSet; // 로그 기준(loggedAttendeesSet)으로 체크
+    }
+
+    // 3. 체크리스트를 렌더링합니다.
+    if (playerNames.length === 0) {
+        // [수정] 전체 선수를 불러오는 대신 안내 메시지를 표시합니다.
+        checklistContainer.innerHTML = '<p class="text-gray-500 text-sm">표시할 참석자가 없습니다.<br>팀 배정기에서 명단을 가져오거나, 다른 날짜를 선택해주세요.</p>';
+        return;
+    }
 
     playerNames.forEach(name => {
-        const isChecked = state.currentAttendees ? true : attendeesForDate.has(name);
+        const isChecked = checkStatusSet.has(name); // 결정된 세트(checkStatusSet)를 기준으로 체크 여부 판단
         const div = document.createElement('div');
         div.className = 'flex items-center';
         div.innerHTML = `<input id="check-${name}" type="checkbox" value="${name}" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 admin-control" ${isChecked ? 'checked' : ''} ${!state.isAdmin ? 'disabled' : ''}><label for="check-${name}" class="ml-2 text-sm font-medium text-gray-900">${name}</label>`;
         checklistContainer.appendChild(div);
     });
 }
-
 function renderAttendanceLogTable(logs) {
     if(!logBody) return;
     logBody.innerHTML = '';

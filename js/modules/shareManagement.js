@@ -148,44 +148,64 @@ export function generatePrintView(shareData) {
         return;
     }
 const createQuarterHTML = (teamLineup, teamIdx, qIndex) => {
-        if (!teamLineup || !teamLineup.lineups || !teamLineup.lineups[qIndex]) return '<div class="pitch-print-placeholder"></div>';
-        
-        const lineup = teamLineup.lineups[qIndex];
-        const formation = teamLineup.formations[qIndex];
-
-        // [수정 시작] ◀◀ 1. 버그 수정
-        // 기존: const resters = teamLineup.resters[`q${qIndex + 1}`] || [];
-        
-        // 'lineup' 객체를 기반으로 실제 경기장에 배정된 선수 Set을 만듭니다.
-        const assignedPlayers = new Set(Object.values(lineup).flat().filter(Boolean));
-        
-        // 전체 멤버 목록에서, 경기장에 배정된 선수를 제외하여 '휴식 선수'를 유도합니다.
-        const allMembers = teamLineup.members || [];
-        const resters = allMembers
-            .filter(m => !assignedPlayers.has(m))
-            .sort((a,b) => a.localeCompare(b, 'ko-KR'));
-        // [수정 끝] ◀◀ 
-
-        let pitchHtml = `<div class="pitch-print">
-            ...
-            <div class="quarter-title-integrated">팀 ${teamIdx + 1} - ${qIndex + 1}쿼터 (${formation})</div>`;
-        
-        const counters = {};
-        (posCellMap[formation] || []).forEach(fc => {
-            counters[fc.pos] = (counters[fc.pos] || 0);
-            const name = (lineup[fc.pos] || [])[counters[fc.pos]] || '';
-            // ... (이하 동일) ...
-            pitchHtml += `<div class="player-marker-print" ...>${name||'-'}</div>`;
-            counters[fc.pos]++;
-        });
-        pitchHtml += `</div>`;
-        
-        return `<div class="quarter-block">
-                    ${pitchHtml}
-                    <div class="rest-players-print"><b>휴식:</b> ${resters.join(', ') || '없음'}</div>
-                </div>`;
-    };
+    if (!teamLineup || !teamLineup.lineups || !teamLineup.lineups[qIndex]) return '<div class="pitch-print-placeholder"></div>';
     
+    const lineup = teamLineup.lineups[qIndex];
+    const formation = teamLineup.formations[qIndex];
+
+    // [수정 시작] ◀◀ 1. 버그 수정 (이 부분은 휴식 선수 로직으로, 이미 올바르게 수정되어 있습니다)
+    // 'lineup' 객체를 기반으로 실제 경기장에 배정된 선수 Set을 만듭니다.
+    const assignedPlayers = new Set(Object.values(lineup).flat().filter(Boolean));
+    
+    // 전체 멤버 목록에서, 경기장에 배정된 선수를 제외하여 '휴식 선수'를 유도합니다.
+    const allMembers = teamLineup.members || [];
+    const resters = allMembers
+        .filter(m => !assignedPlayers.has(m))
+        .sort((a,b) => a.localeCompare(b, 'ko-KR'));
+    // [수정 끝] ◀◀ 
+
+    // [수정] ◀◀ 2. 누락된 Pitch HTML 및 선수 마커 로직 복원
+    // (pitch line HTML은 lineupGenerator.js의 createPitchHTML()에서 가져옴)
+    let pitchHtml = `<div class="pitch-print">
+        <div class="pitch-line-print" style="top:50%; left:0; width:100%; height:1.5px;"></div>
+        <div class="center-circle-print" style="top:50%; left:50%; width:25%; height:17.5%; transform: translate(-50%,-50%);"></div>
+        <div class="pitch-line-print" style="top:50%; left:50%; width:1.5px; height:1.5px; border-radius:50%; transform: translate(-50%, -50%); background:white;"></div>
+        <div class="penalty-box-print" style="top: 83%; left: 20%; width: 60%; height: 17%;"></div>
+        <div class="penalty-box-print" style="top: 0%; left: 20%; width: 60%; height: 17%;"></div>
+        <div class="quarter-title-integrated">팀 ${teamIdx + 1} - ${qIndex + 1}쿼터 (${formation})</div>`;
+    
+    const counters = {};
+    (posCellMap[formation] || []).forEach(fc => {
+        counters[fc.pos] = (counters[fc.pos] || 0);
+        const name = (lineup[fc.pos] || [])[counters[fc.pos]] || '미배정';
+        
+        // (아이콘/색상 로직은 lineupGenerator.js의 createPlayerMarker()에서 가져옴)
+        let icon = '❓', bgColor = '#78909C';
+        if (fc.pos === "GK") { icon = "🧤"; bgColor = "#00C853"; } 
+        else if (["LB", "RB", "CB", "DF"].includes(fc.pos)) { icon = "🛡"; bgColor = "#03A9F4"; } 
+        else if (["MF", "CM"].includes(fc.pos)) { icon = "⚙"; bgColor = "#FFEB3B"; } 
+        else if (["LW", "RW", "FW"].includes(fc.pos)) { icon = "🎯"; bgColor = "#FF9800"; }
+        
+        // (HTML 생성 로직은 style.css의 .player-marker-print 등을 참고하여 작성)
+        pitchHtml += `
+            <div class="player-marker-print" style="left: ${fc.x}%; top: ${fc.y}%;">
+                <div class="player-icon-print" style="background-color: ${bgColor};">
+                    ${(name === '미배정' ? '❓' : icon)}
+                </div>
+                <div class="player-name-print">
+                    ${name === '미배정' ? '-' : name}
+                </div>
+            </div>`;
+        counters[fc.pos]++;
+    });
+    pitchHtml += `</div>`; // .pitch-print 닫기
+    // [수정 끝] ◀◀
+
+    return `<div class="quarter-block">
+                ${pitchHtml}
+                <div class="rest-players-print"><b>휴식:</b> ${resters.join(', ') || '없음'}</div>
+            </div>`;
+};    
     let locationHtml = meetingInfo.locationUrl 
         ? `<a href="${meetingInfo.locationUrl}" target="_blank" style="color: #0000EE; text-decoration: underline;">${meetingInfo.location}</a>`
         : (meetingInfo.location || '미정');
