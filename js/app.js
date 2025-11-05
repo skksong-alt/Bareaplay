@@ -2,12 +2,12 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
 import { getFirestore, collection, doc, onSnapshot, getDocs, getDoc, setDoc, deleteDoc, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
-import { state, setAdmin } from './store.js';
-import * as playerMgmt from './modules/playerManagement.js';
-import * as balancer from './modules/teamBalancer.js';
-import * as lineup from './modules/lineupGenerator.js';
-import * as accounting from './modules/accounting.js';
-import * as shareMgmt from './modules/shareManagement.js';
+import { state, setAdmin } from './store.js?v=2';
+import * as playerMgmt from './modules/playerManagement.js?v=2';
+import * as balancer from './modules/teamBalancer.js?v=2';
+import * as lineup from './modules/lineupGenerator.js?v=2';
+import * as accounting from './modules/accounting.js?v=2';
+import * as shareMgmt from './modules/shareManagement.js?v=2';
 
 const firebaseConfig = {
     apiKey: "AIzaSyD_2tm5-hYbCeU8yi0QiWW9Oqm0O7oPBco",

@@ -1,16 +1,16 @@
 // sw.js
-const CACHE_NAME = 'bareaplay-cache-v25'; // 캐시 버전 업데이트
+const CACHE_NAME = 'bareaplay-cache-v26'; // 숫자를 1 올립니다
 const urlsToCache = [
     '/',
     '/index.html',
-    '/css/style.css',
-    '/js/app.js',
-    '/js/store.js',
-    '/js/modules/playerManagement.js',
-    '/js/modules/teamBalancer.js',
-    '/js/modules/lineupGenerator.js',
-    '/js/modules/accounting.js',
-    '/js/modules/shareManagement.js',
+    '/css/style.css?v=2',
+    '/js/app.js?v=2',
+    '/js/store.js?v=2',
+    '/js/modules/playerManagement.js?v=2',
+    '/js/modules/teamBalancer.js?v=2',
+    '/js/modules/lineupGenerator.js?v=2',
+    '/js/modules/accounting.js?v=2',
+    '/js/modules/shareManagement.js?v=2',
     '/manifest.json',
     '/favicon.ico',
     '/assets/icon-512.png'
