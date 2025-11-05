@@ -86,54 +86,118 @@ body {
 }
 
 @media (max-width: 768px) {
-    #accounting-log-body tr, #expense-log-body tr {
-        display: block;
-        margin-bottom: 1rem;
-        border: 1px solid #e5e7eb;
-        border-radius: 0.5rem;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-        padding: 0.75rem;
-    }
+    /* [수정] 모바일에서는 데스크톱용 헤더(thead)를 숨깁니다. */
     .w-full thead {
         display: none;
     }
 
-    /* [수정] <td>의 flex 레이아웃을 block(수직) 레이아웃으로 변경 */
-    #accounting-log-body td, #expense-log-body td {
-        display: block; /* 1. flex 대신 block 사용 */
-        padding: 0.5rem 0.25rem;
-        border-bottom: 1px solid #f3f4f6;
-        /* 2. flex 속성 제거 (justify-content, align-items) */
+    /* [수정] <tr>을 '그리드 카드'로 변경 */
+    #accounting-log-body tr, #expense-log-body tr {
+        display: grid;
+        grid-template-columns: 1fr 1fr; /* 2열 그리드 */
+        gap: 0.75rem 1rem; /* 행(row) 0.75rem, 열(column) 1rem 간격 */
+        margin-bottom: 1rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        padding: 1rem; /* 카드 내부 패딩 */
     }
-
-    #accounting-log-body td:last-child, #expense-log-body td:last-child {
+    
+    /* [수정] <td>에서 내부 테두리와 패딩 제거 */
+    #accounting-log-body td, #expense-log-body td {
+        display: block; /* <td> 자체는 block으로 */
+        padding: 0;
         border-bottom: none;
     }
 
-    /* [수정] 라벨(::before)이 인풋 위에 오도록 스타일링 */
+    /* [수정] 라벨(::before) 스타일 */
     #accounting-log-body td::before, #expense-log-body td::before {
         content: attr(data-label);
         font-weight: 600;
-        display: block; /* 3. 라벨을 block 요소로 만들어 한 줄 차지 */
-        margin-bottom: 0.25rem; /* 4. 라벨과 인풋 사이 간격 */
-        color: #374151; /* (글자색 진하게) */
-        /* 5. flex-item 속성 제거 (margin-right) */
+        display: block;
+        margin-bottom: 0.3rem;
+        font-size: 0.8rem; /* 라벨 폰트 작게 */
+        color: #4b5563;
     }
 
-    /* [수정] 인풋/셀렉트 박스가 100% 너비를 갖도록 함 */
-    #accounting-log-body td input, #accounting-log-body td select,
-    #expense-log-body td input {
-        width: 100%; /* 6. 60% 대신 100%로 변경 */
-        text-align: left; /* 7. right 대신 left 정렬 */
+    /* === 회비 로그 (accounting-log-body) 레이아웃 === */
+
+    /* 이름: 1열, 1행 (크게) */
+    #accounting-log-body td[data-label="이름"] {
+        grid-column: 1 / 2;
+        font-size: 1.2rem;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+    #accounting-log-body td[data-label="이름"]::before { display: none; } /* '이름' 라벨 숨기기 */
+
+    /* 날짜: 2열, 1행 (작게, 우측정렬) */
+    #accounting-log-body td[data-label="날짜"] {
+        grid-column: 2 / 3;
+        text-align: right;
+        font-size: 0.9rem;
+        color: #6b7280;
+    }
+    #accounting-log-body td[data-label="날짜"]::before { display: none; } /* '날짜' 라벨 숨기기 */
+
+    /* #: 숨기기 */
+    #accounting-log-body td[data-label="#"] { display: none; }
+
+    /* 납부 상태: 1열, 2행 (넓게) */
+    #accounting-log-body td[data-label="납부 상태"] {
+        grid-column: 1 / 3; /* 2열 모두 차지 */
+    }
+
+    /* 납부액: 1열, 3행 */
+    #accounting-log-body td[data-label="납부액"] {
+        grid-column: 1 / 2;
+    }
+
+    /* 비고: 2열, 3행 */
+    #accounting-log-body td[data-label="비고"] {
+        grid-column: 2 / 3;
     }
     
-    /* [추가] 텍스트만 있는 셀 (날짜, 이름 등)은 깔끔하게 보이도록 */
-    #accounting-log-body td:not(:has(input)):not(:has(select)),
-    #expense-log-body td:not(:has(input)):not(:has(select)) {
-        padding-top: 0.75rem;
-        padding-bottom: 0.75rem;
+    /* === 지출 로그 (expense-log-body) 레이아웃 === */
+
+    /* 항목: 1열, 1행 (넓게, 크게) */
+    #expense-log-body td[data-label="항목"] {
+        grid-column: 1 / 3;
+        font-size: 1.2rem;
+        font-weight: 700;
+    }
+    #expense-log-body td[data-label="항목"]::before { display: none; }
+
+    /* 금액: 1열, 2행 */
+    #expense-log-body td[data-label="금액"] {
+        grid-column: 1 / 2;
     }
 
+    /* 날짜: 2열, 2행 (우측정렬) */
+    #expense-log-body td[data-label="날짜"] {
+        grid-column: 2 / 3;
+        text-align: right;
+    }
+    #expense-log-body td[data-label="날짜"]::before { display: none; }
+
+    /* 관리: 1열, 3행 (넓게) */
+    #expense-log-body td[data-label="관리"] {
+        grid-column: 1 / 3;
+    }
+
+    /* [수정] 인풋/셀렉트 박스 스타일 (터치하기 좋게) */
+    #accounting-log-body td input, #accounting-log-body td select,
+    #expense-log-body td input {
+        width: 100%;
+        text-align: left;
+        padding: 0.6rem; /* 터치 영역 확보 */
+        font-size: 1rem;
+        border-radius: 0.375rem; /* 둥근 모서리 */
+        border: 1px solid #D1D5DB;
+        background-color: #F9FAFB; /* 배경색 살짝 */
+    }
+
+    /* [수정] 합계(footer) 스타일은 유지 */
     #accounting-log-foot tr, #expense-log-foot tr {
         font-size: 1.1rem;
     }
