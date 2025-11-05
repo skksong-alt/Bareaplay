@@ -269,7 +269,7 @@ const isPos1 = (player.pos1 || []).includes(pos);
                                     } else {
                                         // 땜빵 점수: (기존 1점) -> (선수의 기본 능력치 / 10점)
                                         // (기왕 땜빵할 거면 잘하는 선수가 하도록)
-                                        fitScore = (player.s1 || 65) / 10; 
+                                        fitScore = (localPlayerDB[playerName]?.s1 || 65) / 10;
                                     }
                                 }
 }
@@ -286,7 +286,10 @@ const isPos1 = (player.pos1 || []).includes(pos);
                 }
                 lineups.push(assignment);
             }
-            const qScores = lineups.map(l => Object.values(l).flat().filter(Boolean).reduce((sum, name) => sum + (localPlayerDB[name]?.s1 || 65), 0));
+const qScores = lineups.map(l => Object.values(l).flat().filter(Boolean).reduce((sum, name) => {
+    const score = localPlayerDB[name]?.s1 || 65;
+    return sum + (score || 0);
+}, 0));
             const score = qScores.length > 1 ? Math.max(...qScores) - Math.min(...qScores) : 0;
             if (score < bestScore) { bestScore = score; bestLineup = { lineups, resters, members, formations, score }; }
         }
