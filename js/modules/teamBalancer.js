@@ -5,7 +5,7 @@ let generateButton, attendeesTextarea, teamCountSelect, resultContainer, loading
 let sliders = {};
 let sliderVals = {};
 
-// 드래그 앤 드롭 핸들러 (팀 간 선수 이동)
+// 드래그 앤 드롭 핸들러
 function handlePlayerDragStart(e, playerName, fromTeamIndex) {
     const data = JSON.stringify({ playerName, fromTeamIndex });
     e.dataTransfer.setData("application/json", data);
@@ -31,7 +31,7 @@ function handleTeamDrop(e, toTeamIndex) {
         if (playerIndex > -1) {
             const [player] = fromTeam.splice(playerIndex, 1);
             toTeam.push(player);
-            renderResults(state.teams); // 화면 갱신
+            renderResults(state.teams);
             if(window.saveDailyMeetingData) window.saveDailyMeetingData();
             window.showNotification(`${playerName} 선수가 팀 ${fromTeamIndex + 1}에서 팀 ${toTeamIndex + 1}로 이동했습니다.`);
         }
@@ -40,7 +40,6 @@ function handleTeamDrop(e, toTeamIndex) {
     }
 }
 
-// 포지션 그룹화 함수
 function allPosGroup(posArr) {
     let out = new Set();
     (posArr || []).forEach(p => {
@@ -53,7 +52,6 @@ function allPosGroup(posArr) {
     return Array.from(out);
 }
 
-// [핵심] app.js에서 호출하는 렌더링 함수 (이게 없어서 흰 화면이 떴음)
 export function renderResults(teams) {
     if(!resultContainer) return;
     resultContainer.innerHTML = '';
@@ -141,27 +139,45 @@ function tournamentSelection(rankedPop, k = 5) {
     return best;
 }
 
+// [수정] 무한루프 방지를 위한 안전장치 추가
 function orderedCrossover(parent1, parent2) {
     const size = parent1.length;
+    if (size === 0) return []; // 빈 배열 처리
+
     const start = Math.floor(Math.random() * size);
     const end = Math.floor(Math.random() * (size - start)) + start;
     let child = Array(size).fill(null);
+    
     let parent1Slice = parent1.slice(start, end + 1);
     let parent1Names = new Set(parent1Slice.map(p => p.name));
+    
     for (let i = start; i <= end; i++) { child[i] = parent1[i]; }
+    
     let childIndex = (end + 1) % size;
     let parent2Index = (end + 1) % size;
+    
+    let safetyCounter = 0; // 무한루프 방지 카운터
     while (child.includes(null)) {
+        if (safetyCounter++ > size * 2) break; // 안전장치 발동
+
         if (!parent1Names.has(parent2[parent2Index].name)) {
             child[childIndex] = parent2[parent2Index];
             childIndex = (childIndex + 1) % size;
         }
         parent2Index = (parent2Index + 1) % size;
     }
+    
+    // 혹시라도 null이 남아있다면 parent2에서 강제로 채움
+    if (child.includes(null)) {
+        for(let i=0; i<size; i++) {
+            if(child[i] === null) child[i] = parent2[i]; 
+        }
+    }
     return child;
 }
 
 function mutate(chromosome, rate) {
+    if (chromosome.length < 2) return;
     for (let i = 0; i < chromosome.length; i++) {
         if (Math.random() < rate) {
             const j = Math.floor(Math.random() * chromosome.length);
@@ -170,10 +186,21 @@ function mutate(chromosome, rate) {
     }
 }
 
-// [무한로딩 수정됨] 안전한 팀 배정 로직
+// [수정] 중복 이름 제거 및 DB 선수가 없을 때의 처리 강화
 function executeTeamAssignmentGA() {
-    const attendNames = attendeesTextarea.value.split('\n').map(name => name.trim()).filter(Boolean);
-    if (attendNames.length === 0) { window.showNotification("참가자 명단을 입력해주세요.", 'error'); resetUI(); return; }
+    let rawNames = attendeesTextarea.value.split('\n').map(name => name.trim()).filter(Boolean);
+    
+    // 1. 중복 이름 제거 (Set 사용)
+    const attendNames = [...new Set(rawNames)];
+    if (rawNames.length !== attendNames.length) {
+        window.showNotification(`중복된 이름 ${rawNames.length - attendNames.length}개를 제외했습니다.`, 'success');
+    }
+    
+    if (attendNames.length === 0) { 
+        window.showNotification("참가자 명단을 입력해주세요.", 'error'); 
+        resetUI(); 
+        return; 
+    }
     
     state.initialAttendeeOrder = [...attendNames];
     const teamCount = parseInt(teamCountSelect.value, 10);
@@ -184,56 +211,61 @@ function executeTeamAssignmentGA() {
     
     attendNames.forEach(name => { (state.playerDB[name]) ? knownPlayers.push({ ...state.playerDB[name] }) : unknownPlayers.push(name); });
     
-    const POPULATION_SIZE = 50; 
-    const GENERATIONS = 100; 
-    const MUTATION_RATE = 0.1; 
-    const ELITISM_COUNT = 2;
-    
-    let population = [];
-    for (let i = 0; i < POPULATION_SIZE; i++) { 
-        let chromosome = [...knownPlayers]; 
-        window.shuffleLocal(chromosome); 
-        population.push(chromosome); 
-    }
-
-    // 초기화: null 대신 일단 단순 순서대로 배정한 팀을 기본값으로 설정
+    // 초기화: 일단 순서대로 배정 (안전장치)
     let bestOverallTeams = Array.from({ length: teamCount }, () => []);
-    knownPlayers.forEach((p, i) => bestOverallTeams[i % teamCount].push(p));
-    let bestOverallScore = calculateScore(bestOverallTeams, W);
+    
+    // 2. DB 선수가 있을 때만 GA 실행
+    if (knownPlayers.length > 0) {
+        knownPlayers.forEach((p, i) => bestOverallTeams[i % teamCount].push(p));
+        let bestOverallScore = calculateScore(bestOverallTeams, W);
 
-    for (let gen = 0; gen < GENERATIONS; gen++) {
-        let rankedPopulation = population.map(chromosome => {
-            let teams = Array.from({ length: teamCount }, () => []);
-            chromosome.forEach((player, index) => { teams[index % teamCount].push(player); });
-            const score = calculateScore(teams, W);
-            return { chromosome, teams, score };
-        }).sort((a, b) => a.score - b.score);
-
-        if (rankedPopulation[0].score < bestOverallScore) { 
-            bestOverallScore = rankedPopulation[0].score; 
-            bestOverallTeams = rankedPopulation[0].teams; 
-        }
-
-        let newPopulation = [];
-        for (let i = 0; i < ELITISM_COUNT; i++) { 
-            if (rankedPopulation[i]) newPopulation.push(rankedPopulation[i].chromosome); 
-        }
+        const POPULATION_SIZE = 50; 
+        const GENERATIONS = 100; 
+        const MUTATION_RATE = 0.1; 
+        const ELITISM_COUNT = 2;
         
-        while (newPopulation.length < POPULATION_SIZE) {
-            if (rankedPopulation.length === 0) break;
-            const parent1 = tournamentSelection(rankedPopulation).chromosome;
-            const parent2 = tournamentSelection(rankedPopulation).chromosome;
-            const child = orderedCrossover(parent1, parent2);
-            mutate(child, MUTATION_RATE);
-            newPopulation.push(child);
+        let population = [];
+        for (let i = 0; i < POPULATION_SIZE; i++) { 
+            let chromosome = [...knownPlayers]; 
+            window.shuffleLocal(chromosome); 
+            population.push(chromosome); 
         }
-        population = newPopulation;
+
+        for (let gen = 0; gen < GENERATIONS; gen++) {
+            let rankedPopulation = population.map(chromosome => {
+                let teams = Array.from({ length: teamCount }, () => []);
+                chromosome.forEach((player, index) => { teams[index % teamCount].push(player); });
+                const score = calculateScore(teams, W);
+                return { chromosome, teams, score };
+            }).sort((a, b) => a.score - b.score);
+
+            if (rankedPopulation[0].score < bestOverallScore) { 
+                bestOverallScore = rankedPopulation[0].score; 
+                bestOverallTeams = rankedPopulation[0].teams; 
+            }
+
+            let newPopulation = [];
+            for (let i = 0; i < ELITISM_COUNT; i++) { 
+                if (rankedPopulation[i]) newPopulation.push(rankedPopulation[i].chromosome); 
+            }
+            
+            while (newPopulation.length < POPULATION_SIZE) {
+                if (rankedPopulation.length === 0) break;
+                const parent1 = tournamentSelection(rankedPopulation).chromosome;
+                const parent2 = tournamentSelection(rankedPopulation).chromosome;
+                const child = orderedCrossover(parent1, parent2);
+                mutate(child, MUTATION_RATE);
+                newPopulation.push(child);
+            }
+            population = newPopulation;
+        }
     }
 
     if (!bestOverallTeams) {
         bestOverallTeams = Array.from({ length: teamCount }, () => []);
     }
 
+    // 3. 신규(Unknown) 선수 배정 (인원 적은 팀 우선)
     unknownPlayers.forEach(nm => {
         let minIndex = bestOverallTeams.reduce((minIdx, team, i, arr) => team.length < arr[minIdx].length ? i : minIdx, 0);
         bestOverallTeams[minIndex].push({ name: `${nm} (신규)`, s1: 65, pos1: [] });
@@ -241,7 +273,6 @@ function executeTeamAssignmentGA() {
 
     renderResults(bestOverallTeams);
     
-    // 타 모듈 연동
     if (window.accounting && window.accounting.autoFillAttendees) window.accounting.autoFillAttendees(attendNames);
     if (window.lineup && window.lineup.renderTeamSelectTabs) window.lineup.renderTeamSelectTabs(bestOverallTeams);
     if (window.shareMgmt && window.shareMgmt.updateTeamData) window.shareMgmt.updateTeamData(bestOverallTeams);
