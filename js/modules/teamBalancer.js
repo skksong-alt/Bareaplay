@@ -5,7 +5,11 @@ let generateButton, attendeesTextarea, teamCountSelect, resultContainer, loading
 let sliders = {};
 let sliderVals = {};
 
-// 드래그 앤 드롭 핸들러
+// [추가] 한글 자모 분리 현상 해결을 위한 정규화 함수
+function normalizeName(name) {
+    return name ? name.normalize('NFC').trim() : '';
+}
+
 function handlePlayerDragStart(e, playerName, fromTeamIndex) {
     const data = JSON.stringify({ playerName, fromTeamIndex });
     e.dataTransfer.setData("application/json", data);
@@ -54,7 +58,7 @@ function allPosGroup(posArr) {
 
 export function renderResults(teams) {
     if(!resultContainer) return;
-    resultContainer.innerHTML = '';
+    resultContainer.innerHTML = ''; // 화면 초기화
     
     if (!teams || teams.length === 0) {
         if(placeholder) placeholder.classList.remove('hidden');
@@ -94,7 +98,12 @@ export function renderResults(teams) {
             playerTag.draggable = state.isAdmin;
             if (state.isAdmin) playerTag.classList.add('cursor-grab');
             
-            playerTag.innerHTML = `<span class="font-semibold">${player.name}</span><div class="flex items-center"><span class="text-sm opacity-90 mr-2">${posIcons}</span></div>`;
+            // 신규 표시 제거 로직 적용
+            const displayName = player.name.replace(' (신규)', '');
+            const isNew = player.name.includes(' (신규)');
+            const newBadge = isNew ? `<span class="ml-1 text-[10px] bg-yellow-400 text-black px-1 rounded">NEW</span>` : '';
+
+            playerTag.innerHTML = `<span class="font-semibold flex items-center">${displayName}${newBadge}</span><div class="flex items-center"><span class="text-sm opacity-90 mr-2">${posIcons}</span></div>`;
             playerTag.addEventListener('dragstart', (e) => handlePlayerDragStart(e, player.name, index));
             playersContainer.appendChild(playerTag);
         });
@@ -139,10 +148,10 @@ function tournamentSelection(rankedPop, k = 5) {
     return best;
 }
 
-// [수정] 무한루프 방지를 위한 안전장치 추가
+// [수정] 충돌 방지 및 안전장치 강화
 function orderedCrossover(parent1, parent2) {
     const size = parent1.length;
-    if (size === 0) return []; // 빈 배열 처리
+    if (size === 0) return []; 
 
     const start = Math.floor(Math.random() * size);
     const end = Math.floor(Math.random() * (size - start)) + start;
@@ -156,21 +165,23 @@ function orderedCrossover(parent1, parent2) {
     let childIndex = (end + 1) % size;
     let parent2Index = (end + 1) % size;
     
-    let safetyCounter = 0; // 무한루프 방지 카운터
+    let safetyCounter = 0;
     while (child.includes(null)) {
-        if (safetyCounter++ > size * 2) break; // 안전장치 발동
-
-        if (!parent1Names.has(parent2[parent2Index].name)) {
-            child[childIndex] = parent2[parent2Index];
+        if (safetyCounter++ > size * 2) break; 
+        
+        // parent2[parent2Index]가 존재하는지 확인 (안전장치)
+        const p2Gene = parent2[parent2Index];
+        if (p2Gene && !parent1Names.has(p2Gene.name)) {
+            child[childIndex] = p2Gene;
             childIndex = (childIndex + 1) % size;
         }
         parent2Index = (parent2Index + 1) % size;
     }
     
-    // 혹시라도 null이 남아있다면 parent2에서 강제로 채움
+    // 혹시라도 null이 남았다면 원본에서 채움
     if (child.includes(null)) {
         for(let i=0; i<size; i++) {
-            if(child[i] === null) child[i] = parent2[i]; 
+            if(child[i] === null) child[i] = parent1[i]; 
         }
     }
     return child;
@@ -186,15 +197,17 @@ function mutate(chromosome, rate) {
     }
 }
 
-// [수정] 중복 이름 제거 및 DB 선수가 없을 때의 처리 강화
 function executeTeamAssignmentGA() {
-    let rawNames = attendeesTextarea.value.split('\n').map(name => name.trim()).filter(Boolean);
+    // 1. 화면 초기화 (이전 결과 삭제)
+    if(resultContainer) resultContainer.innerHTML = '';
+    if(placeholder) placeholder.classList.remove('hidden');
+
+    // 2. 한글 정규화 적용 및 중복 제거
+    let rawNames = attendeesTextarea.value.split('\n')
+        .map(name => normalizeName(name))
+        .filter(Boolean);
     
-    // 1. 중복 이름 제거 (Set 사용)
-    const attendNames = [...new Set(rawNames)];
-    if (rawNames.length !== attendNames.length) {
-        window.showNotification(`중복된 이름 ${rawNames.length - attendNames.length}개를 제외했습니다.`, 'success');
-    }
+    const attendNames = [...new Set(rawNames)]; // 중복 제거
     
     if (attendNames.length === 0) { 
         window.showNotification("참가자 명단을 입력해주세요.", 'error'); 
@@ -209,13 +222,29 @@ function executeTeamAssignmentGA() {
     let knownPlayers = []; 
     let unknownPlayers = [];
     
-    attendNames.forEach(name => { (state.playerDB[name]) ? knownPlayers.push({ ...state.playerDB[name] }) : unknownPlayers.push(name); });
+    // 3. DB 매칭 시에도 정규화된 이름 사용
+    attendNames.forEach(name => { 
+        // DB 키도 정규화해서 비교 (안전장치)
+        let dbPlayer = state.playerDB[name];
+        if (!dbPlayer) {
+            // 혹시 DB 키가 NFD로 되어있을 경우를 대비해 검색
+            const normalizedKey = Object.keys(state.playerDB).find(k => normalizeName(k) === name);
+            if (normalizedKey) dbPlayer = state.playerDB[normalizedKey];
+        }
+
+        if (dbPlayer) {
+            knownPlayers.push({ ...dbPlayer }); 
+        } else {
+            unknownPlayers.push(name); 
+        }
+    });
     
-    // 초기화: 일단 순서대로 배정 (안전장치)
+    // 초기화: 팀 배열 생성
     let bestOverallTeams = Array.from({ length: teamCount }, () => []);
     
-    // 2. DB 선수가 있을 때만 GA 실행
+    // 4. GA 실행 (knownPlayers가 있을 때만)
     if (knownPlayers.length > 0) {
+        // 기본 배치
         knownPlayers.forEach((p, i) => bestOverallTeams[i % teamCount].push(p));
         let bestOverallScore = calculateScore(bestOverallTeams, W);
 
@@ -231,41 +260,46 @@ function executeTeamAssignmentGA() {
             population.push(chromosome); 
         }
 
-        for (let gen = 0; gen < GENERATIONS; gen++) {
-            let rankedPopulation = population.map(chromosome => {
-                let teams = Array.from({ length: teamCount }, () => []);
-                chromosome.forEach((player, index) => { teams[index % teamCount].push(player); });
-                const score = calculateScore(teams, W);
-                return { chromosome, teams, score };
-            }).sort((a, b) => a.score - b.score);
+        try {
+            for (let gen = 0; gen < GENERATIONS; gen++) {
+                let rankedPopulation = population.map(chromosome => {
+                    let teams = Array.from({ length: teamCount }, () => []);
+                    chromosome.forEach((player, index) => { teams[index % teamCount].push(player); });
+                    const score = calculateScore(teams, W);
+                    return { chromosome, teams, score };
+                }).sort((a, b) => a.score - b.score);
 
-            if (rankedPopulation[0].score < bestOverallScore) { 
-                bestOverallScore = rankedPopulation[0].score; 
-                bestOverallTeams = rankedPopulation[0].teams; 
-            }
+                if (rankedPopulation[0].score < bestOverallScore) { 
+                    bestOverallScore = rankedPopulation[0].score; 
+                    bestOverallTeams = rankedPopulation[0].teams; 
+                }
 
-            let newPopulation = [];
-            for (let i = 0; i < ELITISM_COUNT; i++) { 
-                if (rankedPopulation[i]) newPopulation.push(rankedPopulation[i].chromosome); 
+                let newPopulation = [];
+                for (let i = 0; i < ELITISM_COUNT; i++) { 
+                    if (rankedPopulation[i]) newPopulation.push(rankedPopulation[i].chromosome); 
+                }
+                
+                while (newPopulation.length < POPULATION_SIZE) {
+                    if (rankedPopulation.length === 0) break;
+                    const parent1 = tournamentSelection(rankedPopulation).chromosome;
+                    const parent2 = tournamentSelection(rankedPopulation).chromosome;
+                    const child = orderedCrossover(parent1, parent2);
+                    mutate(child, MUTATION_RATE);
+                    newPopulation.push(child);
+                }
+                population = newPopulation;
             }
-            
-            while (newPopulation.length < POPULATION_SIZE) {
-                if (rankedPopulation.length === 0) break;
-                const parent1 = tournamentSelection(rankedPopulation).chromosome;
-                const parent2 = tournamentSelection(rankedPopulation).chromosome;
-                const child = orderedCrossover(parent1, parent2);
-                mutate(child, MUTATION_RATE);
-                newPopulation.push(child);
-            }
-            population = newPopulation;
+        } catch (err) {
+            console.error("GA Error:", err);
+            // 오류 나도 죽지 않고 기본 배치로 진행
         }
     }
 
-    if (!bestOverallTeams) {
+    // 5. 신규 선수 배정
+    if (!bestOverallTeams || bestOverallTeams.length !== teamCount) {
         bestOverallTeams = Array.from({ length: teamCount }, () => []);
     }
 
-    // 3. 신규(Unknown) 선수 배정 (인원 적은 팀 우선)
     unknownPlayers.forEach(nm => {
         let minIndex = bestOverallTeams.reduce((minIdx, team, i, arr) => team.length < arr[minIdx].length ? i : minIdx, 0);
         bestOverallTeams[minIndex].push({ name: `${nm} (신규)`, s1: 65, pos1: [] });
@@ -313,6 +347,8 @@ export function init(dependencies) {
         placeholder.classList.add('hidden');
         generateButton.disabled = true;
         generateButton.textContent = '팀 생성 중...';
+        // 버튼 누르자마자 결과창 초기화 (중요)
+        if(resultContainer) resultContainer.innerHTML = '';
         setTimeout(executeTeamAssignmentGA, 100);
     });
     
