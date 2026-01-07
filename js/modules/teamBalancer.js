@@ -178,15 +178,35 @@ function mutate(chromosome, rate) {
 function executeTeamAssignmentGA() {
     const attendNames = attendeesTextarea.value.split('\n').map(name => name.trim()).filter(Boolean);
     if (attendNames.length === 0) { window.showNotification("참가자 명단을 입력해주세요.", 'error'); resetUI(); return; }
+    
     state.initialAttendeeOrder = [...attendNames];
     const teamCount = parseInt(teamCountSelect.value, 10);
     const W = { SKILL: Number(sliders.skill.value), POS: Number(sliders.pos.value), SIZE: Number(sliders.size.value) };
-    let knownPlayers = []; let unknownPlayers = [];
+    
+    let knownPlayers = []; 
+    let unknownPlayers = [];
+    
+    // DB 존재 여부에 따라 분류
     attendNames.forEach(name => { (state.playerDB[name]) ? knownPlayers.push({ ...state.playerDB[name] }) : unknownPlayers.push(name); });
-    const POPULATION_SIZE = 50; const GENERATIONS = 100; const MUTATION_RATE = 0.1; const ELITISM_COUNT = 2;
+    
+    const POPULATION_SIZE = 50; 
+    const GENERATIONS = 100; 
+    const MUTATION_RATE = 0.1; 
+    const ELITISM_COUNT = 2;
+    
     let population = [];
-    for (let i = 0; i < POPULATION_SIZE; i++) { let chromosome = [...knownPlayers]; window.shuffleLocal(chromosome); population.push(chromosome); }
-    let bestOverallTeams = null; let bestOverallScore = Infinity;
+    for (let i = 0; i < POPULATION_SIZE; i++) { 
+        let chromosome = [...knownPlayers]; 
+        window.shuffleLocal(chromosome); 
+        population.push(chromosome); 
+    }
+
+    // [수정 핵심] 초기화: null 대신 일단 단순 순서대로 배정한 팀을 기본값으로 설정
+    // 이렇게 하면 GA가 실패하거나(점수 Infinity), DB 선수가 0명이어도 오류가 나지 않습니다.
+    let bestOverallTeams = Array.from({ length: teamCount }, () => []);
+    knownPlayers.forEach((p, i) => bestOverallTeams[i % teamCount].push(p));
+    let bestOverallScore = calculateScore(bestOverallTeams, W);
+
     for (let gen = 0; gen < GENERATIONS; gen++) {
         let rankedPopulation = population.map(chromosome => {
             let teams = Array.from({ length: teamCount }, () => []);
@@ -194,10 +214,21 @@ function executeTeamAssignmentGA() {
             const score = calculateScore(teams, W);
             return { chromosome, teams, score };
         }).sort((a, b) => a.score - b.score);
-        if (rankedPopulation[0].score < bestOverallScore) { bestOverallScore = rankedPopulation[0].score; bestOverallTeams = rankedPopulation[0].teams; }
+
+        // 더 좋은(점수가 낮은) 결과가 나오면 갱신
+        if (rankedPopulation[0].score < bestOverallScore) { 
+            bestOverallScore = rankedPopulation[0].score; 
+            bestOverallTeams = rankedPopulation[0].teams; 
+        }
+
         let newPopulation = [];
-        for (let i = 0; i < ELITISM_COUNT; i++) { newPopulation.push(rankedPopulation[i].chromosome); }
+        for (let i = 0; i < ELITISM_COUNT; i++) { 
+            if (rankedPopulation[i]) newPopulation.push(rankedPopulation[i].chromosome); 
+        }
+        
         while (newPopulation.length < POPULATION_SIZE) {
+            // 인구가 부족할 경우 대비하여 안전장치 추가
+            if (rankedPopulation.length === 0) break;
             const parent1 = tournamentSelection(rankedPopulation).chromosome;
             const parent2 = tournamentSelection(rankedPopulation).chromosome;
             const child = orderedCrossover(parent1, parent2);
@@ -206,18 +237,39 @@ function executeTeamAssignmentGA() {
         }
         population = newPopulation;
     }
+
+    // [수정] bestOverallTeams가 확실히 배열인지 확인 후 신규(unknown) 선수 배정
+    if (!bestOverallTeams) {
+        bestOverallTeams = Array.from({ length: teamCount }, () => []);
+    }
+
     unknownPlayers.forEach(nm => {
+        // 인원이 가장 적은 팀을 찾아 배정 (reduce 오류 해결됨)
         let minIndex = bestOverallTeams.reduce((minIdx, team, i, arr) => team.length < arr[minIdx].length ? i : minIdx, 0);
         bestOverallTeams[minIndex].push({ name: `${nm} (신규)`, s1: 65, pos1: [] });
     });
+
     renderResults(bestOverallTeams);
-    window.accounting.autoFillAttendees(attendNames);
-    window.lineup.renderTeamSelectTabs(bestOverallTeams);
-    window.shareMgmt.updateTeamData(bestOverallTeams);
-    window.saveDailyMeetingData();
+    
+    // [추가 안전장치] window.accounting 모듈이 로드되었는지 확인
+    if (window.accounting && window.accounting.autoFillAttendees) {
+        window.accounting.autoFillAttendees(attendNames);
+    }
+    
+    if (window.lineup && window.lineup.renderTeamSelectTabs) {
+        window.lineup.renderTeamSelectTabs(bestOverallTeams);
+    }
+    
+    if (window.shareMgmt && window.shareMgmt.updateTeamData) {
+        window.shareMgmt.updateTeamData(bestOverallTeams);
+    }
+    
+    if (window.saveDailyMeetingData) {
+        window.saveDailyMeetingData();
+    }
+    
     resetUI();
 }
-
 function resetUI() {
     loadingSpinner.classList.add('hidden');
     generateButton.disabled = false;
