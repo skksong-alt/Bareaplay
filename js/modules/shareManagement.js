@@ -6,7 +6,12 @@ let addLocationBtn, shareDate, shareTime, shareLocationSelect;
 let generateShareBtn, shareLinkContainer, shareLinkAnchor;
 let locationModal, closeLocationModalBtn, addNewLocationBtn, locationListDiv, newLocationNameInput, newLocationUrlInput;
 
-const posCellMap = { '4-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 75}, {pos: 'CB', x: 65, y: 80}, {pos: 'CB', x: 35, y: 80}, {pos: 'LB', x: 15, y: 75}, {pos: 'RW', x: 85, y: 45}, {pos: 'CM', x: 65, y: 55}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 15, y: 45}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-3-3': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 88, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 12, y: 78}, {pos: 'CM', x: 50, y: 65}, {pos: 'MF', x: 70, y: 50}, {pos: 'MF', x: 30, y: 50}, {pos: 'RW', x: 80, y: 25}, {pos: 'FW', x: 50, y: 18}, {pos: 'LW', x: 20, y: 25} ], '3-5-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 75, y: 80}, {pos: 'CB', x: 50, y: 85}, {pos: 'CB', x: 25, y: 80}, {pos: 'RW', x: 90, y: 50}, {pos: 'CM', x: 65, y: 55}, {pos: 'MF', x: 50, y: 65}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 10, y: 50}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-2-3-1': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 15, y: 78}, {pos: 'MF', x: 60, y: 65}, {pos: 'MF', x: 40, y: 65}, {pos: 'RW', x: 80, y: 40}, {pos: 'MF', x: 50, y: 45}, {pos: 'LW', x: 20, y: 40}, {pos: 'FW', x: 50, y: 18} ] };
+const posCellMap = { '4-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 75}, {pos: 'CB', x: 65, y: 80}, {pos: 'CB', x: 35, y: 80}, {pos: 'LB', x: 15, y: 75}, {pos: 'RW', x: 85, y: 45}, {pos: 'CM', x: 65, y: 55}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 15, y: 45}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-3-3': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 88, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 12, y: 78}, {pos: 'CM', x: 50, y: 65}, {pos: 'MF', x: 70, y: 50}, {pos: 'MF', x: 30, y: 50}, {pos: 'RW', x: 80, y: 25}, {pos: 'FW', x: 50, y: 18}, {pos: 'LW', x: 20, y: 25} ], '3-5-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 75, y: 80}, {pos: 'CB', x: 50, y: 85}, {pos: 'CB', x: 25, y: 80}, {pos: 'RW', x: 90, y: 50}, {pos: 'CM', x: 65, y: 55}, {pos: 'MF', x: 50, y: 65}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 10, y: 50}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-2-3-1': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 15, y: 78}, {pos: 'MF', x: 60, y: 65}, {pos: 'MF', x: 40, y: 65}, {pos: 'RW', x: 80, y: 40}, {pos: 'MF', x: 50, y: 45}, {pos: 'LW', x: 20, y: 40}, {pos: 'FW', x: 50, y: 18} ], '3-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 80, y: 80}, {pos: 'CB', x: 50, y: 82}, {pos: 'CB', x: 20, y: 80}, {pos: 'RW', x: 85, y: 50}, {pos: 'CM', x: 60, y: 60}, {pos: 'CM', x: 40, y: 60}, {pos: 'LW', x: 15, y: 50}, {pos: 'FW', x: 65, y: 25}, {pos: 'FW', x: 35, y: 25} ], '3-4-1': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 80, y: 80}, {pos: 'CB', x: 50, y: 82}, {pos: 'CB', x: 20, y: 80}, {pos: 'RW', x: 85, y: 50}, {pos: 'CM', x: 60, y: 60}, {pos: 'CM', x: 40, y: 60}, {pos: 'LW', x: 15, y: 50}, {pos: 'FW', x: 50, y: 20} ] };
+
+// [추가] 이름 정규화 함수
+function normalizeName(name) {
+    return name ? name.normalize('NFC').trim() : '';
+}
 
 function populateLocations() {
     if (!shareLocationSelect) return;
@@ -62,7 +67,7 @@ async function generateShareableLink() {
             if (state.teamLineupCache && state.teamLineupCache[i]) {
                 return Promise.resolve(state.teamLineupCache[i]);
             }
-            const teamMembers = team.map(p => p.name.replace(' (신규)', ''));
+            const teamMembers = team.map(p => normalizeName(p.name.replace(' (신규)', '')));
             const formations = Array.from(document.querySelectorAll('#page-lineup select')).map(s => s.value);
             return window.lineup.executeLineupGeneration(teamMembers, formations, true);
         });
@@ -71,15 +76,21 @@ async function generateShareableLink() {
         
         lineups.forEach((originalLineup, i) => {
             if (originalLineup) {
-                // [수정] 원본 데이터 훼손을 막기 위해 lineup 객체를 깊은 복사
                 const lineup = JSON.parse(JSON.stringify(originalLineup));
 
                 const restersObject = {};
-                // 복사된 lineup 객체의 resters를 사용
+                const refereesObject = {};
+
                 (lineup.resters || []).forEach((resterArray, qIndex) => {
                     restersObject[`q${qIndex + 1}`] = resterArray;
                 });
-                lineup.resters = restersObject; // 복사된 lineup 객체를 수정
+                // [추가] 심판 데이터도 저장
+                (lineup.referees || []).forEach((ref, qIndex) => {
+                    refereesObject[`q${qIndex + 1}`] = ref;
+                });
+
+                lineup.resters = restersObject; 
+                lineup.referees = refereesObject;
                 allTeamLineups[`team${i + 1}`] = lineup;
             }
         });
@@ -147,65 +158,78 @@ export function generatePrintView(shareData) {
         window.showNotification('팝업이 차단되었습니다. 팝업을 허용해주세요.', 'error');
         return;
     }
-const createQuarterHTML = (teamLineup, teamIdx, qIndex) => {
-    if (!teamLineup || !teamLineup.lineups || !teamLineup.lineups[qIndex]) return '<div class="pitch-print-placeholder"></div>';
-    
-    const lineup = teamLineup.lineups[qIndex];
-    const formation = teamLineup.formations[qIndex];
 
-    // [수정 시작] ◀◀ 1. 버그 수정 (이 부분은 휴식 선수 로직으로, 이미 올바르게 수정되어 있습니다)
-    // 'lineup' 객체를 기반으로 실제 경기장에 배정된 선수 Set을 만듭니다.
-    const assignedPlayers = new Set(Object.values(lineup).flat().filter(Boolean));
-    
-    // 전체 멤버 목록에서, 경기장에 배정된 선수를 제외하여 '휴식 선수'를 유도합니다.
-    const allMembers = teamLineup.members || [];
-    const resters = allMembers
-        .filter(m => !assignedPlayers.has(m))
-        .sort((a,b) => a.localeCompare(b, 'ko-KR'));
-    // [수정 끝] ◀◀ 
-
-    // [수정] ◀◀ 2. 누락된 Pitch HTML 및 선수 마커 로직 복원
-    // (pitch line HTML은 lineupGenerator.js의 createPitchHTML()에서 가져옴)
-    let pitchHtml = `<div class="pitch-print">
-        <div class="pitch-line-print" style="top:50%; left:0; width:100%; height:1.5px;"></div>
-        <div class="center-circle-print" style="top:50%; left:50%; width:25%; height:17.5%; transform: translate(-50%,-50%);"></div>
-        <div class="pitch-line-print" style="top:50%; left:50%; width:1.5px; height:1.5px; border-radius:50%; transform: translate(-50%, -50%); background:white;"></div>
-        <div class="penalty-box-print" style="top: 83%; left: 20%; width: 60%; height: 17%;"></div>
-        <div class="penalty-box-print" style="top: 0%; left: 20%; width: 60%; height: 17%;"></div>
-        <div class="quarter-title-integrated">팀 ${teamIdx + 1} - ${qIndex + 1}쿼터 (${formation})</div>`;
-    
-    const counters = {};
-    (posCellMap[formation] || []).forEach(fc => {
-        counters[fc.pos] = (counters[fc.pos] || 0);
-        const name = (lineup[fc.pos] || [])[counters[fc.pos]] || '미배정';
+    const createQuarterHTML = (teamLineup, teamIdx, qIndex) => {
+        if (!teamLineup || !teamLineup.lineups || !teamLineup.lineups[qIndex]) return '<div class="pitch-print-placeholder"></div>';
         
-        // (아이콘/색상 로직은 lineupGenerator.js의 createPlayerMarker()에서 가져옴)
-        let icon = '❓', bgColor = '#78909C';
-        if (fc.pos === "GK") { icon = "🧤"; bgColor = "#00C853"; } 
-        else if (["LB", "RB", "CB", "DF"].includes(fc.pos)) { icon = "🛡"; bgColor = "#03A9F4"; } 
-        else if (["MF", "CM"].includes(fc.pos)) { icon = "⚙"; bgColor = "#FFEB3B"; } 
-        else if (["LW", "RW", "FW"].includes(fc.pos)) { icon = "🎯"; bgColor = "#FF9800"; }
+        const lineup = teamLineup.lineups[qIndex];
+        const formation = teamLineup.formations[qIndex];
         
-        // (HTML 생성 로직은 style.css의 .player-marker-print 등을 참고하여 작성)
-        pitchHtml += `
-            <div class="player-marker-print" style="left: ${fc.x}%; top: ${fc.y}%;">
-                <div class="player-icon-print" style="background-color: ${bgColor};">
-                    ${(name === '미배정' ? '❓' : icon)}
-                </div>
-                <div class="player-name-print">
-                    ${name === '미배정' ? '-' : name}
-                </div>
-            </div>`;
-        counters[fc.pos]++;
-    });
-    pitchHtml += `</div>`; // .pitch-print 닫기
-    // [수정 끝] ◀◀
+        // [수정] 데이터 안전하게 가져오기 (배열 혹은 객체)
+        const getQuarterData = (dataObj, idx) => {
+            if (Array.isArray(dataObj)) return dataObj[idx];
+            return dataObj[`q${idx + 1}`] || null;
+        };
 
-    return `<div class="quarter-block">
-                ${pitchHtml}
-                <div class="rest-players-print"><b>휴식:</b> ${resters.join(', ') || '없음'}</div>
-            </div>`;
-};    
+        const referee = getQuarterData(teamLineup.referees || [], qIndex);
+        // 원본 멤버 리스트에서 휴식자 계산 (정규화 적용)
+        const allMembers = (teamLineup.members || []).map(m => normalizeName(m));
+        
+        // 경기장에 있는 선수들 (정규화)
+        const assignedPlayers = new Set(
+            Object.values(lineup).flat().filter(Boolean).map(m => normalizeName(m))
+        );
+        
+        // 휴식자 계산: 전체 멤버 중 경기장에 없고, 심판도 아닌 사람
+        const resters = allMembers
+            .filter(m => !assignedPlayers.has(m) && m !== normalizeName(referee))
+            .sort((a,b) => a.localeCompare(b, 'ko-KR'));
+
+        let pitchHtml = `<div class="pitch-print">
+            <div class="pitch-line-print" style="top:50%; left:0; width:100%; height:1.5px;"></div>
+            <div class="center-circle-print" style="top:50%; left:50%; width:25%; height:17.5%; transform: translate(-50%,-50%);"></div>
+            <div class="pitch-line-print" style="top:50%; left:50%; width:1.5px; height:1.5px; border-radius:50%; transform: translate(-50%, -50%); background:white;"></div>
+            <div class="penalty-box-print" style="top: 83%; left: 20%; width: 60%; height: 17%;"></div>
+            <div class="penalty-box-print" style="top: 0%; left: 20%; width: 60%; height: 17%;"></div>
+            <div class="quarter-title-integrated">팀 ${teamIdx + 1} - ${qIndex + 1}쿼터 (${formation})</div>`;
+        
+        const counters = {};
+        (posCellMap[formation] || []).forEach(fc => {
+            counters[fc.pos] = (counters[fc.pos] || 0);
+            const name = (lineup[fc.pos] || [])[counters[fc.pos]] || '미배정';
+            
+            let icon = '❓', bgColor = '#78909C';
+            if (fc.pos === "GK") { icon = "🧤"; bgColor = "#00C853"; } 
+            else if (["LB", "RB", "CB", "DF"].includes(fc.pos)) { icon = "🛡"; bgColor = "#03A9F4"; } 
+            else if (["MF", "CM"].includes(fc.pos)) { icon = "⚙"; bgColor = "#FFEB3B"; } 
+            else if (["LW", "RW", "FW"].includes(fc.pos)) { icon = "🎯"; bgColor = "#FF9800"; }
+            
+            pitchHtml += `
+                <div class="player-marker-print" style="left: ${fc.x}%; top: ${fc.y}%;">
+                    <div class="player-icon-print" style="background-color: ${bgColor};">
+                        ${(name === '미배정' ? '❓' : icon)}
+                    </div>
+                    <div class="player-name-print">
+                        ${name === '미배정' ? '-' : name}
+                    </div>
+                </div>`;
+            counters[fc.pos]++;
+        });
+        pitchHtml += `</div>`;
+
+        // [수정] 심판과 휴식자 분리 표시
+        let footerHtml = '';
+        if (referee) {
+            footerHtml += `<span style="margin-right: 10px;"><b>⚖️ 심판:</b> ${referee}</span>`;
+        }
+        footerHtml += `<span><b>🛌 휴식:</b> ${resters.length > 0 ? resters.join(', ') : '없음'}</span>`;
+
+        return `<div class="quarter-block">
+                    ${pitchHtml}
+                    <div class="rest-players-print">${footerHtml}</div>
+                </div>`;
+    };    
+
     let locationHtml = meetingInfo.locationUrl 
         ? `<a href="${meetingInfo.locationUrl}" target="_blank" style="color: #0000EE; text-decoration: underline;">${meetingInfo.location}</a>`
         : (meetingInfo.location || '미정');
@@ -246,7 +270,7 @@ const createQuarterHTML = (teamLineup, teamIdx, qIndex) => {
         .center-circle-print { position: absolute; border: 1.5px solid rgba(255,255,255,0.5); border-radius: 50%; }
         .penalty-box-print { position: absolute; border: 1.5px solid rgba(255,255,255,0.5); }
         .quarter-title-integrated { position: absolute; top: 8px; left: 8px; font-size: 0.8rem; font-weight: bold; color: white; background: rgba(0,0,0,0.5); padding: 3px 6px; border-radius: 5px; z-index: 10; }
-        .rest-players-print { text-align: center; margin-top: 8px; padding: 4px; font-size: 0.8rem; font-weight: bold; background: #f3f4f6; border-radius: 4px; }
+        .rest-players-print { text-align: center; margin-top: 8px; padding: 4px; font-size: 0.8rem; font-weight: bold; background: #f3f4f6; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .player-marker-print { position:absolute; transform:translate(-50%,-50%); text-align:center; }
         .player-icon-print { width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-size:.7rem; border:1.5px solid white; margin: 0 auto; box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
         .player-name-print { background:rgba(0,0,0,0.7); color:white; font-size:0.65rem; padding:2px 5px; border-radius:5px; margin-top:3px; white-space:nowrap; }
