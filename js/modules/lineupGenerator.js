@@ -4,6 +4,11 @@ let generateLineupButton, lineupDisplay, loadingLineupSpinner, placeholderLineup
 let teamSelectTabsContainer, lineupMembersTextarea;
 let activeTeamIndex = -1;
 
+// [기능] 한글 자모 분리 현상 해결을 위한 정규화 함수
+function normalizeName(name) {
+    return name ? name.normalize('NFC').trim() : '';
+}
+
 // [기능 1] 9인(3-4-1), 10인(3-4-2) 포메이션 좌표 추가
 const posCellMap = { 
     '4-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 75}, {pos: 'CB', x: 65, y: 80}, {pos: 'CB', x: 35, y: 80}, {pos: 'LB', x: 15, y: 75}, {pos: 'RW', x: 85, y: 45}, {pos: 'CM', x: 65, y: 55}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 15, y: 45}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], 
@@ -241,10 +246,10 @@ function executeLineupGeneration(members, formations, isSilent = false) {
              resolve(null); return;
         }
 
-        const initialOrder = state.initialAttendeeOrder || [];
+        const initialOrder = (state.initialAttendeeOrder || []).map(name => normalizeName(name));
         const sortedMembers = [...members].sort((a, b) => { 
-            const indexA = initialOrder.indexOf(a); 
-            const indexB = initialOrder.indexOf(b); 
+            const indexA = initialOrder.indexOf(normalizeName(a)); 
+            const indexB = initialOrder.indexOf(normalizeName(b)); 
             if (indexA === -1) return 1; 
             if (indexB === -1) return -1; 
             return indexA - indexB; 
@@ -307,8 +312,8 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                         if (refereeUsage[a] !== refereeUsage[b]) {
                             return refereeUsage[a] - refereeUsage[b]; // 횟수 적은 순
                         }
-                        const idxA = initialOrder.indexOf(a);
-                        const idxB = initialOrder.indexOf(b);
+                        const idxA = initialOrder.indexOf(normalizeName(a));
+                        const idxB = initialOrder.indexOf(normalizeName(b));
                         return idxB - idxA; // 늦게 온 순(뒤쪽 인덱스 우선)
                     });
                     assignedRef = candidates[0];

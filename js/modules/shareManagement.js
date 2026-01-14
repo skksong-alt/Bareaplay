@@ -8,7 +8,6 @@ let locationModal, closeLocationModalBtn, addNewLocationBtn, locationListDiv, ne
 
 const posCellMap = { '4-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 75}, {pos: 'CB', x: 65, y: 80}, {pos: 'CB', x: 35, y: 80}, {pos: 'LB', x: 15, y: 75}, {pos: 'RW', x: 85, y: 45}, {pos: 'CM', x: 65, y: 55}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 15, y: 45}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-3-3': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 88, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 12, y: 78}, {pos: 'CM', x: 50, y: 65}, {pos: 'MF', x: 70, y: 50}, {pos: 'MF', x: 30, y: 50}, {pos: 'RW', x: 80, y: 25}, {pos: 'FW', x: 50, y: 18}, {pos: 'LW', x: 20, y: 25} ], '3-5-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 75, y: 80}, {pos: 'CB', x: 50, y: 85}, {pos: 'CB', x: 25, y: 80}, {pos: 'RW', x: 90, y: 50}, {pos: 'CM', x: 65, y: 55}, {pos: 'MF', x: 50, y: 65}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 10, y: 50}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-2-3-1': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 15, y: 78}, {pos: 'MF', x: 60, y: 65}, {pos: 'MF', x: 40, y: 65}, {pos: 'RW', x: 80, y: 40}, {pos: 'MF', x: 50, y: 45}, {pos: 'LW', x: 20, y: 40}, {pos: 'FW', x: 50, y: 18} ], '3-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 80, y: 80}, {pos: 'CB', x: 50, y: 82}, {pos: 'CB', x: 20, y: 80}, {pos: 'RW', x: 85, y: 50}, {pos: 'CM', x: 60, y: 60}, {pos: 'CM', x: 40, y: 60}, {pos: 'LW', x: 15, y: 50}, {pos: 'FW', x: 65, y: 25}, {pos: 'FW', x: 35, y: 25} ], '3-4-1': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 80, y: 80}, {pos: 'CB', x: 50, y: 82}, {pos: 'CB', x: 20, y: 80}, {pos: 'RW', x: 85, y: 50}, {pos: 'CM', x: 60, y: 60}, {pos: 'CM', x: 40, y: 60}, {pos: 'LW', x: 15, y: 50}, {pos: 'FW', x: 50, y: 20} ] };
 
-// [추가] 이름 정규화 함수
 function normalizeName(name) {
     return name ? name.normalize('NFC').trim() : '';
 }
@@ -67,7 +66,7 @@ async function generateShareableLink() {
             if (state.teamLineupCache && state.teamLineupCache[i]) {
                 return Promise.resolve(state.teamLineupCache[i]);
             }
-            const teamMembers = team.map(p => normalizeName(p.name.replace(' (신규)', '')));
+            const teamMembers = team.map(p => p.name.replace(' (신규)', ''));
             const formations = Array.from(document.querySelectorAll('#page-lineup select')).map(s => s.value);
             return window.lineup.executeLineupGeneration(teamMembers, formations, true);
         });
@@ -84,7 +83,7 @@ async function generateShareableLink() {
                 (lineup.resters || []).forEach((resterArray, qIndex) => {
                     restersObject[`q${qIndex + 1}`] = resterArray;
                 });
-                // [추가] 심판 데이터도 저장
+                // 심판 데이터도 저장
                 (lineup.referees || []).forEach((ref, qIndex) => {
                     refereesObject[`q${qIndex + 1}`] = ref;
                 });
@@ -172,18 +171,11 @@ export function generatePrintView(shareData) {
         };
 
         const referee = getQuarterData(teamLineup.referees || [], qIndex);
-        // 원본 멤버 리스트에서 휴식자 계산 (정규화 적용)
-        const allMembers = (teamLineup.members || []).map(m => normalizeName(m));
+        const rawResters = getQuarterData(teamLineup.resters || [], qIndex) || [];
         
-        // 경기장에 있는 선수들 (정규화)
-        const assignedPlayers = new Set(
-            Object.values(lineup).flat().filter(Boolean).map(m => normalizeName(m))
-        );
-        
-        // 휴식자 계산: 전체 멤버 중 경기장에 없고, 심판도 아닌 사람
-        const resters = allMembers
-            .filter(m => !assignedPlayers.has(m) && m !== normalizeName(referee))
-            .sort((a,b) => a.localeCompare(b, 'ko-KR'));
+        // [중요 수정] 생성기가 계산한 휴식 명단을 그대로 사용 (재계산 X)
+        // 심판은 휴식자 명단에서 제외하여 중복 표시 방지
+        const resters = rawResters.filter(r => r !== referee);
 
         let pitchHtml = `<div class="pitch-print">
             <div class="pitch-line-print" style="top:50%; left:0; width:100%; height:1.5px;"></div>

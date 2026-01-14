@@ -61,10 +61,9 @@ window.shuffleLocal = function(arr) {
 
 const saveDailyMeetingData = window.debounce(async () => {
     if (!state.isAdmin) return;
-isSavingLocally = true;
+    isSavingLocally = true;
     const today = new Date().toISOString().split('T')[0];
 
-    // [수정] Firestore 저장을 위해 Nested Array를 객체로 변환
     const teamsObject = {};
     (state.teams || []).forEach((team, index) => {
         teamsObject[`team_${index}`] = team;
@@ -78,7 +77,14 @@ isSavingLocally = true;
             originalLineup.resters.forEach((resterList, qIndex) => {
                 restersObject[`q_${qIndex}`] = resterList;
             });
-            transformedCache[teamIndex] = { ...originalLineup, resters: restersObject };
+            // [중요] 심판 데이터도 객체로 변환하여 저장
+            const refereesObject = {};
+            if (Array.isArray(originalLineup.referees)) {
+                originalLineup.referees.forEach((ref, qIndex) => {
+                    refereesObject[`q_${qIndex}`] = ref;
+                });
+            }
+            transformedCache[teamIndex] = { ...originalLineup, resters: restersObject, referees: refereesObject };
         } else {
             transformedCache[teamIndex] = originalLineup;
         }
@@ -86,8 +92,9 @@ isSavingLocally = true;
 
     const dataToSave = {
         date: today,
-        teams: teamsObject, // 변환된 객체 사용
-        teamLineupCache: transformedCache, // 변환된 객체 사용
+        teams: teamsObject,
+        teamLineupCache: transformedCache,
+        initialAttendeeOrder: state.initialAttendeeOrder || [], // [수정] 참가자 순서 저장
         lastUpdatedAt: serverTimestamp()
     };
 
@@ -97,7 +104,7 @@ isSavingLocally = true;
     } catch (error) {
         console.error("일일 모임 데이터 저장 실패:", error);
         window.showNotification(`저장 실패: ${error.message}`, 'error');
-isSavingLocally = false;
+        isSavingLocally = false;
     }
 }, 1000);
 
@@ -106,9 +113,9 @@ function loadAndSyncDailyMeetingData() {
     const meetingDocRef = doc(db, "dailyMeetings", today);
 
     onSnapshot(meetingDocRef, (doc) => {
-if (isSavingLocally) {
-            isSavingLocally = false; // 2. 깃발을 'false'로 리셋
-            return; // 3. 동기화 로직을 실행하지 않고 종료
+        if (isSavingLocally) {
+            isSavingLocally = false;
+            return;
         }
         const hasLocalChanges = doc.metadata.hasPendingWrites;
         if (hasLocalChanges) return;
@@ -117,17 +124,34 @@ if (isSavingLocally) {
             console.log("외부 변경 감지, 데이터 동기화.");
             const data = doc.data();
 
-            // [수정] Firestore에서 불러온 객체를 다시 Nested Array로 변환
             state.teams = Object.values(data.teams || {});
+            
+            // [수정] 참가자 순서 불러오기
+            if (data.initialAttendeeOrder) {
+                state.initialAttendeeOrder = data.initialAttendeeOrder;
+            }
 
             const originalCache = {};
             Object.keys(data.teamLineupCache || {}).forEach(teamIndex => {
                 const transformedLineup = data.teamLineupCache[teamIndex];
-                if (transformedLineup && typeof transformedLineup.resters === 'object') {
-                    const restersArray = Object.values(transformedLineup.resters);
-                    originalCache[teamIndex] = { ...transformedLineup, resters: restersArray };
-                } else {
-                    originalCache[teamIndex] = transformedLineup;
+                let restoredResters = [];
+                let restoredReferees = [];
+
+                if (transformedLineup && typeof transformedLineup.resters === 'object' && !Array.isArray(transformedLineup.resters)) {
+                    restoredResters = Object.keys(transformedLineup.resters).sort().map(key => transformedLineup.resters[key]);
+                } else if (transformedLineup && Array.isArray(transformedLineup.resters)) {
+                    restoredResters = transformedLineup.resters;
+                }
+
+                // 심판 데이터 복원
+                if (transformedLineup && typeof transformedLineup.referees === 'object' && !Array.isArray(transformedLineup.referees)) {
+                    restoredReferees = Object.keys(transformedLineup.referees).sort().map(key => transformedLineup.referees[key]);
+                } else if (transformedLineup && Array.isArray(transformedLineup.referees)) {
+                    restoredReferees = transformedLineup.referees;
+                }
+
+                if (transformedLineup) {
+                    originalCache[teamIndex] = { ...transformedLineup, resters: restoredResters, referees: restoredReferees };
                 }
             });
             state.teamLineupCache = originalCache;
@@ -139,6 +163,7 @@ if (isSavingLocally) {
             console.log(`${today} 데이터 없음, 초기화.`);
             state.teams = [];
             state.teamLineupCache = {};
+            state.initialAttendeeOrder = [];
             balancer.renderResults(state.teams);
             lineup.renderTeamSelectTabs(state.teams);
         }
@@ -292,16 +317,36 @@ function renderSharePageView(shareData) {
     const colors = ["#14B8A6","#0288D1","#7B1FA2","#43A047","#F4511E"];
     teams.forEach((team, i) => { contentHtml += `<div class="rounded-lg p-4 text-white" style="background-color:${colors[i%5]}"><h3 class="font-bold text-xl mb-2 border-b border-white/30 pb-2">팀 ${i + 1}</h3><ul class="space-y-1">${team.map(p => `<li class="bg-white/20 p-2 rounded-md">${p.name.replace(' (신규)','')}</li>`).join('')}</ul></div>`; });
     contentHtml += `</div></div>`;
+    
+    // [수정] 공유 페이지 뷰 렌더링 로직 수정 (심판/휴식 분리)
     const createQuarterHTML = (teamLineup, qIndex) => {
         if (!teamLineup || !teamLineup.lineups || !teamLineup.lineups[qIndex]) return '<div class="p-2 border rounded-lg bg-gray-50 text-center text-gray-400">데이터 없음</div>';
         const lineup = teamLineup.lineups[qIndex];
         const formation = teamLineup.formations[qIndex];
-        const resters = teamLineup.resters[`q_${qIndex}`] || [];
+        
+        // 데이터 안전 접근
+        const getQData = (dataObj, idx) => {
+            if (Array.isArray(dataObj)) return dataObj[idx];
+            return dataObj[`q_${idx}`] || dataObj[`q${idx+1}`] || null;
+        };
+
+        const rawResters = getQData(teamLineup.resters || {}, qIndex) || [];
+        const referee = getQData(teamLineup.referees || {}, qIndex);
+        
+        // 휴식자 목록에서 심판 제외
+        const realResters = Array.isArray(rawResters) 
+            ? rawResters.filter(r => r !== referee) 
+            : [];
+
         let html = `<div class="p-2 border rounded-lg"><h4 class="font-bold text-center mb-2">${qIndex + 1}쿼터 (${formation})</h4><ul class="space-y-1 text-sm">`;
         Object.keys(lineup).sort().forEach(pos => { lineup[pos].forEach(player => { if(player) html += `<li class="p-1 bg-gray-100 rounded">${pos}: ${player}</li>`; }); });
-        html += `</ul><hr class="my-2"><p class="text-sm"><b>휴식:</b> ${resters.join(', ') || '없음'}</p></div>`;
+        html += `</ul><hr class="my-2">`;
+        
+        if (referee) html += `<p class="text-sm"><b>⚖️ 심판:</b> ${referee}</p>`;
+        html += `<p class="text-sm"><b>🛌 휴식:</b> ${realResters.join(', ') || '없음'}</p></div>`;
         return html;
     };
+
     contentHtml += `<div class="bg-white p-6 rounded-lg shadow-md max-w-6xl mx-auto"><h2 class="text-2xl font-bold mb-4 border-b pb-2">📋 라인업 결과</h2><div class="grid grid-cols-1 ${teams.length > 1 ? 'md:grid-cols-2' : ''} ${teams.length > 2 ? 'lg:grid-cols-3' : ''} gap-6">`;
     teams.forEach((team, teamIdx) => {
         contentHtml += `<div><h3 class="text-xl font-bold text-center mb-3">팀 ${teamIdx + 1}</h3><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">`;
@@ -354,28 +399,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         Object.assign(pages, { players: document.getElementById('page-players'), balancer: document.getElementById('page-balancer'), lineup: document.getElementById('page-lineup'), accounting: document.getElementById('page-accounting'), share: document.getElementById('page-share') });
         Object.assign(tabs, { players: document.getElementById('tab-players'), balancer: document.getElementById('tab-balancer'), lineup: document.getElementById('tab-lineup'), accounting: document.getElementById('tab-accounting'), share: document.getElementById('tab-share') });
         adminModal = document.getElementById('admin-modal');
-        // passwordInput, modalConfirmBtn 변수는 비밀번호 방식이라 삭제했습니다.
         modalCancelBtn = document.getElementById('modal-cancel-btn'); 
 
-        // 'Google 계정으로 로그인' 버튼을 찾습니다.
         const googleLoginBtn = document.getElementById('google-login-btn');
         
         if (googleLoginBtn) {
             googleLoginBtn.addEventListener('click', async () => {
                 const provider = new GoogleAuthProvider();
                 try {
-await setPersistence(auth, browserLocalPersistence);
-                    // 1. Google 로그인 팝업창을 띄웁니다.
+                    await setPersistence(auth, browserLocalPersistence);
                     const result = await signInWithPopup(auth, provider);
                     const user = result.user;
-                    
-                    // 2. Firestore 'admins' 컬렉션에서 로그인한 사용자의 UID 문서를 찾아봅니다.
                     const adminDocRef = doc(db, "admins", user.uid);
                     const adminDoc = await getDoc(adminDocRef);
 
-                    // 3. 'admins' 목록에 해당 UID 문서가 존재하는지 확인합니다.
                     if (adminDoc.exists()) {
-                        // 4. 관리자가 맞습니다! (UI 활성화)
                         console.log("관리자 인증 성공! UID:", user.uid);
                         setAdmin(true);
                         window.showNotification('관리자 인증에 성공했습니다.', 'success');
@@ -383,43 +421,34 @@ await setPersistence(auth, browserLocalPersistence);
                         adminModal.classList.add('hidden');
                         if (pendingTabSwitch) { switchTab(pendingTabSwitch, true); }
                     } else {
-                        // 5. 관리자가 아닙니다. (UI 비활성화)
                         console.log("관리자가 아닌 사용자 로그인 시도:", user.uid);
                         window.showNotification('관리자 계정이 아닙니다.', 'error');
-                        // (setAdmin(true)를 호출하지 않으므로 관리자 모드가 켜지지 않습니다)
                     }
 
                 } catch (error) {
-                    // 6. 'try'의 짝이 되는 'catch'입니다.
                     console.error("Google 로그인 실패:", error);
                     window.showNotification('Google 로그인에 실패했습니다.', 'error');
                 }
             });
         }
         
-        // '취소' 버튼과 팝업창 바깥쪽을 클릭했을 때의 동작입니다.
         modalCancelBtn.addEventListener('click', () => adminModal.classList.add('hidden'));
         adminModal.addEventListener('click', (e) => { if (e.target === adminModal) adminModal.classList.add('hidden'); });
 
-        // 탭 버튼들에 클릭 이벤트를 추가합니다.
         Object.keys(tabs).forEach(key => { if (tabs[key]) tabs[key].addEventListener('click', () => switchTab(key)); });
-onAuthStateChanged(auth, async (user) => {
+        onAuthStateChanged(auth, async (user) => {
             if (user) {
-                // 1. 사용자가 이전에 로그인했음 (세션이 복원됨)
                 console.log("자동 로그인 사용자 발견:", user.uid);
                 try {
-                    // 2. Firestore 'admins' 컬렉션에서 이 사용자가 관리자인지 확인
                     const adminDocRef = doc(db, "admins", user.uid);
                     const adminDoc = await getDoc(adminDocRef);
 
                     if (adminDoc.exists()) {
-                        // 3. 관리자입니다!
                         console.log("관리자 자동 로그인 성공.");
                         setAdmin(true);
-                        updateAdminUI(); // UI를 관리자 모드로 즉시 업데이트
-                        adminModal.classList.add('hidden'); // 혹시 모달이 떠있다면 닫기
+                        updateAdminUI(); 
+                        adminModal.classList.add('hidden'); 
                     } else {
-                        // 4. 관리자가 아닌 사용자가 로그인되어 있음
                         console.log("관리자가 아닌 사용자 세션 발견.");
                         setAdmin(false);
                         updateAdminUI();
@@ -430,7 +459,6 @@ onAuthStateChanged(auth, async (user) => {
                     updateAdminUI();
                 }
             } else {
-                // 5. 사용자가 로그인되어 있지 않음
                 console.log("로그인된 사용자 없음.");
                 setAdmin(false);
                 updateAdminUI();
