@@ -1,9 +1,9 @@
 // sw.js
-const CACHE_NAME = 'bareaplay-cache-v27'; // 숫자를 1 올립니다
+const CACHE_NAME = 'bareaplay-cache-v28'; // 배포할 때마다 숫자를 1씩 올리세요
 const urlsToCache = [
     '/',
     '/index.html',
-    '/css/style.css?v=2',
+    '/css/style.css',
     '/js/app.js?v=2',
     '/js/store.js?v=2',
     '/js/modules/playerManagement.js?v=2',
@@ -17,47 +17,46 @@ const urlsToCache = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('Cache opened');
-        // [수정] 개별 파일 캐싱 실패가 전체를 중단시키지 않도록 방어 코드 강화
-        const promises = urlsToCache.map(url => {
-            return cache.add(url).catch(err => {
-                console.warn(`[SW] Failed to cache ${url}:`, err);
-            });
-        });
-        return Promise.all(promises);
-      })
-  );
-self.skipWaiting();
+    event.waitUntil(
+        caches.open(CACHE_NAME).then((cache) => {
+            const promises = urlsToCache.map(url =>
+                cache.add(url).catch(err => console.warn(`[SW] Failed to cache ${url}:`, err))
+            );
+            return Promise.all(promises);
+        })
+    );
+    self.skipWaiting();
 });
 
+// [수정] 네트워크 우선: 항상 최신 파일을 먼저 받고, 오프라인일 때만 저장본 사용
 self.addEventListener('fetch', (event) => {
-  if (event.request.url.includes('firestore.googleapis.com')) {
-    return; // Firestore API 요청은 네트워크를 통하도록 함
-  }
-  
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // 캐시에 있으면 캐시에서, 없으면 네트워크에서 가져옴
-        return response || fetch(event.request);
-      })
-  );
+    const url = event.request.url;
+    if (url.includes('googleapis.com') || url.includes('gstatic.com')) return;
+
+    event.respondWith(
+        fetch(event.request)
+            .then((response) => {
+                if (response && response.ok && event.request.method === 'GET' && url.startsWith(self.location.origin)) {
+                    const copy = response.clone();
+                    caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+                }
+                return response;
+            })
+            .catch(() => caches.match(event.request))
+    );
 });
 
 self.addEventListener('activate', (event) => {
-  const cacheWhitelist = [CACHE_NAME];
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
-            return caches.delete(cacheName); // 이전 버전 캐시 삭제
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
-  );
+    const cacheWhitelist = [CACHE_NAME];
+    event.waitUntil(
+        caches.keys().then((cacheNames) => {
+            return Promise.all(
+                cacheNames.map((cacheName) => {
+                    if (cacheWhitelist.indexOf(cacheName) === -1) {
+                        return caches.delete(cacheName);
+                    }
+                })
+            );
+        }).then(() => self.clients.claim())
+    );
 });

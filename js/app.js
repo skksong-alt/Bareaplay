@@ -26,7 +26,8 @@ let adminModal, passwordInput, modalConfirmBtn, modalCancelBtn;
 const pages = {};
 const tabs = {};
 let pendingTabSwitch = null;
-let isSavingLocally = false;
+// [수정] 이 브라우저(기기)만의 서명. 내가 저장한 데이터의 메아리를 구분하는 데 사용
+const CLIENT_ID = Math.random().toString(36).slice(2) + Date.now().toString(36);
 
 window.showNotification = function(message, type = 'success') {
     let notificationEl = document.getElementById('notification');
@@ -58,6 +59,12 @@ window.shuffleLocal = function(arr) {
         [arr[i], arr[j]] = [arr[j], arr[i]];
     }
 };
+// [추가] 기기의 현지 시간 기준 오늘 날짜 (UTC 날짜 밀림 방지)
+window.getLocalDate = function() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 // [보안] 특수문자를 무해한 글자로 바꿔주는 안전장치
 window.esc = function(str) {
     return String(str ?? '')
@@ -76,7 +83,6 @@ window.safeUrl = function(url) {
 
 const saveDailyMeetingData = window.debounce(async () => {
     if (!state.isAdmin) return;
-    isSavingLocally = true;
     const today = new Date().toISOString().split('T')[0];
 
     const teamsObject = {};
@@ -109,8 +115,10 @@ const saveDailyMeetingData = window.debounce(async () => {
         date: today,
         teams: teamsObject,
         teamLineupCache: transformedCache,
-        initialAttendeeOrder: state.initialAttendeeOrder || [], // [수정] 참가자 순서 저장
+        initialAttendeeOrder: state.initialAttendeeOrder || [],
+        lastWriter: CLIENT_ID, // [수정] 누가 저장했는지 서명
         lastUpdatedAt: serverTimestamp()
+
     };
 
     try {
@@ -119,7 +127,6 @@ const saveDailyMeetingData = window.debounce(async () => {
     } catch (error) {
         console.error("일일 모임 데이터 저장 실패:", error);
         window.showNotification(`저장 실패: ${error.message}`, 'error');
-        isSavingLocally = false;
     }
 }, 1000);
 
@@ -128,13 +135,8 @@ function loadAndSyncDailyMeetingData() {
     const meetingDocRef = doc(db, "dailyMeetings", today);
 
     onSnapshot(meetingDocRef, (doc) => {
-        if (isSavingLocally) {
-            isSavingLocally = false;
-            return;
-        }
-        const hasLocalChanges = doc.metadata.hasPendingWrites;
-        if (hasLocalChanges) return;
-
+        if (doc.metadata.hasPendingWrites) return; // 아직 서버 전송 중인 내 데이터는 무시
+        if (doc.exists() && doc.data().lastWriter === CLIENT_ID) return; // 내가 저장한 메아리는 무시
         if (doc.exists()) {
             console.log("외부 변경 감지, 데이터 동기화.");
             const data = doc.data();
@@ -330,7 +332,7 @@ function renderSharePageView(shareData) {
         let locationHtml = safeUrl(meetingInfo.locationUrl) ? `<a href="${esc(safeUrl(meetingInfo.locationUrl))}" target="_blank" class="text-blue-600 underline">${esc(meetingInfo.location)}</a>` : (esc(meetingInfo.location) || '미정');
     let contentHtml = `<div class="container mx-auto p-4 md:p-8"><header class="text-center mb-8 relative"><h1 class="text-4xl md:text-5xl font-bold text-gray-900">BareaPlay⚽</h1><p class="mt-2 text-lg text-gray-600">모임 결과</p></header><div class="bg-white p-6 rounded-lg shadow-md mb-8 max-w-2xl mx-auto"><h2 class="text-2xl font-bold mb-4 border-b pb-2">📅 모임 정보</h2><p class="text-gray-700 mb-2"><strong>시간:</strong> ${new Date(meetingInfo.time).toLocaleString('ko-KR')}</p><p class="text-gray-700"><strong>장소:</strong> ${locationHtml}</p></div><div class="bg-white p-6 rounded-lg shadow-md mb-8 max-w-4xl mx-auto"><h2 class="text-2xl font-bold mb-4 border-b pb-2">⚖️ 팀 배정 결과</h2><div class="grid grid-cols-1 md:grid-cols-${teams.length > 2 ? '3' : '2'} gap-4">`;
     const colors = ["#14B8A6","#0288D1","#7B1FA2","#43A047","#F4511E"];
-    teams.forEach((team, i) => { contentHtml += `<div class="rounded-lg p-4 text-white" style="background-color:${colors[i%5]}"><h3 class="font-bold text-xl mb-2 border-b border-white/30 pb-2">팀 ${i + 1}</h3><ul class="space-y-1">${team.map(p => `<li class="bg-white/20 p-2 rounded-md">${esc(p.name.replace(' (신규)',''))}</li>`).join('')}</ul></div>`; });
+    teams.forEach((team, i) => { contentHtml += `<div class="rounded-lg p-4 text-white" style="background-color:${colors[i%5]}"><h3 class="font-bold text-xl mb-2 border-b border-white/30 pb-2">팀 ${i + 1}</h3><ul class="space-y-1">${[...team].sort((a,b) => a.name.localeCompare(b.name, 'ko-KR')).map(p => `<li class="bg-white/20 p-2 rounded-md">${esc(p.name.replace(' (신규)',''))}</li>`).join('')}</ul></div>`; });
     contentHtml += `</div></div>`;
     
     // [수정] 공유 페이지 뷰 렌더링 로직 수정 (심판/휴식 분리)
@@ -507,9 +509,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 playerSnapshot.forEach(doc => { firebaseDB[doc.id] = doc.data(); });
                 savePlayerDB(firebaseDB, false);
             }
-            onSnapshot(collection(db, "expenses"), (snapshot) => { state.expenseLog = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); if(pages.accounting && !pages.accounting.classList.contains('hidden')) { accounting.renderForDate(); } });
-            onSnapshot(collection(db, "attendance"), (snapshot) => { state.attendanceLog = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); if(pages.accounting && !pages.accounting.classList.contains('hidden')) { accounting.renderForDate(); } if (playerMgmt) playerMgmt.renderPlayerTable(); });
-            onSnapshot(doc(db, "memos", "accounting_memo"), (doc) => { const memoArea = document.getElementById('memo-area'); if (doc.exists() && memoArea) { memoArea.value = doc.data().content; } });
+            // [수정] 회계 화면에서 무언가 입력 중일 때는 표를 다시 그리지 않음 (입력 끊김 방지)
+            const isEditingAccounting = () => {
+                const el = document.activeElement;
+                const accountingPage = document.getElementById('page-accounting');
+                return el && accountingPage && accountingPage.contains(el) &&
+                    (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA');
+            };
+            onSnapshot(collection(db, "expenses"), (snapshot) => { state.expenseLog = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); if(!isEditingAccounting() && pages.accounting && !pages.accounting.classList.contains('hidden')) { accounting.renderForDate(); } });
+            onSnapshot(collection(db, "attendance"), (snapshot) => { state.attendanceLog = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); if(!isEditingAccounting() && pages.accounting && !pages.accounting.classList.contains('hidden')) { accounting.renderForDate(); } if (playerMgmt) playerMgmt.renderPlayerTable(); });
+            onSnapshot(doc(db, "memos", "accounting_memo"), (doc) => { const memoArea = document.getElementById('memo-area'); if (doc.exists() && memoArea && document.activeElement !== memoArea) { memoArea.value = doc.data().content; } });
             playerMgmt.renderPlayerTable();
             accounting.renderForDate();
             loadAndSyncDailyMeetingData();

@@ -280,7 +280,7 @@ export function generatePrintView(shareData) {
             <h2 class="section-title">⚖️ 팀 배정 결과</h2>
             <div class="team-grid-print">`;
     teams.forEach((team, i) => {
-        fullHtml += `<div class="team-box" style="background:${colors[i%5]}"><h3>팀 ${i+1}</h3><ul>${team.map(p=>`<li>${p.name.replace(' (신규)','')}</li>`).join('')}</ul></div>`;
+        fullHtml += `<div class="team-box" style="background:${colors[i%5]}"><h3>팀 ${i+1}</h3><ul>${[...team].sort((a,b)=>a.name.localeCompare(b.name,'ko-KR')).map(p=>`<li>${p.name.replace(' (신규)','')}</li>`).join('')}</ul></div>`;
     });
     fullHtml += `</div></div><div class="print-footer">© 2025 BareaPlay. Created by 송감독.</div></div>`;
     

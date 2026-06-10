@@ -88,7 +88,7 @@ export function renderResults(teams) {
         const playersContainer = document.createElement('div');
         playersContainer.className = 'flex-grow overflow-y-auto pr-1';
         
-        team.sort((a,b) => (b.s1 || 0) - (a.s1 || 0)).forEach(player => {
+        [...team].sort((a, b) => a.name.localeCompare(b.name, 'ko-KR')).forEach(player => {
             const posGroups = allPosGroup([...(player.pos1||[]), ...(player.pos2||[])]);
             let posIcons = '';
             if (posGroups.includes('GK')) posIcons += '🧤'; if (posGroups.includes('DF')) posIcons += '🛡️'; if (posGroups.includes('MF')) posIcons += '⚙️'; if (posGroups.includes('FW')) posIcons += '🎯';

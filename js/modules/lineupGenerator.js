@@ -9,6 +9,37 @@ function normalizeName(name) {
     return name ? name.normalize('NFC').trim() : '';
 }
 
+// [기능] 양팀 공동 심판: 1·3·5쿼터=팀1 휴식자, 2·4·6쿼터=팀2 휴식자가 맡음
+// (해당 팀에 휴식자가 없으면 상대팀 휴식자가 대신 맡음)
+function applySharedReferees() {
+    const cache = state.teamLineupCache || {};
+    const teamIdxs = Object.keys(cache).filter(k => cache[k] && Array.isArray(cache[k].resters)).sort();
+    if (teamIdxs.length === 0) return [];
+
+    const usage = {}; // 심판 횟수 공평하게 배분용
+    const shared = [];
+    for (let q = 0; q < 6; q++) {
+        // 쿼터마다 담당 팀을 번갈아 가며 정함
+        const order = teamIdxs.map((_, i) => teamIdxs[(q + i) % teamIdxs.length]);
+        let chosen = null;
+        for (const t of order) {
+            const resters = (cache[t].resters && Array.isArray(cache[t].resters[q])) ? cache[t].resters[q] : [];
+            if (resters.length > 0) {
+                const sorted = [...resters].sort((a, b) => (usage[a] || 0) - (usage[b] || 0));
+                chosen = { name: sorted[0], team: Number(t) };
+                break;
+            }
+        }
+        if (chosen) usage[chosen.name] = (usage[chosen.name] || 0) + 1;
+        shared.push(chosen);
+    }
+    // 계산된 공동 심판을 모든 팀의 데이터에 기록 (공유 페이지·인쇄물에도 자동 반영)
+    teamIdxs.forEach(t => {
+        cache[t].referees = shared.map(s => s ? s.name : null);
+    });
+    return shared;
+}
+
 // [기능 1] 9인(3-4-1), 10인(3-4-2) 포메이션 좌표 추가
 const posCellMap = { 
     '4-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 75}, {pos: 'CB', x: 65, y: 80}, {pos: 'CB', x: 35, y: 80}, {pos: 'LB', x: 15, y: 75}, {pos: 'RW', x: 85, y: 45}, {pos: 'CM', x: 65, y: 55}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 15, y: 45}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], 
@@ -72,97 +103,127 @@ function findInLineup(lineup, name) {
     return null;
 }
 
-// [기능 4] 드래그 앤 드롭 핸들러 (선수 교체)
-function addDragAndDropHandlers() {
-    const draggables = document.querySelectorAll('.player-marker[draggable="true"]');
-    const targets = document.querySelectorAll('.player-marker');
-    
-    draggables.forEach(d => {
-        d.addEventListener('dragstart', (e) => {
-            d.classList.add('dragging');
-            const quarterBlock = d.closest('.quarter-block');
-            if (quarterBlock) {
-                e.dataTransfer.setData('text/quarter', quarterBlock.dataset.q);
-            }
-        });
-        d.addEventListener('dragend', () => d.classList.remove('dragging'));
-    });
+// [수정] 선수 교체 공통 함수 (드래그와 탭이 함께 사용)
+function performSwap(qIndex, dragInfo, targetInfo) {
+    const lineup = state.lineupResults.lineups[qIndex];
+    const resters = state.lineupResults.resters[qIndex];
+    const draggingName = dragInfo.name, draggingPosType = dragInfo.posType;
+    const targetName = targetInfo.name, targetPosType = targetInfo.posType;
 
-    targets.forEach(target => {
-        target.addEventListener('dragover', e => {
+    const d_loc_lineup = findInLineup(lineup, draggingName);
+    const d_loc_rest = resters.indexOf(draggingName);
+    const t_loc_lineup = findInLineup(lineup, targetName);
+    const t_loc_rest = resters.indexOf(targetName);
+
+    if (draggingPosType !== 'rest' && targetPosType !== 'rest') {
+        if (d_loc_lineup && t_loc_lineup) {
+            lineup[d_loc_lineup.pos][d_loc_lineup.idx] = targetName;
+            lineup[t_loc_lineup.pos][t_loc_lineup.idx] = draggingName;
+        }
+    } else if (draggingPosType !== 'rest' && targetPosType === 'rest') {
+        if (d_loc_lineup && t_loc_rest > -1) {
+            const playerFromPitch = lineup[d_loc_lineup.pos].splice(d_loc_lineup.idx, 1)[0];
+            const playerFromRest = resters.splice(t_loc_rest, 1)[0];
+            lineup[d_loc_lineup.pos].push(playerFromRest);
+            resters.push(playerFromPitch);
+        }
+    } else if (draggingPosType === 'rest' && targetPosType !== 'rest') {
+        if (d_loc_rest > -1 && t_loc_lineup) {
+            const playerFromRest = resters.splice(d_loc_rest, 1)[0];
+            const playerFromPitch = lineup[t_loc_lineup.pos].splice(t_loc_lineup.idx, 1)[0];
+            resters.push(playerFromPitch);
+            lineup[t_loc_lineup.pos].push(playerFromRest);
+        }
+    } else {
+        return; // 휴식자끼리는 교체할 필요 없음
+    }
+
+    if (state.teamLineupCache && activeTeamIndex !== -1) {
+        state.teamLineupCache[activeTeamIndex] = state.lineupResults;
+    }
+    renderAllQuarters();
+    window.saveDailyMeetingData();
+    window.showNotification(`${draggingName} ↔ ${targetName} 교체!`);
+}
+
+// [수정] PC 드래그 + 모바일 '탭 두 번' 교체 모두 지원
+let selectedSwapInfo = null;
+
+function addDragAndDropHandlers() {
+    selectedSwapInfo = null;
+    const markers = document.querySelectorAll('.player-marker');
+
+    markers.forEach(marker => {
+        // --- PC: 드래그 앤 드롭 ---
+        if (marker.draggable) {
+            marker.addEventListener('dragstart', (e) => {
+                marker.classList.add('dragging');
+                const qb = marker.closest('.quarter-block');
+                if (qb) e.dataTransfer.setData('text/quarter', qb.dataset.q);
+            });
+            marker.addEventListener('dragend', () => marker.classList.remove('dragging'));
+        }
+        marker.addEventListener('dragover', e => {
             e.preventDefault();
             const dragging = document.querySelector('.dragging');
-            if (dragging && target !== dragging) {
-                target.classList.add('drop-target');
-            }
+            if (dragging && marker !== dragging) marker.classList.add('drop-target');
         });
-
-        target.addEventListener('dragleave', () => {
-            target.classList.remove('drop-target');
-        });
-
-        target.addEventListener('drop', e => {
-            e.preventDefault(); 
-            target.classList.remove('drop-target');
-            
+        marker.addEventListener('dragleave', () => marker.classList.remove('drop-target'));
+        marker.addEventListener('drop', e => {
+            e.preventDefault();
+            marker.classList.remove('drop-target');
             const dragging = document.querySelector('.dragging');
-            if (!dragging || target === dragging) return;
-
-            const quarterBlock = target.closest('.quarter-block');
-            if (!quarterBlock) return;
-            const qIndex = parseInt(quarterBlock.dataset.q, 10);
-
+            if (!dragging || marker === dragging) return;
+            const qb = marker.closest('.quarter-block');
+            if (!qb) return;
+            const qIndex = parseInt(qb.dataset.q, 10);
             const sourceQ = e.dataTransfer.getData('text/quarter');
             if (sourceQ && parseInt(sourceQ, 10) !== qIndex) {
                 window.showNotification('다른 쿼터로 선수를 이동할 수 없습니다.', 'error');
                 return;
             }
+            performSwap(qIndex,
+                { name: dragging.dataset.name, posType: dragging.dataset.pos },
+                { name: marker.dataset.name, posType: marker.dataset.pos });
+        });
 
-            const lineup = state.lineupResults.lineups[qIndex];
-            const resters = state.lineupResults.resters[qIndex];
-            
-            const draggingName = dragging.dataset.name;
-            const draggingPosType = dragging.dataset.pos;
-            const targetName = target.dataset.name;
-            const targetPosType = target.dataset.pos;
+        // --- 모바일/PC 공통: 탭(클릭) 두 번으로 교체 ---
+        marker.addEventListener('click', () => {
+            if (!state.isAdmin) return;
+            if (marker.dataset.name === '미배정' || marker.dataset.pos === 'ref') return;
+            const qb = marker.closest('.quarter-block');
+            if (!qb) return;
+            const qIndex = parseInt(qb.dataset.q, 10);
 
-            const d_loc_lineup = findInLineup(lineup, draggingName);
-            const d_loc_rest = resters.indexOf(draggingName);
-            const t_loc_lineup = findInLineup(lineup, targetName);
-            const t_loc_rest = resters.indexOf(targetName);
-
-            let message = `${draggingName} ↔ ${targetName} 교체!`;
-
-            if (draggingPosType !== 'rest' && targetPosType !== 'rest') {
-                if (d_loc_lineup && t_loc_lineup) {
-                    lineup[d_loc_lineup.pos][d_loc_lineup.idx] = targetName;
-                    lineup[t_loc_lineup.pos][t_loc_lineup.idx] = draggingName;
-                }
-            } else if (draggingPosType !== 'rest' && targetPosType === 'rest') {
-                if (d_loc_lineup && t_loc_rest > -1) {
-                    const playerFromPitch = lineup[d_loc_lineup.pos].splice(d_loc_lineup.idx, 1)[0];
-                    const playerFromRest = resters.splice(t_loc_rest, 1)[0];
-                    lineup[d_loc_lineup.pos].push(playerFromRest);
-                    resters.push(playerFromPitch);
-                }
-            } else if (draggingPosType === 'rest' && targetPosType !== 'rest') {
-                if (d_loc_rest > -1 && t_loc_lineup) {
-                    const playerFromRest = resters.splice(d_loc_rest, 1)[0];
-                    const playerFromPitch = lineup[t_loc_lineup.pos].splice(t_loc_lineup.idx, 1)[0];
-                    resters.push(playerFromPitch);
-                    lineup[t_loc_lineup.pos].push(playerFromRest);
-                }
+            // 첫 번째 탭: 선수 선택
+            if (!selectedSwapInfo) {
+                selectedSwapInfo = { qIndex, name: marker.dataset.name, posType: marker.dataset.pos };
+                marker.classList.add('selected-for-swap');
+                window.showNotification(`${marker.dataset.name} 선택됨. 바꿀 선수를 탭하세요.`);
+                return;
             }
-            
-            if (state.teamLineupCache && activeTeamIndex !== -1) {
-                state.teamLineupCache[activeTeamIndex] = state.lineupResults;
+            // 같은 선수 다시 탭: 선택 취소
+            if (selectedSwapInfo.name === marker.dataset.name && selectedSwapInfo.qIndex === qIndex) {
+                selectedSwapInfo = null;
+                document.querySelectorAll('.selected-for-swap').forEach(el => el.classList.remove('selected-for-swap'));
+                window.showNotification('선택이 취소되었습니다.');
+                return;
             }
-            renderAllQuarters(); 
-            window.saveDailyMeetingData();
-            window.showNotification(message);
+            // 다른 쿼터 선수 탭: 안내
+            if (selectedSwapInfo.qIndex !== qIndex) {
+                window.showNotification('같은 쿼터 안에서만 교체할 수 있습니다.', 'error');
+                return;
+            }
+            // 두 번째 탭: 교체 실행
+            const first = selectedSwapInfo;
+            selectedSwapInfo = null;
+            performSwap(qIndex,
+                { name: first.name, posType: first.posType },
+                { name: marker.dataset.name, posType: marker.dataset.pos });
         });
     });
 }
+
 
 function renderAllQuarters() {
     if (!lineupDisplay) return;
@@ -171,11 +232,14 @@ function renderAllQuarters() {
 
     if (!state.lineupResults || !state.lineupResults.lineups) return;
 
+    const sharedReferees = applySharedReferees(); // [수정] 양팀 공동 심판 계산
+
     for (let qIndex = 0; qIndex < 6; qIndex++) {
         const lineup = state.lineupResults.lineups[qIndex];
         const formation = state.lineupResults.formations[qIndex];
         const resters = state.lineupResults.resters[qIndex] || [];
-        const referees = (state.lineupResults.referees && state.lineupResults.referees[qIndex]) ? [state.lineupResults.referees[qIndex]] : []; 
+        const refInfo = sharedReferees[qIndex] || null;
+        const referees = refInfo ? [refInfo.name] : [];
 
         const quarterBlock = document.createElement('div');
         quarterBlock.className = 'quarter-block bg-gray-50 p-3 rounded-lg shadow border border-gray-200 flex flex-col';
@@ -212,8 +276,11 @@ function renderAllQuarters() {
         
         // 심판 표시
         let refHtml = '';
+        // 심판 표시 (담당 팀 표기, 양팀 화면 모두에 표시됨)
+        let refHtml = '';
         if (referees.length > 0) {
-            refHtml = `<div class="flex flex-col items-center mb-2"><span class="text-xs font-bold text-black mb-1">심판</span><div class="flex gap-1">${referees.map(r => createPlayerMarker(r, 'ref', r, true).outerHTML).join('')}</div></div>`;
+            const refTeamLabel = refInfo ? ` (팀${refInfo.team + 1} 휴식자)` : '';
+            refHtml = `<div class="flex flex-col items-center mb-2"><span class="text-xs font-bold text-black mb-1">심판${refTeamLabel}</span><div class="flex gap-1">${referees.map(r => createPlayerMarker(r, 'ref', r, true).outerHTML).join('')}</div></div>`;
         }
         
         // 순수 휴식 인원 (심판 제외)
@@ -467,12 +534,12 @@ export function init(dependencies) {
         if (result) {
             state.lineupResults = result;
             state.teamLineupCache[activeTeamIndex] = result;
-            if(window.shareMgmt && window.shareMgmt.updateLineupData) {
-                window.shareMgmt.updateLineupData(result, result.formations);
-            }
             lineupDisplay.classList.remove('hidden');
             placeholderLineup.classList.add('hidden');
-            renderAllQuarters(); 
+            renderAllQuarters(); // 이 안에서 공동 심판이 계산됨
+            if(window.shareMgmt && window.shareMgmt.updateLineupData) {
+                window.shareMgmt.updateLineupData(state.lineupResults, result.formations);
+            }
             if(window.saveDailyMeetingData) window.saveDailyMeetingData();
             window.showNotification(`라인업 생성 완료! (실력차: ${result.score.toFixed(1)})`);
         }

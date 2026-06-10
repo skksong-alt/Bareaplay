@@ -80,8 +80,8 @@ function renderAttendanceLogTable(logs) {
             <td data-label="#" class="py-2 px-4 font-medium text-gray-700">${index + 1}</td> <td data-label="날짜" class="py-2 px-4">${log.date}</td>
             <td data-label="이름" class="py-2 px-4 font-medium text-gray-900">${log.name}</td>
             <td data-label="납부 상태"><select data-id="${docId}" class="log-status-select p-1 border rounded-md ${getStatusColor(log.paymentStatus)} admin-control" ${!state.isAdmin ? 'disabled': ''}><option value="" ${!log.paymentStatus ? 'selected' : ''}></option><option value="●" ${log.paymentStatus === '●' ? 'selected' : ''}>● 완납</option><option value="△" ${log.paymentStatus === '△' ? 'selected' : ''}>△ 일부</option><option value="✕" ${log.paymentStatus === '✕' ? 'selected' : ''}>✕ 미납</option></select></td>
-            <td data-label="납부액"><input type="number" data-id="${docId}" class="log-amount-input w-24 p-1 border rounded-md admin-control" value="${log.paymentAmount || ''}" ${!state.isAdmin ? 'disabled': ''}></td>
-            <td data-label="비고"><input type="text" data-id="${docId}" class="log-note-input w-full p-1 border rounded-md admin-control" value="${log.note || ''}" ${!state.isAdmin ? 'disabled': ''}></td>
+            <td data-label="납부액"><input type="number" data-id="${docId}" class="log-amount-input w-24 p-1 border rounded-md admin-control" placeholder="납부액" value="${log.paymentAmount || ''}" ${!state.isAdmin ? 'disabled': ''}></td>
+            <td data-label="비고"><input type="text" data-id="${docId}" class="log-note-input w-full p-1 border rounded-md admin-control" placeholder="비고 입력..." value="${log.note || ''}" ${!state.isAdmin ? 'disabled': ''}></td>
         `;
         logBody.appendChild(row);
     });
