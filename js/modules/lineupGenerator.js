@@ -274,8 +274,6 @@ function renderAllQuarters() {
         const restPanel = document.createElement('div');
         restPanel.className = 'mt-auto pt-2 border-t border-gray-200';
         
-        // 심판 표시
-        let refHtml = '';
         // 심판 표시 (담당 팀 표기, 양팀 화면 모두에 표시됨)
         let refHtml = '';
         if (referees.length > 0) {
