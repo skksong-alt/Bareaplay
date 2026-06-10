@@ -14,8 +14,11 @@ function handlePlayerDragStart(e, playerName, fromTeamIndex) {
     const data = JSON.stringify({ playerName, fromTeamIndex });
     e.dataTransfer.setData("application/json", data);
     e.dataTransfer.effectAllowed = "move";
-    e.target.closest('.player-tag').classList.add('opacity-50');
+    // [수정] 글자 조각을 집은 경우에도 에러 없이 작동하도록 안전장치
+    const tag = (e.target instanceof Element) ? e.target.closest('.player-tag') : null;
+    if (tag) tag.classList.add('opacity-50');
 }
+
 
 function handleTeamDrop(e, toTeamIndex) {
     e.preventDefault();
