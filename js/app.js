@@ -58,6 +58,21 @@ window.shuffleLocal = function(arr) {
         [arr[i], arr[j]] = [arr[j], arr[i]];
     }
 };
+// [보안] 특수문자를 무해한 글자로 바꿔주는 안전장치
+window.esc = function(str) {
+    return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
+// [보안] http로 시작하는 정상 주소만 허용
+window.safeUrl = function(url) {
+    const u = String(url ?? '');
+    return (u.startsWith('http://') || u.startsWith('https://')) ? u : '';
+};
 
 const saveDailyMeetingData = window.debounce(async () => {
     if (!state.isAdmin) return;
@@ -312,10 +327,10 @@ function renderSharePageView(shareData) {
     const teams = Object.values(teamsObject || {});
     document.body.innerHTML = '';
     document.body.className = "bg-gray-100";
-    let locationHtml = meetingInfo.locationUrl ? `<a href="${meetingInfo.locationUrl}" target="_blank" class="text-blue-600 underline">${meetingInfo.location}</a>` : (meetingInfo.location || '미정');
+        let locationHtml = safeUrl(meetingInfo.locationUrl) ? `<a href="${esc(safeUrl(meetingInfo.locationUrl))}" target="_blank" class="text-blue-600 underline">${esc(meetingInfo.location)}</a>` : (esc(meetingInfo.location) || '미정');
     let contentHtml = `<div class="container mx-auto p-4 md:p-8"><header class="text-center mb-8 relative"><h1 class="text-4xl md:text-5xl font-bold text-gray-900">BareaPlay⚽</h1><p class="mt-2 text-lg text-gray-600">모임 결과</p></header><div class="bg-white p-6 rounded-lg shadow-md mb-8 max-w-2xl mx-auto"><h2 class="text-2xl font-bold mb-4 border-b pb-2">📅 모임 정보</h2><p class="text-gray-700 mb-2"><strong>시간:</strong> ${new Date(meetingInfo.time).toLocaleString('ko-KR')}</p><p class="text-gray-700"><strong>장소:</strong> ${locationHtml}</p></div><div class="bg-white p-6 rounded-lg shadow-md mb-8 max-w-4xl mx-auto"><h2 class="text-2xl font-bold mb-4 border-b pb-2">⚖️ 팀 배정 결과</h2><div class="grid grid-cols-1 md:grid-cols-${teams.length > 2 ? '3' : '2'} gap-4">`;
     const colors = ["#14B8A6","#0288D1","#7B1FA2","#43A047","#F4511E"];
-    teams.forEach((team, i) => { contentHtml += `<div class="rounded-lg p-4 text-white" style="background-color:${colors[i%5]}"><h3 class="font-bold text-xl mb-2 border-b border-white/30 pb-2">팀 ${i + 1}</h3><ul class="space-y-1">${team.map(p => `<li class="bg-white/20 p-2 rounded-md">${p.name.replace(' (신규)','')}</li>`).join('')}</ul></div>`; });
+    teams.forEach((team, i) => { contentHtml += `<div class="rounded-lg p-4 text-white" style="background-color:${colors[i%5]}"><h3 class="font-bold text-xl mb-2 border-b border-white/30 pb-2">팀 ${i + 1}</h3><ul class="space-y-1">${team.map(p => `<li class="bg-white/20 p-2 rounded-md">${esc(p.name.replace(' (신규)',''))}</li>`).join('')}</ul></div>`; });
     contentHtml += `</div></div>`;
     
     // [수정] 공유 페이지 뷰 렌더링 로직 수정 (심판/휴식 분리)
@@ -339,11 +354,11 @@ function renderSharePageView(shareData) {
             : [];
 
         let html = `<div class="p-2 border rounded-lg"><h4 class="font-bold text-center mb-2">${qIndex + 1}쿼터 (${formation})</h4><ul class="space-y-1 text-sm">`;
-        Object.keys(lineup).sort().forEach(pos => { lineup[pos].forEach(player => { if(player) html += `<li class="p-1 bg-gray-100 rounded">${pos}: ${player}</li>`; }); });
+                Object.keys(lineup).sort().forEach(pos => { lineup[pos].forEach(player => { if(player) html += `<li class="p-1 bg-gray-100 rounded">${esc(pos)}: ${esc(player)}</li>`; }); });
         html += `</ul><hr class="my-2">`;
         
-        if (referee) html += `<p class="text-sm"><b>⚖️ 심판:</b> ${referee}</p>`;
-        html += `<p class="text-sm"><b>🛌 휴식:</b> ${realResters.join(', ') || '없음'}</p></div>`;
+        if (referee) html += `<p class="text-sm"><b>⚖️ 심판:</b> ${esc(referee)}</p>`;
+        html += `<p class="text-sm"><b>🛌 휴식:</b> ${esc(realResters.join(', ')) || '없음'}</p></div>`;
         return html;
     };
 
@@ -474,7 +489,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 link.href = `${window.location.origin}${window.location.pathname}?shareId=${shareId}`;
                 link.target = "_blank";
                 link.className = 'realtime-link-button';
-                link.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clip-rule="evenodd" /></svg>${linkText}`;
+                link.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clip-rule="evenodd" /></svg>${esc(linkText)}`;
                 placeholder.appendChild(link);
             }
         });

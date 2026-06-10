@@ -1,5 +1,5 @@
 // sw.js
-const CACHE_NAME = 'bareaplay-cache-v26'; // 숫자를 1 올립니다
+const CACHE_NAME = 'bareaplay-cache-v27'; // 숫자를 1 올립니다
 const urlsToCache = [
     '/',
     '/index.html',
