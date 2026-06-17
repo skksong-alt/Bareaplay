@@ -1,10 +1,13 @@
 // js/modules/shareManagement.js
-import { doc, setDoc, collection, onSnapshot, addDoc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+import { doc, setDoc, collection, onSnapshot, addDoc, getDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 
 let db, state;
 let addLocationBtn, shareDate, shareTime, shareLocationSelect;
 let generateShareBtn, shareLinkContainer, shareLinkAnchor;
 let locationModal, closeLocationModalBtn, addNewLocationBtn, locationListDiv, newLocationNameInput, newLocationUrlInput;
+let currentVoteId = null;       // 현재 열려있는 보드(=날짜) ID
+let voteRespUnsub = null;       // 응답 실시간 구독 해제
+let voteResponses = [];         // 응답 캐시
 
 const posCellMap = { '4-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 75}, {pos: 'CB', x: 65, y: 80}, {pos: 'CB', x: 35, y: 80}, {pos: 'LB', x: 15, y: 75}, {pos: 'RW', x: 85, y: 45}, {pos: 'CM', x: 65, y: 55}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 15, y: 45}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-3-3': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 88, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 12, y: 78}, {pos: 'CM', x: 50, y: 65}, {pos: 'MF', x: 70, y: 50}, {pos: 'MF', x: 30, y: 50}, {pos: 'RW', x: 80, y: 25}, {pos: 'FW', x: 50, y: 18}, {pos: 'LW', x: 20, y: 25} ], '3-5-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 75, y: 80}, {pos: 'CB', x: 50, y: 85}, {pos: 'CB', x: 25, y: 80}, {pos: 'RW', x: 90, y: 50}, {pos: 'CM', x: 65, y: 55}, {pos: 'MF', x: 50, y: 65}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 10, y: 50}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-2-3-1': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 15, y: 78}, {pos: 'MF', x: 60, y: 65}, {pos: 'MF', x: 40, y: 65}, {pos: 'RW', x: 80, y: 40}, {pos: 'MF', x: 50, y: 45}, {pos: 'LW', x: 20, y: 40}, {pos: 'FW', x: 50, y: 18} ], '3-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 80, y: 80}, {pos: 'CB', x: 50, y: 82}, {pos: 'CB', x: 20, y: 80}, {pos: 'RW', x: 85, y: 50}, {pos: 'CM', x: 60, y: 60}, {pos: 'CM', x: 40, y: 60}, {pos: 'LW', x: 15, y: 50}, {pos: 'FW', x: 65, y: 25}, {pos: 'FW', x: 35, y: 25} ], '3-4-1': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 80, y: 80}, {pos: 'CB', x: 50, y: 82}, {pos: 'CB', x: 20, y: 80}, {pos: 'RW', x: 85, y: 50}, {pos: 'CM', x: 60, y: 60}, {pos: 'CM', x: 40, y: 60}, {pos: 'LW', x: 15, y: 50}, {pos: 'FW', x: 50, y: 20} ] };
 
@@ -313,25 +316,34 @@ export function generatePrintView(shareData) {
 export function init(dependencies) {
     db = dependencies.db;
     state = dependencies.state;
-    
+
     const pageElement = document.getElementById('page-share');
     pageElement.innerHTML = `<div class="bg-white p-6 rounded-2xl shadow-lg">
-        <h2 class="text-2xl font-bold mb-4">📢 모임 정보 및 공유 (관리자용)</h2>
+        <h2 class="text-2xl font-bold mb-1">📢 모임 보드 (관리자용)</h2>
+        <p class="text-sm text-gray-500 mb-4">날짜를 고르면 그 날의 투표/현황이 열립니다. 링크 하나로 투표·모임정보·팀배정·라인업이 모두 공유됩니다.</p>
         <div class="space-y-4 max-w-lg mx-auto">
-            <div><label for="share-date" class="block text-sm font-medium">날짜</label><input type="date" id="share-date" class="mt-1 w-full p-2 border rounded-lg"></div>
-            <div><label for="share-time" class="block text-sm font-medium">시간</label><input type="time" id="share-time" class="mt-1 w-full p-2 border rounded-lg"></div>
+            <div class="grid grid-cols-2 gap-2">
+                <div><label for="share-date" class="block text-sm font-medium">날짜</label><input type="date" id="share-date" class="mt-1 w-full p-2 border rounded-lg"></div>
+                <div><label for="share-time" class="block text-sm font-medium">시간</label><input type="time" id="share-time" class="mt-1 w-full p-2 border rounded-lg"></div>
+            </div>
             <div>
-                <div class="flex justify-between items-center"><label for="share-location-select" class="block text-sm font-medium">장소 선택</label><button id="manage-locations-btn" class="text-sm text-indigo-600 hover:underline">장소 관리</button></div>
+                <div class="flex justify-between items-center"><label for="share-location-select" class="block text-sm font-medium">장소</label><button id="manage-locations-btn" class="text-sm text-indigo-600 hover:underline">장소 관리</button></div>
                 <select id="share-location-select" class="w-full p-2 border rounded-lg bg-white mt-1"></select>
             </div>
-            <div class="mt-6"><button id="generate-share-btn" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700">공유 링크 생성</button></div>
-            <div id="share-link-container" class="mt-4 p-4 bg-gray-100 rounded-lg hidden"><p class="text-sm font-semibold mb-2">생성된 링크:</p><a id="share-link-anchor" href="#" target="_blank" class="text-blue-600 break-all hover:underline"></a></div>
+            <button id="board-open-btn" class="w-full bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-emerald-700">이 날짜 보드 열기 / 투표 만들기</button>
+            <div id="board-link-container" class="hidden p-4 bg-emerald-50 rounded-lg">
+                <p class="text-sm font-semibold mb-2">이 모임 링크 (카톡방에 공유):</p>
+                <a id="board-link-anchor" href="#" target="_blank" class="text-blue-600 break-all hover:underline text-sm"></a>
+                <button id="board-copy-btn" class="mt-2 w-full bg-blue-500 text-white text-sm font-bold py-2 rounded-lg hover:bg-blue-600">링크 복사</button>
+            </div>
+        </div>
+        <div id="vote-status-panel" class="mt-6 max-w-2xl mx-auto"></div>
+        <div id="board-publish-area" class="hidden mt-6 max-w-lg mx-auto border-t pt-4">
+            <button id="board-publish-btn" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700">📋 팀배정·라인업 최종본 게시</button>
+            <p id="board-publish-status" class="text-xs text-gray-500 mt-2 text-center">현재 만들어진 팀배정과 라인업을 위 링크에 공개합니다. (다시 누르면 갱신)</p>
         </div>
     </div>`;
-    
-    generateShareBtn = document.getElementById('generate-share-btn');
-    shareLinkContainer = document.getElementById('share-link-container');
-    shareLinkAnchor = document.getElementById('share-link-anchor');
+
     shareDate = document.getElementById('share-date');
     shareTime = document.getElementById('share-time');
     shareLocationSelect = document.getElementById('share-location-select');
@@ -342,6 +354,7 @@ export function init(dependencies) {
     locationListDiv = document.getElementById('location-list');
     newLocationNameInput = document.getElementById('new-location-name');
     newLocationUrlInput = document.getElementById('new-location-url');
+
     document.getElementById('manage-locations-btn').addEventListener('click', () => locationModal.classList.remove('hidden'));
     closeLocationModalBtn.addEventListener('click', () => locationModal.classList.add('hidden'));
 
@@ -378,7 +391,247 @@ export function init(dependencies) {
     shareDate.value = todayLocal.toISOString().split("T")[0];
     shareTime.value = '20:00';
 
-    generateShareBtn.addEventListener('click', generateShareableLink);
+    // 날짜 바꾸면 그 날 보드를 자동으로 불러옴
+    shareDate.addEventListener('change', onDateChange);
+    // 시간/장소를 바꾸면 (보드가 열려있을 때) 공개 페이지에 자동 반영
+    shareTime.addEventListener('change', autoUpdateMeetingInfo);
+    shareLocationSelect.addEventListener('change', autoUpdateMeetingInfo);
+
+    document.getElementById('board-open-btn').addEventListener('click', () => openBoard(shareDate.value, true));
+    document.getElementById('board-copy-btn').addEventListener('click', copyBoardLink);
+    document.getElementById('board-publish-btn').addEventListener('click', publishBoard);
+
+    // 처음 진입 시 오늘 날짜 보드가 이미 있으면 불러오기
+    onDateChange();
+}
+
+function boardUrl(voteId) {
+    return `${window.location.origin}${window.location.pathname}?voteId=${encodeURIComponent(voteId)}`;
+}
+
+function copyBoardLink() {
+    if (!currentVoteId) return;
+    navigator.clipboard.writeText(boardUrl(currentVoteId))
+        .then(() => window.showNotification('링크가 복사되었습니다.'))
+        .catch(() => window.showNotification('복사 실패. 링크를 길게 눌러 복사하세요.', 'error'));
+}
+
+function showBoardLink(voteId) {
+    const c = document.getElementById('board-link-container');
+    const a = document.getElementById('board-link-anchor');
+    if (!c || !a) return;
+    a.href = boardUrl(voteId);
+    a.textContent = boardUrl(voteId);
+    c.classList.remove('hidden');
+    const pub = document.getElementById('board-publish-area');
+    if (pub) pub.classList.remove('hidden');
+}
+
+async function onDateChange() {
+    const date = shareDate.value;
+    if (!date) return;
+    try {
+        const snap = await getDoc(doc(db, "votes", date));
+        if (snap.exists()) {
+            const v = snap.data();
+            if (v.time) shareTime.value = v.time;
+            if (v.location) { shareLocationSelect.value = v.location; }
+            openBoard(date, false); // 이미 있으면 그대로 열기 (덮어쓰지 않음)
+        } else {
+            // 아직 없는 날짜: 상태판 비우고 안내
+            currentVoteId = null;
+            if (voteRespUnsub) { voteRespUnsub(); voteRespUnsub = null; }
+            const panel = document.getElementById('vote-status-panel');
+            if (panel) panel.innerHTML = '<p class="text-sm text-gray-400 text-center">아직 이 날짜의 보드가 없습니다. 위 버튼으로 만들어주세요.</p>';
+            const c = document.getElementById('board-link-container');
+            if (c) c.classList.add('hidden');
+            const pub = document.getElementById('board-publish-area');
+            if (pub) pub.classList.add('hidden');
+        }
+    } catch (e) { console.error(e); }
+}
+
+async function openBoard(date, allowCreate) {
+    if (!date) { window.showNotification('날짜를 선택해주세요.', 'error'); return; }
+    if (!state.isAdmin) { window.promptForAdminPassword(); return; }
+    const ref = doc(db, "votes", date);
+    const opt = shareLocationSelect.options[shareLocationSelect.selectedIndex];
+    const meetingInfo = {
+        date,
+        time: shareTime.value || '',
+        location: shareLocationSelect.value || '',
+        locationUrl: (opt && opt.dataset.url) || ''
+    };
+    try {
+        const snap = await getDoc(ref);
+        if (!snap.exists()) {
+            if (!allowCreate) return;
+            await setDoc(ref, { ...meetingInfo, published: false, createdAt: serverTimestamp() });
+            window.showNotification(`${date} 보드(투표)가 만들어졌습니다!`);
+        }
+        currentVoteId = date;
+        showBoardLink(date);
+        // 메인 화면 실시간 링크에도 노출
+        await setDoc(doc(db, "settings", "activeMeeting"), { voteId: date, linkText: `${date} 모임 보드` }, { merge: true });
+        subscribeResponses(date);
+    } catch (e) {
+        console.error(e);
+        window.showNotification('보드 열기 실패: ' + e.message, 'error');
+    }
+}
+
+const autoUpdateMeetingInfo = window.debounce(async () => {
+    if (!currentVoteId) return;
+    const opt = shareLocationSelect.options[shareLocationSelect.selectedIndex];
+    try {
+        await setDoc(doc(db, "votes", currentVoteId), {
+            time: shareTime.value || '',
+            location: shareLocationSelect.value || '',
+            locationUrl: (opt && opt.dataset.url) || ''
+        }, { merge: true });
+        window.showNotification('모임 정보가 갱신되어 링크에 반영되었습니다.');
+    } catch (e) { console.error(e); }
+}, 700);
+
+function subscribeResponses(date) {
+    if (voteRespUnsub) voteRespUnsub();
+    voteRespUnsub = onSnapshot(collection(db, "votes", date, "responses"), (snap) => {
+        voteResponses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        renderVoteStatus();
+    });
+}
+
+function vts(t) { return (t && typeof t.seconds === 'number') ? t.seconds : Infinity; }
+
+function renderVoteStatus() {
+    const panel = document.getElementById('vote-status-panel');
+    if (!panel) return;
+
+    const attend = voteResponses.filter(r => r.status === 'attend').sort((a, b) => vts(a.attendingSince) - vts(b.attendingSince));
+    const maybe = voteResponses.filter(r => r.status === 'maybe').sort((a, b) => vts(a.updatedAt) - vts(b.updatedAt));
+    const absent = voteResponses.filter(r => r.status === 'absent').sort((a, b) => vts(a.updatedAt) - vts(b.updatedAt));
+
+    const li = (r, i, withNum) => `<li class="flex items-center justify-between py-1 border-b">
+        <span>${withNum ? '<span class="text-gray-400 mr-1">' + (i + 1) + '</span>' : ''}<b>${window.esc(r.name)}</b>${r.guest ? ' <span class="text-xs text-amber-600">(게스트)</span>' : ''}</span>
+        <span class="space-x-1 text-xs">
+            ${r.status !== 'attend' ? `<button data-id="${window.esc(r.id)}" class="vs-attend text-green-600 hover:underline">참석</button>` : ''}
+            ${r.status !== 'maybe' ? `<button data-id="${window.esc(r.id)}" class="vs-maybe text-yellow-600 hover:underline">미정</button>` : ''}
+            ${r.status !== 'absent' ? `<button data-id="${window.esc(r.id)}" class="vs-absent text-gray-500 hover:underline">불참</button>` : ''}
+            <button data-id="${window.esc(r.id)}" class="vs-del text-red-500 hover:underline">삭제</button>
+        </span></li>`;
+
+    panel.innerHTML = `<div class="border-t pt-4">
+        <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+            <h3 class="text-lg font-bold">투표 현황 <span class="text-green-600">참석 ${attend.length}</span> · <span class="text-yellow-600">미정 ${maybe.length}</span> · <span class="text-gray-400">불참 ${absent.length}</span></h3>
+            <button id="vote-to-balancer" class="bg-indigo-600 text-white text-sm font-bold py-2 px-4 rounded-lg hover:bg-indigo-700">이 투표로 팀 짜기 →</button>
+        </div>
+        <p class="text-xs text-gray-400 mb-2">참석자는 투표가 늦을수록 아래쪽이며, 팀 배정 후 아래(늦은 투표)부터 휴식·키퍼를 맡습니다.</p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div><p class="font-semibold text-green-700 mb-1">참석 (투표순)</p><ul>${attend.map((r, i) => li(r, i, true)).join('') || '<li class="text-gray-400 py-1">없음</li>'}</ul></div>
+            <div><p class="font-semibold text-yellow-700 mb-1">미정</p><ul>${maybe.map((r, i) => li(r, i, false)).join('') || '<li class="text-gray-400 py-1">없음</li>'}</ul></div>
+            <div><p class="font-semibold text-gray-600 mb-1">불참</p><ul>${absent.map((r, i) => li(r, i, false)).join('') || '<li class="text-gray-400 py-1">없음</li>'}</ul></div>
+        </div>
+        <div class="mt-3 flex space-x-2">
+            <input type="text" id="vote-admin-add-name" class="flex-grow p-2 border rounded-lg text-sm" placeholder="명단에 없는 사람 직접 추가 (참석)">
+            <button id="vote-admin-add-btn" class="bg-emerald-600 text-white text-sm font-bold py-2 px-4 rounded-lg hover:bg-emerald-700">참석 추가</button>
+        </div>
+    </div>`;
+
+    panel.querySelectorAll('.vs-attend').forEach(b => b.onclick = () => setRespStatus(b.dataset.id, 'attend'));
+    panel.querySelectorAll('.vs-maybe').forEach(b => b.onclick = () => setRespStatus(b.dataset.id, 'maybe'));
+    panel.querySelectorAll('.vs-absent').forEach(b => b.onclick = () => setRespStatus(b.dataset.id, 'absent'));
+    panel.querySelectorAll('.vs-del').forEach(b => b.onclick = () => delResp(b.dataset.id));
+    const addBtn = document.getElementById('vote-admin-add-btn');
+    if (addBtn) addBtn.onclick = addResp;
+    const balBtn = document.getElementById('vote-to-balancer');
+    if (balBtn) balBtn.onclick = sendToBalancer;
+}
+
+async function setRespStatus(respId, status) {
+    if (!state.isAdmin || !currentVoteId) return;
+    const payload = { status, updatedAt: serverTimestamp() };
+    if (status === 'attend') payload.attendingSince = serverTimestamp();
+    await setDoc(doc(db, "votes", currentVoteId, "responses", respId), payload, { merge: true });
+}
+
+async function delResp(respId) {
+    if (!state.isAdmin || !currentVoteId) return;
+    if (!confirm('이 응답을 삭제하시겠습니까?')) return;
+    await deleteDoc(doc(db, "votes", currentVoteId, "responses", respId));
+}
+
+async function addResp() {
+    if (!state.isAdmin || !currentVoteId) return;
+    const input = document.getElementById('vote-admin-add-name');
+    const name = normalizeName(input.value);
+    if (!name) return;
+    const known = !!state.playerDB[name] || Object.keys(state.playerDB).some(k => normalizeName(k) === name);
+    await setDoc(doc(db, "votes", currentVoteId, "responses", name), {
+        name, status: 'attend', guest: !known,
+        attendingSince: serverTimestamp(), createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+    }, { merge: true });
+    input.value = '';
+    window.showNotification(`${name} 참석 추가됨`);
+}
+
+function sendToBalancer() {
+    const attend = voteResponses.filter(r => r.status === 'attend').sort((a, b) => vts(a.attendingSince) - vts(b.attendingSince));
+    if (attend.length === 0) { window.showNotification('참석자가 없습니다.', 'error'); return; }
+    const names = attend.map(r => r.name); // 이른 투표가 위, 늦은 투표가 아래
+    const textarea = document.getElementById('attendees');
+    if (textarea) textarea.value = names.join('\n');
+    const balTab = document.getElementById('tab-balancer');
+    if (balTab) balTab.click();
+    window.showNotification(`참석자 ${names.length}명을 팀 배정기로 가져왔습니다. (투표순)`);
+}
+
+async function buildBoardData() {
+    const allTeamLineups = {};
+    const lineupPromises = state.teams.map((team, i) => {
+        if (state.teamLineupCache && state.teamLineupCache[i]) {
+            return Promise.resolve(state.teamLineupCache[i]);
+        }
+        const teamMembers = team.map(p => p.name.replace(' (신규)', ''));
+        const formations = Array.from(document.querySelectorAll('#page-lineup select')).map(s => s.value);
+        return window.lineup.executeLineupGeneration(teamMembers, formations, true);
+    });
+    const lineups = await Promise.all(lineupPromises);
+    lineups.forEach((originalLineup, i) => {
+        if (originalLineup) {
+            const lineup = JSON.parse(JSON.stringify(originalLineup));
+            const restersObject = {};
+            const refereesObject = {};
+            (lineup.resters || []).forEach((resterArray, qIndex) => { restersObject[`q${qIndex + 1}`] = resterArray; });
+            (lineup.referees || []).forEach((ref, qIndex) => { refereesObject[`q${qIndex + 1}`] = ref; });
+            lineup.resters = restersObject;
+            lineup.referees = refereesObject;
+            allTeamLineups[`team${i + 1}`] = lineup;
+        }
+    });
+    const teamsObject = {};
+    state.teams.forEach((team, index) => { teamsObject[`team${index + 1}`] = team; });
+    return { teams: teamsObject, lineups: allTeamLineups };
+}
+
+async function publishBoard() {
+    if (!state.isAdmin) { window.promptForAdminPassword(); return; }
+    if (!currentVoteId) { window.showNotification('먼저 날짜 보드를 열어주세요.', 'error'); return; }
+    if (!state.teams || state.teams.length === 0) { window.showNotification('팀 배정 결과가 없습니다. 먼저 팀을 생성해주세요.', 'error'); return; }
+
+    const loadingOverlay = document.getElementById('loading-overlay');
+    if (loadingOverlay) { loadingOverlay.style.display = 'flex'; loadingOverlay.style.opacity = 1; }
+    try {
+        const board = await buildBoardData();
+        await setDoc(doc(db, "votes", currentVoteId), { board, published: true, publishedAt: serverTimestamp() }, { merge: true });
+        const statusEl = document.getElementById('board-publish-status');
+        if (statusEl) statusEl.innerHTML = '<span class="text-green-600 font-semibold">게시 완료! 링크에서 팀배정·라인업이 보입니다.</span>';
+        window.showNotification('팀배정·라인업 최종본이 링크에 게시되었습니다!');
+    } catch (e) {
+        console.error(e);
+        window.showNotification('게시 실패: ' + e.message, 'error');
+    } finally {
+        if (loadingOverlay) { loadingOverlay.style.opacity = 0; setTimeout(() => loadingOverlay.style.display = 'none', 300); }
+    }
 }
 
 export function updateTeamData(teams) {

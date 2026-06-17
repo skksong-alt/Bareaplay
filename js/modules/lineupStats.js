@@ -7,7 +7,7 @@ let statsContainer = null;
 let observer = null;
 let isRendering = false;
 
-// 포지션 → 큰 분류 매핑
+// 포지션 → 큰 분류 매핑 (선수정보 기준: 공격 FW/LW/RW, 미들 CM/MF 등, 수비 CB/LB/RB)
 const FWD = new Set(['FW', 'ST', 'CF', 'LW', 'RW', 'SS', 'LF', 'RF']);
 const MID = new Set(['MF', 'CM', 'CAM', 'CDM', 'DM', 'AM', 'LM', 'RM', 'LCM', 'RCM']);
 const DEF = new Set(['CB', 'LB', 'RB', 'LWB', 'RWB', 'WB', 'DF', 'SW', 'LCB', 'RCB']);
@@ -86,7 +86,11 @@ function renderStats() {
 
         const rows = names.map(n => {
             const c = counts[n];
-            const warn = (c.DEF >= 4) ? ' style="background:#fef2f2"' : ''; // 수비 4회 이상 강조
+            // 전문 GK(키퍼를 4회 이상 맡는 선수)는 색칠 대상에서 제외
+            const isProGk = c.GK >= 4;
+            // 전문 GK가 아니면서 특정 포지션(공격/미들/수비 중 하나)을 4회 이상 맡으면 강조
+            const overloaded = !isProGk && (c.FWD >= 4 || c.MID >= 4 || c.DEF >= 4);
+            const warn = overloaded ? ' style="background:#fef2f2"' : '';
             return `<tr${warn}>
                 <td class="py-1.5 px-3 font-medium text-gray-900 whitespace-nowrap">${n}</td>
                 <td class="py-1.5 px-3 text-center">${c.FWD || ''}</td>
@@ -103,7 +107,7 @@ function renderStats() {
                 <div class="flex items-center justify-between mb-2">
                     <h3 class="text-lg font-bold">📊 포지션 집계 <span class="text-xs font-normal text-gray-400">(운영진 전용 · 드래그하면 자동 갱신)</span></h3>
                 </div>
-                <p class="text-xs text-gray-400 mb-2">수비를 4회 이상 맡은 선수는 붉게 표시됩니다. 너무 치우치면 드래그로 조정하세요.</p>
+                <p class="text-xs text-gray-400 mb-2">전문 GK를 제외하고, 한 포지션(공격·미들·수비)을 4회 이상 맡은 선수는 붉게 표시됩니다. 너무 치우치면 드래그로 조정하세요.</p>
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm text-left">
                         <thead class="text-xs text-gray-600 uppercase bg-gray-50">
