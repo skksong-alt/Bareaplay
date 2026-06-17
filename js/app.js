@@ -8,6 +8,8 @@ import * as balancer from './modules/teamBalancer.js?v=2';
 import * as lineup from './modules/lineupGenerator.js?v=2';
 import * as accounting from './modules/accounting.js?v=2';
 import * as shareMgmt from './modules/shareManagement.js?v=2';
+import * as voteMgmt from './modules/voteManagement.js?v=1';
+import * as lineupStats from './modules/lineupStats.js?v=1';
 
 const firebaseConfig = {
     apiKey: "AIzaSyD_2tm5-hYbCeU8yi0QiWW9Oqm0O7oPBco",
@@ -382,12 +384,14 @@ function renderSharePageView(shareData) {
 document.addEventListener('DOMContentLoaded', async () => {
     const loadingOverlay = document.getElementById('loading-overlay');
     
-    const modules = { playerMgmt, balancer, lineup, accounting, shareMgmt };
+    const modules = { playerMgmt, balancer, lineup, accounting, shareMgmt, voteMgmt, lineupStats };
     const dependencies = { db, state };
     window.playerMgmt = playerMgmt;
     window.accounting = accounting;
     window.lineup = lineup;
     window.shareMgmt = shareMgmt;
+    window.__db = db;
+    window.voteMgmt = voteMgmt;
     window.saveDailyMeetingData = saveDailyMeetingData;
 
     for (const moduleName in modules) {
@@ -398,6 +402,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     const urlParams = new URLSearchParams(window.location.search);
     const shareId = urlParams.get('shareId');
+    const voteId = urlParams.get('voteId');
+
+    if (voteId) {
+        loadingOverlay.style.display = 'none';
+        await voteMgmt.renderVotePage(voteId);
+        return;
+    }
+
 
     if (shareId) {
         loadingOverlay.style.display = 'flex';

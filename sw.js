@@ -1,5 +1,5 @@
 // sw.js
-const CACHE_NAME = 'bareaplay-cache-v33'; // 배포할 때마다 숫자를 1씩 올리세요
+const CACHE_NAME = 'bareaplay-cache-v34'; // 배포할 때마다 숫자를 1씩 올리세요
 const urlsToCache = [
     '/',
     '/index.html',
@@ -11,9 +11,12 @@ const urlsToCache = [
     '/js/modules/lineupGenerator.js?v=2',
     '/js/modules/accounting.js?v=2',
     '/js/modules/shareManagement.js?v=2',
+'/js/modules/voteManagement.js?v=1',
+'/js/modules/lineupStats.js?v=1',
     '/manifest.json',
     '/favicon.ico',
     '/assets/icon-512.png'
+
 ];
 
 self.addEventListener('install', (event) => {
