@@ -14,13 +14,24 @@ function localDateStr(d = new Date()) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// [추가] 한글 인코딩(NFC/NFD) 차이로 같은 이름이 다르게 인식되는 것을 방지
+function normName(s) {
+    return (s == null ? '' : String(s)).normalize('NFC').trim();
+}
+
 // [추가] 회비 유형 + 구장(인조/천연)에 따른 자동 금액 계산
 //  - 운영진(admin): 항상 0
 //  - 학생(student): 인조 25 / 천연 35
 //  - 일반(normal)·게스트: 인조 50 / 천연 70
 function computeFee(name, isGrass) {
-    const p = state.playerDB[name] || {};
-    const type = p.feeType || 'normal';
+    const key = normName(name);
+    let p = state.playerDB[name] || state.playerDB[key];
+    if (!p) {
+        // 인코딩 차이로 못 찾을 때를 대비해 정규화 비교로 한 번 더 탐색
+        const found = Object.keys(state.playerDB).find(k => normName(k) === key);
+        if (found) p = state.playerDB[found];
+    }
+    const type = (p && p.feeType) ? p.feeType : 'normal';
     if (type === 'admin') return 0;
     if (type === 'student') return isGrass ? 35 : 25;
     return isGrass ? 70 : 50;
@@ -39,18 +50,18 @@ function renderFullPlayerChecklist() {
     if (!checklistContainer) return;
     checklistContainer.innerHTML = '';
     const selectedDate = attendanceDate.value;
-    
+
     const loggedAttendees = state.attendanceLog
                                 .filter(log => log.date === selectedDate)
                                 .map(log => log.name);
-    const loggedAttendeesSet = new Set(loggedAttendees);
+    const loggedAttendeesSet = new Set(loggedAttendees.map(normName));
 
     let playerNames;
     let checkStatusSet;
 
     if (state.currentAttendees && state.currentAttendees.length > 0) {
         playerNames = [...state.currentAttendees].sort((a, b) => a.localeCompare(b, 'ko-KR'));
-        checkStatusSet = new Set(playerNames);
+        checkStatusSet = new Set(playerNames.map(normName));
     } else {
         playerNames = [...loggedAttendees].sort((a, b) => a.localeCompare(b, 'ko-KR'));
         checkStatusSet = loggedAttendeesSet;
@@ -62,7 +73,7 @@ function renderFullPlayerChecklist() {
     }
 
     playerNames.forEach(name => {
-        const isChecked = checkStatusSet.has(name);
+        const isChecked = checkStatusSet.has(normName(name));
         const div = document.createElement('div');
         div.className = 'flex items-center';
         div.innerHTML = `<input id="check-${name}" type="checkbox" value="${name}" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 admin-control" ${isChecked ? 'checked' : ''} ${!state.isAdmin ? 'disabled' : ''}><label for="check-${name}" class="ml-2 text-sm font-medium text-gray-900">${name}</label>`;
@@ -87,7 +98,7 @@ function renderAttendanceLogTable(logs) {
     if(!logBody) return;
     logBody.innerHTML = '';
     logFoot.innerHTML = '';
-    
+
     const sortedLogs = logs.sort((a, b) => a.name.localeCompare(b.name, 'ko-KR'));
 
     if (sortedLogs.length === 0) {
@@ -117,14 +128,14 @@ function renderExpenseLog(logs) {
     if(!expenseLogBody) return;
     expenseLogBody.innerHTML = '';
     expenseLogFoot.innerHTML = '';
-    
+
     const sortedLogs = logs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 
     if (sortedLogs.length === 0) {
         expenseLogBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-gray-500">해당 기간의 지출 로그가 없습니다.</td></tr>`;
         return;
     }
-    
+
     let totalAmount = 0;
     sortedLogs.forEach(log => {
         totalAmount += log.amount;
@@ -144,7 +155,7 @@ function renderExpenseLog(logs) {
 function switchAccountingTab(activeTab) {
     const tabs = [incomeTabBtn, expenseTabBtn];
     const sections = [incomeLogSection, expenseLogSection];
-    
+
     tabs.forEach((tab, index) => {
         const isActive = tab === activeTab;
         tab.classList.toggle('active', isActive);
@@ -189,7 +200,7 @@ function calculateAndRenderTotalBalance() {
 function renderAccountingChart() {
     if(!accountingChart) return;
     const ctx = accountingChart.getContext('2d');
-    
+
     const monthlyData = {};
     const processLog = (log, type) => {
         if (!log.date) return;
@@ -217,14 +228,14 @@ function renderAccountingChart() {
                 { label: '지출', data: expenseData, backgroundColor: 'rgba(255, 99, 132, 0.6)' }
             ]
         },
-        options: { 
+        options: {
             scales: { y: { beginAtZero: true } },
             plugins: { legend: { labels: { color: 'black' } } }
         }
     });
 }
 
-// [전면 개편] 4개 시트(요약·인별집계·월별집계·상세)로 완성도 높은 엑셀 생성
+// [전면 개편] 5개 시트(요약·인별집계·월별집계·상세회비·상세지출)로 완성도 높은 엑셀 생성
 function downloadExcel(incomeLogs, expenseLogs, startDate, endDate) {
     const totalIncome = incomeLogs.reduce((s, l) => s + Number(l.paymentAmount || 0), 0);
     const totalExpense = expenseLogs.reduce((s, l) => s + Number(l.amount || 0), 0);
@@ -234,7 +245,7 @@ function downloadExcel(incomeLogs, expenseLogs, startDate, endDate) {
 
     const wb = XLSX.utils.book_new();
 
-    // ── 시트1: 요약 ──
+    // 시트1: 요약
     const summaryAoa = [
         ['BareaPlay 회계 요약'],
         ['조회 기간', `${startDate || '전체'} ~ ${endDate || '전체'}`],
@@ -253,7 +264,7 @@ function downloadExcel(incomeLogs, expenseLogs, startDate, endDate) {
     summarySheet['!cols'] = [{ wch: 18 }, { wch: 20 }];
     XLSX.utils.book_append_sheet(wb, summarySheet, "요약");
 
-    // ── 시트2: 인별 집계 ──
+    // 시트2: 인별 집계
     const perPerson = {};
     incomeLogs.forEach(l => {
         const k = l.name || '(이름없음)';
@@ -273,7 +284,7 @@ function downloadExcel(incomeLogs, expenseLogs, startDate, endDate) {
     const perPersonSheet = XLSX.utils.json_to_sheet(perPersonRows.length ? perPersonRows : [{ '이름': '데이터 없음' }]);
     XLSX.utils.book_append_sheet(wb, perPersonSheet, "인별 집계");
 
-    // ── 시트3: 월별 집계 ──
+    // 시트3: 월별 집계
     const monthly = {};
     incomeLogs.forEach(l => { const m = (l.date || '').substring(0, 7); if (m) { monthly[m] = monthly[m] || { income: 0, expense: 0 }; monthly[m].income += Number(l.paymentAmount || 0); } });
     expenseLogs.forEach(l => { const m = (l.date || '').substring(0, 7); if (m) { monthly[m] = monthly[m] || { income: 0, expense: 0 }; monthly[m].expense += Number(l.amount || 0); } });
@@ -283,14 +294,14 @@ function downloadExcel(incomeLogs, expenseLogs, startDate, endDate) {
     const monthlySheet = XLSX.utils.json_to_sheet(monthlyRows.length ? monthlyRows : [{ '월': '데이터 없음' }]);
     XLSX.utils.book_append_sheet(wb, monthlySheet, "월별 집계");
 
-    // ── 시트4: 상세 - 회비 ──
+    // 시트4: 상세 - 회비
     const incomeData = incomeLogs
         .slice().sort((a, b) => (a.date || '').localeCompare(b.date || '') || a.name.localeCompare(b.name, 'ko-KR'))
         .map(log => ({ '날짜': log.date, '이름': log.name, '납부 상태': log.paymentStatus, '납부액': Number(log.paymentAmount || 0), '비고': log.note || '' }));
     const incomeSheet = XLSX.utils.json_to_sheet(incomeData.length ? incomeData : [{ '날짜': '데이터 없음' }]);
     XLSX.utils.book_append_sheet(wb, incomeSheet, "상세-회비");
 
-    // ── 시트5: 상세 - 지출 ──
+    // 시트5: 상세 - 지출
     const expenseData = expenseLogs
         .slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''))
         .map(log => ({ '날짜': log.date, '항목': log.item, '금액': Number(log.amount || 0) }));
@@ -304,12 +315,12 @@ function downloadExcel(incomeLogs, expenseLogs, startDate, endDate) {
 export function renderForDate() {
     const startDate = filterStartDateEl.value;
     const endDate = filterEndDateEl.value;
-    
+
     const filteredAttendance = state.attendanceLog.filter(log => (!startDate || log.date >= startDate) && (!endDate || log.date <= endDate));
-    
+
     renderAttendanceLogTable(filteredAttendance);
     renderExpenseLog(state.expenseLog);
-    
+
     calculateAndRenderTotalBalance();
     renderAccountingChart();
     populateDateJump();
@@ -322,7 +333,7 @@ export function autoFillAttendees(names) {
     state.currentAttendees = names;
     const today = localDateStr();
     attendanceDate.value = today;
-    
+
     filterStartDateEl.value = today;
     filterEndDateEl.value = today;
     filterPeriodSelectEl.value = 'all';
@@ -357,7 +368,7 @@ export function init(dependencies) {
             <button id="excel-download-btn" class="w-full bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700">엑셀 다운로드</button>
         </div>
     </div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="border-b border-gray-200 mb-4"><nav class="flex -mb-px space-x-6" aria-label="Tabs"><button id="income-tab-btn" class="accounting-tab active text-indigo-600 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💰 회비 (수입)</button><button id="expense-tab-btn" class="accounting-tab text-gray-500 hover:text-gray-700 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💸 지출</button></nav></div><div id="income-log-section"><h2 class="text-2xl font-bold mb-4">회비 로그</h2><div class="overflow-x-auto max-h-[80vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">#</th> <th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">이름</th><th scope="col" class="py-3 px-4">납부 상태</th><th scope="col" class="py-3 px-4">납부액</th><th scope="col" class="py-3 px-4">비고</th></tr></thead><tbody id="accounting-log-body"></tbody><tfoot id="accounting-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div><div id="expense-log-section" class="hidden"><h2 class="text-2xl font-bold mb-4">지출 로그</h2><form id="expense-form" class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6 items-end"><div class="sm:col-span-2"><label for="expense-item" class="block text-sm font-medium">항목</label><input type="text" id="expense-item" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><div><label for="expense-amount" class="block text-sm font-medium">금액</label><input type="number" id="expense-amount" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><button type="submit" class="w-full bg-red-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600 admin-control" disabled>지출 추가</button></form><div class="overflow-x-auto max-h-[70vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">항목</th><th scope="col" class="py-3 px-4">금액</th><th scope="col" class="py-3 px-4">관리</th></tr></thead><tbody id="expense-log-body"></tbody><tfoot id="expense-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div></div></div>`;
-    
+
     attendanceDate = document.getElementById('attendance-date');
     checklistContainer = document.getElementById('attendance-checklist');
     recordBtn = document.getElementById('record-attendance-btn');
@@ -383,7 +394,7 @@ export function init(dependencies) {
     excelDownloadBtn = document.getElementById('excel-download-btn');
     grassToggle = document.getElementById('grass-toggle');
     recordDateJump = document.getElementById('record-date-jump');
-    
+
     const today = localDateStr();
     if(attendanceDate) attendanceDate.value = today;
 
@@ -454,7 +465,7 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
             const div = document.createElement('div');
             div.className = 'flex items-center';
             div.innerHTML = `<input id="check-${name}" type="checkbox" value="${name}" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 admin-control" checked ${!state.isAdmin ? 'disabled' : ''}><label for="check-${name}" class="ml-2 text-sm font-medium text-gray-900">${name} (수동)</label>`;
-            
+
             const placeholder = checklistContainer.querySelector('p');
             if (placeholder) placeholder.remove();
 
@@ -478,24 +489,43 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
         const date = attendanceDate.value;
         if (!date) { window.showNotification('날짜를 선택해주세요.', 'error'); return; }
         const isGrass = !!(grassToggle && grassToggle.checked);
+
+        // [수정] 이름을 NFC로 통일해 비교 → 한글 인코딩 차이로 인한 중복 추가 방지
         const checkedBoxes = checklistContainer.querySelectorAll('input[type=checkbox]:checked');
-        const currentlyCheckedNames = new Set(Array.from(checkedBoxes).map(cb => cb.value));
-        const alreadyLoggedNames = new Set(state.attendanceLog.filter(log => log.date === date).map(log => log.name));
+        const currentlyCheckedNames = Array.from(checkedBoxes).map(cb => normName(cb.value));
+        const checkedSet = new Set(currentlyCheckedNames);
+
+        // 해당 날짜의 기존 로그를 '정규화된 이름 -> 실제 문서 id 목록'으로 정리
+        const existingByName = {};
+        state.attendanceLog.filter(log => log.date === date).forEach(log => {
+            const key = normName(log.name);
+            if (!existingByName[key]) existingByName[key] = [];
+            existingByName[key].push(log.id);
+        });
+
         const promises = [];
+
+        // 1) 체크된 이름 중 기존에 없는 것만 새로 추가
         currentlyCheckedNames.forEach(name => {
-            if (!alreadyLoggedNames.has(name)) {
+            if (!existingByName[name]) {
                 const docId = `${date}_${name}`;
-                // [수정] 회비 유형 + 천연/인조 자동 계산
                 const fee = computeFee(name, isGrass);
                 const newLog = { date, name, paymentStatus: '●', paymentAmount: fee, note: '', grass: isGrass };
                 promises.push(setDoc(doc(db, "attendance", docId), newLog));
             }
         });
-        alreadyLoggedNames.forEach(name => {
-            if (!currentlyCheckedNames.has(name)) {
-                promises.push(deleteDoc(doc(db, "attendance", `${date}_${name}`)));
+
+        // 2) 기존 로그 정리: 체크 해제된 사람은 '실제 문서 id'로 전부 삭제,
+        //    체크돼 있는데 중복 문서가 있으면 1개만 남기고 삭제(기존 중복 자동 정리)
+        Object.keys(existingByName).forEach(name => {
+            const ids = existingByName[name];
+            if (!checkedSet.has(name)) {
+                ids.forEach(id => promises.push(deleteDoc(doc(db, "attendance", id))));
+            } else if (ids.length > 1) {
+                ids.slice(1).forEach(id => promises.push(deleteDoc(doc(db, "attendance", id))));
             }
         });
+
         await Promise.all(promises);
         window.showNotification(`${date} 출석 현황이 저장되었습니다.${isGrass ? ' (천연잔디 금액 적용)' : ''}`);
     });
@@ -508,7 +538,7 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
         const target = e.target;
         const docId = target.dataset.id;
         if (!docId) return;
-        
+
         let updatedField = {};
         if (target.classList.contains('log-status-select')) {
             updatedField = { paymentStatus: target.value };
@@ -516,7 +546,7 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
         }
         else if (target.classList.contains('log-amount-input')) updatedField = { paymentAmount: target.value };
         else if (target.classList.contains('log-note-input')) updatedField = { note: target.value };
-        
+
         if (Object.keys(updatedField).length > 0) debouncedUpdate(docId, updatedField);
     });
 
@@ -524,6 +554,6 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
         await setDoc(memoDoc, { content });
         window.showNotification('메모가 저장되었습니다.', 'success');
     }, 1000);
-    
+
     if(memoArea) memoArea.addEventListener('input', () => debouncedMemoSave(memoArea.value));
 }
