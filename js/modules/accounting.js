@@ -5,7 +5,7 @@ let attendanceDate, checklistContainer, recordBtn, logBody, logFoot, memoArea, a
 let incomeTabBtn, expenseTabBtn, incomeLogSection, expenseLogSection, expenseForm, expenseLogBody, expenseLogFoot;
 let totalBalanceEl, filterStartDateEl, filterEndDateEl, filterPeriodSelectEl, excelDownloadBtn;
 let checkAllBtn, uncheckAllBtn;
-let grassToggle, recordDateJump;
+let grassToggle, recordDateJump, deleteRangeBtn;
 let chartInstance = null;
 let memoDoc;
 
@@ -27,7 +27,6 @@ function computeFee(name, isGrass) {
     const key = normName(name);
     let p = state.playerDB[name] || state.playerDB[key];
     if (!p) {
-        // 인코딩 차이로 못 찾을 때를 대비해 정규화 비교로 한 번 더 탐색
         const found = Object.keys(state.playerDB).find(k => normName(k) === key);
         if (found) p = state.playerDB[found];
     }
@@ -99,10 +98,10 @@ function renderAttendanceLogTable(logs) {
     logBody.innerHTML = '';
     logFoot.innerHTML = '';
 
-    const sortedLogs = logs.sort((a, b) => a.name.localeCompare(b.name, 'ko-KR'));
+    const sortedLogs = logs.sort((a, b) => (a.date || '').localeCompare(b.date || '') || a.name.localeCompare(b.name, 'ko-KR'));
 
     if (sortedLogs.length === 0) {
-        logBody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-gray-500">해당 기간의 출석 로그가 없습니다.</td></tr>`;
+        logBody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-gray-500">해당 기간의 출석 로그가 없습니다.</td></tr>`;
         return;
     }
 
@@ -112,9 +111,10 @@ function renderAttendanceLogTable(logs) {
         const docId = log.id;
         const row = document.createElement('tr');
         row.className = 'bg-white border-b';
+        // [추가] 이름 옆 ✕ 버튼으로 이 한 건만 삭제
         row.innerHTML = `
             <td data-label="#" class="py-2 px-4 font-medium text-gray-700">${index + 1}</td> <td data-label="날짜" class="py-2 px-4">${log.date}</td>
-            <td data-label="이름" class="py-2 px-4 font-medium text-gray-900">${log.name}</td>
+            <td data-label="이름" class="py-2 px-4 font-medium text-gray-900">${log.name}<button data-id="${docId}" class="delete-log-btn ml-2 text-red-500 hover:text-red-700 font-bold admin-control" title="이 기록 삭제" ${!state.isAdmin ? 'disabled' : ''}>✕</button></td>
             <td data-label="납부 상태"><select data-id="${docId}" class="log-status-select p-1 border rounded-md ${getStatusColor(log.paymentStatus)} admin-control" ${!state.isAdmin ? 'disabled': ''}><option value="" ${!log.paymentStatus ? 'selected' : ''}></option><option value="●" ${log.paymentStatus === '●' ? 'selected' : ''}>● 완납</option><option value="△" ${log.paymentStatus === '△' ? 'selected' : ''}>△ 일부</option><option value="✕" ${log.paymentStatus === '✕' ? 'selected' : ''}>✕ 미납</option></select></td>
             <td data-label="납부액"><input type="number" data-id="${docId}" class="log-amount-input w-24 p-1 border rounded-md admin-control" placeholder="납부액" value="${log.paymentAmount || ''}" ${!state.isAdmin ? 'disabled': ''}></td>
             <td data-label="비고"><input type="text" data-id="${docId}" class="log-note-input w-full p-1 border rounded-md admin-control" placeholder="비고 입력..." value="${log.note || ''}" ${!state.isAdmin ? 'disabled': ''}></td>
@@ -367,7 +367,7 @@ export function init(dependencies) {
             </div>
             <button id="excel-download-btn" class="w-full bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700">엑셀 다운로드</button>
         </div>
-    </div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="border-b border-gray-200 mb-4"><nav class="flex -mb-px space-x-6" aria-label="Tabs"><button id="income-tab-btn" class="accounting-tab active text-indigo-600 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💰 회비 (수입)</button><button id="expense-tab-btn" class="accounting-tab text-gray-500 hover:text-gray-700 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💸 지출</button></nav></div><div id="income-log-section"><h2 class="text-2xl font-bold mb-4">회비 로그</h2><div class="overflow-x-auto max-h-[80vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">#</th> <th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">이름</th><th scope="col" class="py-3 px-4">납부 상태</th><th scope="col" class="py-3 px-4">납부액</th><th scope="col" class="py-3 px-4">비고</th></tr></thead><tbody id="accounting-log-body"></tbody><tfoot id="accounting-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div><div id="expense-log-section" class="hidden"><h2 class="text-2xl font-bold mb-4">지출 로그</h2><form id="expense-form" class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6 items-end"><div class="sm:col-span-2"><label for="expense-item" class="block text-sm font-medium">항목</label><input type="text" id="expense-item" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><div><label for="expense-amount" class="block text-sm font-medium">금액</label><input type="number" id="expense-amount" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><button type="submit" class="w-full bg-red-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600 admin-control" disabled>지출 추가</button></form><div class="overflow-x-auto max-h-[70vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">항목</th><th scope="col" class="py-3 px-4">금액</th><th scope="col" class="py-3 px-4">관리</th></tr></thead><tbody id="expense-log-body"></tbody><tfoot id="expense-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div></div></div>`;
+    </div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="border-b border-gray-200 mb-4"><nav class="flex -mb-px space-x-6" aria-label="Tabs"><button id="income-tab-btn" class="accounting-tab active text-indigo-600 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💰 회비 (수입)</button><button id="expense-tab-btn" class="accounting-tab text-gray-500 hover:text-gray-700 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💸 지출</button></nav></div><div id="income-log-section"><div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold">회비 로그</h2><button id="delete-range-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1.5 px-3 rounded-lg admin-control" disabled>이 조회기간 전체 삭제</button></div><div class="overflow-x-auto max-h-[80vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">#</th> <th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">이름</th><th scope="col" class="py-3 px-4">납부 상태</th><th scope="col" class="py-3 px-4">납부액</th><th scope="col" class="py-3 px-4">비고</th></tr></thead><tbody id="accounting-log-body"></tbody><tfoot id="accounting-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div><div id="expense-log-section" class="hidden"><h2 class="text-2xl font-bold mb-4">지출 로그</h2><form id="expense-form" class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6 items-end"><div class="sm:col-span-2"><label for="expense-item" class="block text-sm font-medium">항목</label><input type="text" id="expense-item" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><div><label for="expense-amount" class="block text-sm font-medium">금액</label><input type="number" id="expense-amount" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><button type="submit" class="w-full bg-red-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600 admin-control" disabled>지출 추가</button></form><div class="overflow-x-auto max-h-[70vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">항목</th><th scope="col" class="py-3 px-4">금액</th><th scope="col" class="py-3 px-4">관리</th></tr></thead><tbody id="expense-log-body"></tbody><tfoot id="expense-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div></div></div>`;
 
     attendanceDate = document.getElementById('attendance-date');
     checklistContainer = document.getElementById('attendance-checklist');
@@ -394,6 +394,7 @@ export function init(dependencies) {
     excelDownloadBtn = document.getElementById('excel-download-btn');
     grassToggle = document.getElementById('grass-toggle');
     recordDateJump = document.getElementById('record-date-jump');
+    deleteRangeBtn = document.getElementById('delete-range-btn');
 
     const today = localDateStr();
     if(attendanceDate) attendanceDate.value = today;
@@ -449,6 +450,21 @@ export function init(dependencies) {
         const filteredExpenses = state.expenseLog.filter(log => (!startDate || log.date >= startDate) && (!endDate || log.date <= endDate));
         downloadExcel(filteredAttendance, filteredExpenses, startDate, endDate);
     });
+
+    // [추가] 조회기간 전체 삭제: 현재 회비 로그에 보이는 모든 기록 삭제
+    if (deleteRangeBtn) deleteRangeBtn.addEventListener('click', async () => {
+        if (!state.isAdmin) return;
+        const startDate = filterStartDateEl.value;
+        const endDate = filterEndDateEl.value;
+        const targets = state.attendanceLog.filter(log => (!startDate || log.date >= startDate) && (!endDate || log.date <= endDate));
+        if (targets.length === 0) { window.showNotification('삭제할 회비 기록이 없습니다.', 'error'); return; }
+        const rangeText = (startDate || endDate) ? `${startDate || '처음'} ~ ${endDate || '끝'}` : '전체 기간';
+        if (!confirm(`[${rangeText}]의 회비 기록 ${targets.length}건을 모두 삭제합니다.\n정말 진행하시겠습니까? (되돌릴 수 없습니다)`)) return;
+        const promises = targets.map(log => deleteDoc(doc(db, "attendance", log.id)));
+        await Promise.all(promises);
+        window.showNotification(`${targets.length}건의 회비 기록이 삭제되었습니다.`);
+    });
+
 const manualAttendeeName = document.getElementById('manual-attendee-name');
     const manualAttendeeAddBtn = document.getElementById('manual-attendee-add-btn');
 
@@ -548,6 +564,21 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
         else if (target.classList.contains('log-note-input')) updatedField = { note: target.value };
 
         if (Object.keys(updatedField).length > 0) debouncedUpdate(docId, updatedField);
+    });
+
+    // [추가] 회비 로그 행별 삭제 (이름 옆 ✕ 버튼)
+    if(logBody) logBody.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.delete-log-btn');
+        if (!btn) return;
+        if (!state.isAdmin) return;
+        const docId = btn.dataset.id;
+        if (!docId) return;
+        const row = btn.closest('tr');
+        const nameText = row ? row.querySelector('td[data-label="이름"]').textContent.replace('✕', '').trim() : '';
+        if (confirm(`'${nameText}' 회비 기록을 삭제하시겠습니까?`)) {
+            await deleteDoc(doc(db, "attendance", docId));
+            window.showNotification('회비 기록이 삭제되었습니다.');
+        }
     });
 
     const debouncedMemoSave = window.debounce(async (content) => {

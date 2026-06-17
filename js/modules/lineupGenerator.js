@@ -328,149 +328,174 @@ function executeLineupGeneration(members, formations, isSilent = false) {
         // [기능 3] 1,2지망 모두 GK인 '슈퍼 GK' 식별
         const superGks = members.filter(m => (localPlayerDB[m].pos1 || []).includes('GK') && (localPlayerDB[m].pos2 || []).includes('GK'));
 
-        let bestLineup = null; 
-        let bestScore = Infinity;
-        const TRIAL = 300; 
+        // [재설계] 선호 포지션 보장 + 무작위 탐색
+        // 규칙: 주포지션 우선 → 같은 자리 경쟁 시 점수 높은 사람 먼저, 낮은 사람은 부포지션
+        //       → 그래도 겹치면 같은 라인(공/미/수)의 남는 자리 → 그래도 안되면 최대한 공평
+        //       단, 점수 낮은 사람도 주포지션을 최소 2회(가능하면 3회) 뛰도록 보장
+        //       (이를 위해 점수 높은 사람은 일부 쿼터에 부포지션을 맡음)
+        const LINE_OF = (pos) => {
+            if (pos === 'GK') return 'GK';
+            if (['LB', 'RB', 'CB', 'DF'].includes(pos)) return 'DEF';
+            if (['MF', 'CM'].includes(pos)) return 'MID';
+            if (['LW', 'RW', 'FW'].includes(pos)) return 'ATT';
+            return 'ETC';
+        };
+        const linesOfPos1 = (p) => new Set((p.pos1 || []).map(LINE_OF));
+        const shuffleArr = (arr) => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
+
+        let bestLineup = null;
+        let bestCost = Infinity;
+        const TRIAL = 400;
+        const GUARANTEE = 2;     // 주포지션 최소 보장 횟수
+        const PREF_TARGET = 3;   // 가능하면 여기까지 시켜주려 시도
 
         for (let tr = 0; tr < TRIAL; tr++) {
-            // SuperGK는 휴식 로테이션(restOrderQueue)에서 제외
+            // SuperGK는 휴식 로테이션에서 제외 (휴식은 명단 아래부터 고정)
             let membersForRest = sortedMembers.filter(m => !superGks.includes(m));
-            let restOrderQueue = [...membersForRest].reverse(); 
-            let fullRestQueue = []; 
+            let restOrderQueue = [...membersForRest].reverse();
+            let fullRestQueue = [];
             let totalRestSlots = 0;
-            
-            formations.forEach(f => { 
-                const numOnField = posCellMap[f]?.length || 11; 
-                totalRestSlots += Math.max(0, members.length - numOnField); 
+            formations.forEach(f => {
+                const numOnField = posCellMap[f]?.length || 11;
+                totalRestSlots += Math.max(0, members.length - numOnField);
             });
-            
             while (fullRestQueue.length < totalRestSlots) { fullRestQueue.push(...restOrderQueue); }
             fullRestQueue = fullRestQueue.slice(0, totalRestSlots);
 
-            const lineups = []; 
-            const resters = []; 
-            const referees = []; 
-            let refereeUsage = {}; 
+            const lineups = [];
+            const resters = [];
+            const referees = [];
+            let refereeUsage = {};
             members.forEach(m => refereeUsage[m] = 0);
 
             let restQueuePointer = 0;
-            let secondaryGkUsage = {}; 
-            let fillerGkUsage = {}; 
-            const pos1Usage = {}; 
+            let secondaryGkUsage = {};
+            let fillerGkUsage = {};
+            const pos1Usage = {};
             const pos2Usage = {};
-            members.forEach(m => { pos1Usage[m] = 0; pos2Usage[m] = 0; });
+            const onFieldCount = {};
+            members.forEach(m => { pos1Usage[m] = 0; pos2Usage[m] = 0; onFieldCount[m] = 0; });
+
+            let qualityCost = 0; // 포지션 적합도 비용 (낮을수록 좋음)
 
             for (let q = 0; q < 6; q++) {
-                const formation = formations[q]; 
-                const slots = posCellMap[formation]?.map(c => c.pos) || []; 
+                const formation = formations[q];
+                const slots = posCellMap[formation]?.map(c => c.pos) || [];
                 const numToRest = members.length - slots.length;
-                
+
                 const quarterResters = [...new Set(fullRestQueue.slice(restQueuePointer, restQueuePointer + numToRest))];
-                restQueuePointer += numToRest; 
+                restQueuePointer += numToRest;
                 resters.push(quarterResters);
 
-                // [기능 2] 심판 배정 (휴식자 중 횟수 적은 순 -> 늦게 온 순)
+                // 심판 배정 (휴식자 중 횟수 적은 순 -> 늦게 온 순)
                 let assignedRef = null;
                 if (quarterResters.length > 0) {
                     let candidates = [...quarterResters];
                     candidates.sort((a, b) => {
-                        if (refereeUsage[a] !== refereeUsage[b]) {
-                            return refereeUsage[a] - refereeUsage[b]; // 횟수 적은 순
-                        }
+                        if (refereeUsage[a] !== refereeUsage[b]) return refereeUsage[a] - refereeUsage[b];
                         const idxA = initialOrder.indexOf(normalizeName(a));
                         const idxB = initialOrder.indexOf(normalizeName(b));
-                        return idxB - idxA; // 늦게 온 순(뒤쪽 인덱스 우선)
+                        return idxB - idxA;
                     });
                     assignedRef = candidates[0];
                     refereeUsage[assignedRef]++;
                 }
                 referees.push(assignedRef);
 
-                let onField = sortedMembers.filter(m => !quarterResters.includes(m)); 
-                let assignment = {}; 
+                let onField = sortedMembers.filter(m => !quarterResters.includes(m));
+                onField.forEach(m => onFieldCount[m]++);
+                let assignment = {};
                 let availablePlayers = [...onField];
-                
-                const gkSlotExists = slots.includes('GK');
 
+                // ---- GK 배정 (기존 우선순위 유지) ----
+                const gkSlotExists = slots.includes('GK');
                 if (gkSlotExists) {
                     let assignedGk = null;
-                    // 0순위: 슈퍼 GK
                     let availableSuperGks = superGks.filter(gk => availablePlayers.includes(gk));
-                    if (availableSuperGks.length > 0) {
-                        assignedGk = availableSuperGks[0];
-                    }
-                    // 1순위: 주 포지션 GK
+                    if (availableSuperGks.length > 0) assignedGk = availableSuperGks[0];
                     if (!assignedGk) {
                         let availablePrimaryGks = primaryGks.filter(gk => availablePlayers.includes(gk));
-                        if (availablePrimaryGks.length > 0) assignedGk = availablePrimaryGks[0]; 
+                        if (availablePrimaryGks.length > 0) assignedGk = availablePrimaryGks[0];
                     }
-                    // 2순위: 부 포지션 GK
                     if (!assignedGk) {
                         let availableSecondaryGks = secondaryGks.filter(gk => availablePlayers.includes(gk) && !secondaryGkUsage[gk]);
-                        if (availableSecondaryGks.length > 0) { 
-                            assignedGk = availableSecondaryGks[0]; 
-                            secondaryGkUsage[assignedGk] = 1; 
-                        }
+                        if (availableSecondaryGks.length > 0) { assignedGk = availableSecondaryGks[0]; secondaryGkUsage[assignedGk] = 1; }
                     }
-                    // 3순위: 땜빵 (맨 밑에서부터)
                     if (!assignedGk) {
                         for (let i = availablePlayers.length - 1; i >= 0; i--) {
                             const candidate = availablePlayers[i];
-                            if (!fillerGkUsage[candidate]) {
-                                assignedGk = candidate;
-                                fillerGkUsage[assignedGk] = 1;
-                                break;
-                            }
+                            if (!fillerGkUsage[candidate]) { assignedGk = candidate; fillerGkUsage[assignedGk] = 1; break; }
                         }
                         if (!assignedGk && availablePlayers.length > 0) assignedGk = availablePlayers[availablePlayers.length - 1];
                     }
-                    if (assignedGk) { 
-                        assignment['GK'] = [assignedGk]; 
-                        availablePlayers.splice(availablePlayers.indexOf(assignedGk), 1); 
+                    if (assignedGk) {
+                        assignment['GK'] = [assignedGk];
+                        availablePlayers.splice(availablePlayers.indexOf(assignedGk), 1);
+                        const gp = localPlayerDB[assignedGk];
+                        if ((gp.pos1 || []).includes('GK')) { pos1Usage[assignedGk]++; }
+                        else if ((gp.pos2 || []).includes('GK')) { pos2Usage[assignedGk]++; qualityCost += 2; }
+                        else { qualityCost += 5; }
                     }
                 }
 
-                for (const pos of slots) {
-                    if (pos === 'GK') continue;
+                // ---- 필드 포지션 배정 (슬롯 순서를 매 시도마다 섞어 다양성 확보) ----
+                const fieldSlots = shuffleArr(slots.filter(s => s !== 'GK'));
+                for (const pos of fieldSlots) {
                     assignment[pos] = assignment[pos] || [];
                     if (availablePlayers.length === 0) { assignment[pos].push(null); continue; }
-                    let bestPlayer = availablePlayers[0], bestFit = -1;
+                    const posLine = LINE_OF(pos);
+                    let bestPlayer = availablePlayers[0], bestVal = -Infinity;
                     for (const playerName of availablePlayers) {
-                        const player = localPlayerDB[playerName]; 
-                        let fitScore = 0;
+                        const player = localPlayerDB[playerName];
                         const isPos1 = (player.pos1 || []).includes(pos);
                         const isPos2 = (player.pos2 || []).includes(pos);
-                        const pos1Used = pos1Usage[playerName] || 0;
-                        const pos2Used = pos2Usage[playerName] || 0;
+                        const sameLine = linesOfPos1(player).has(posLine);
+                        let val;
                         if (isPos1) {
-                            let usagePenalty = Math.max(0.2, 1.0 - (pos1Used * 0.2));
-                            fitScore = (100 + (player.s1 || 65)) * usagePenalty; 
+                            // 주포지션: 아직 목표(3회)에 못 미친 사람일수록 우선권 ↑ (점수 낮아도 차례가 옴)
+                            const need = Math.max(0, PREF_TARGET - (pos1Usage[playerName] || 0));
+                            val = 1000 + need * 220 + (player.s1 || 65) * 0.6;
                         } else if (isPos2) {
-                            let usagePenalty = Math.max(0.2, 1.0 - (pos2Used * 0.2));
-                            fitScore = (50 + (player.s2 || 0)) * usagePenalty;
-                        } else { 
-                            fitScore = (localPlayerDB[playerName]?.s1 || 65) / 10; 
+                            val = 500 + (player.s2 || 0) * 0.6;
+                        } else if (sameLine) {
+                            val = 200 + (player.s1 || 65) * 0.3;
+                        } else {
+                            val = 30 + (player.s1 || 65) * 0.1;
                         }
-                        if (fitScore > bestFit) { bestFit = fitScore; bestPlayer = playerName; }
+                        val += Math.random() * 40; // 시도별 다양성
+                        if (val > bestVal) { bestVal = val; bestPlayer = playerName; }
                     }
                     assignment[pos].push(bestPlayer);
                     if (bestPlayer) {
                         availablePlayers.splice(availablePlayers.indexOf(bestPlayer), 1);
-                        const playerInfo = localPlayerDB[bestPlayer]; 
-                        if ((playerInfo.pos1 || []).includes(pos)) { pos1Usage[bestPlayer]++; } 
-                        else if ((playerInfo.pos2 || []).includes(pos)) { pos2Usage[bestPlayer]++; }
+                        const pinfo = localPlayerDB[bestPlayer];
+                        if ((pinfo.pos1 || []).includes(pos)) { pos1Usage[bestPlayer]++; }
+                        else if ((pinfo.pos2 || []).includes(pos)) { pos2Usage[bestPlayer]++; qualityCost += 2; }
+                        else if (linesOfPos1(pinfo).has(posLine)) { qualityCost += 12; }
+                        else { qualityCost += 60; }
                     }
                 }
                 lineups.push(assignment);
             }
-            const qScores = lineups.map(l => Object.values(l).flat().filter(Boolean).reduce((sum, name) => {
-                const score = localPlayerDB[name]?.s1 || 65;
-                return sum + (score || 0);
-            }, 0));
-            const score = qScores.length > 1 ? Math.max(...qScores) - Math.min(...qScores) : 0;
-            if (score < bestScore) { 
-                bestScore = score; 
-                bestLineup = { lineups, resters, referees, members, formations, score }; 
+
+            // ---- 최종 비용 계산 ----
+            let guaranteeShort = 0; // 주포지션 2회 미달 (최우선 최소화)
+            let preferShort = 0;    // 3회 목표 미달 (그 다음 최소화)
+            members.forEach(m => {
+                const ofq = onFieldCount[m];
+                guaranteeShort += Math.max(0, Math.min(GUARANTEE, ofq) - pos1Usage[m]);
+                preferShort += Math.max(0, Math.min(PREF_TARGET, ofq) - pos1Usage[m]);
+            });
+
+            // 쿼터별 팀 전력 편차(표시용; 휴식 로테이션이 고정이라 시도와 무관하게 일정)
+            const qScores = lineups.map(l => Object.values(l).flat().filter(Boolean).reduce((sum, name) => sum + (localPlayerDB[name]?.s1 || 65), 0));
+            const balance = qScores.length > 1 ? Math.max(...qScores) - Math.min(...qScores) : 0;
+
+            const totalCost = guaranteeShort * 1000 + qualityCost + preferShort * 15;
+
+            if (totalCost < bestCost) {
+                bestCost = totalCost;
+                bestLineup = { lineups, resters, referees, members, formations, score: balance, guaranteeShort, preferShort };
             }
         }
         resolve(bestLineup);

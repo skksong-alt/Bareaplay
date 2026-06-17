@@ -1,5 +1,5 @@
 // sw.js
-const CACHE_NAME = 'bareaplay-cache-v31'; // 배포할 때마다 숫자를 1씩 올리세요
+const CACHE_NAME = 'bareaplay-cache-v32'; // 배포할 때마다 숫자를 1씩 올리세요
 const urlsToCache = [
     '/',
     '/index.html',
