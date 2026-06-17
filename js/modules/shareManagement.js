@@ -1,5 +1,15 @@
 // js/modules/shareManagement.js
 import { doc, setDoc, collection, onSnapshot, addDoc, getDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+// [응급수정] debounce가 아직 준비되지 않았을 때를 대비한 안전장치
+if (typeof window.debounce !== 'function') {
+    window.debounce = function (func, delay = 500) {
+        let timer;
+        return function (...args) {
+            clearTimeout(timer);
+            timer = setTimeout(() => func.apply(this, args), delay);
+        };
+    };
+}
 
 let db, state;
 let addLocationBtn, shareDate, shareTime, shareLocationSelect;
