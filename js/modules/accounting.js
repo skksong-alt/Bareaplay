@@ -5,8 +5,26 @@ let attendanceDate, checklistContainer, recordBtn, logBody, logFoot, memoArea, a
 let incomeTabBtn, expenseTabBtn, incomeLogSection, expenseLogSection, expenseForm, expenseLogBody, expenseLogFoot;
 let totalBalanceEl, filterStartDateEl, filterEndDateEl, filterPeriodSelectEl, excelDownloadBtn;
 let checkAllBtn, uncheckAllBtn;
+let grassToggle, recordDateJump;
 let chartInstance = null;
 let memoDoc;
+
+// [추가] UTC 밀림 방지용 현지(두바이/기기) 날짜 문자열
+function localDateStr(d = new Date()) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// [추가] 회비 유형 + 구장(인조/천연)에 따른 자동 금액 계산
+//  - 운영진(admin): 항상 0
+//  - 학생(student): 인조 25 / 천연 35
+//  - 일반(normal)·게스트: 인조 50 / 천연 70
+function computeFee(name, isGrass) {
+    const p = state.playerDB[name] || {};
+    const type = p.feeType || 'normal';
+    if (type === 'admin') return 0;
+    if (type === 'student') return isGrass ? 35 : 25;
+    return isGrass ? 70 : 50;
+}
 
 function getStatusColor(status) {
     switch (status) {
@@ -22,7 +40,6 @@ function renderFullPlayerChecklist() {
     checklistContainer.innerHTML = '';
     const selectedDate = attendanceDate.value;
     
-    // 1. 해당 날짜에 이미 저장된 출석 로그를 가져옵니다.
     const loggedAttendees = state.attendanceLog
                                 .filter(log => log.date === selectedDate)
                                 .map(log => log.name);
@@ -32,31 +49,40 @@ function renderFullPlayerChecklist() {
     let checkStatusSet;
 
     if (state.currentAttendees && state.currentAttendees.length > 0) {
-        // Case A: '팀 배정기'에서 방금 명단을 생성한 경우
         playerNames = [...state.currentAttendees].sort((a, b) => a.localeCompare(b, 'ko-KR'));
-        checkStatusSet = new Set(playerNames); // 이 명단 기준으로 체크
+        checkStatusSet = new Set(playerNames);
     } else {
-        // Case B: 날짜를 변경했거나, '팀 배정기'를 거치지 않은 경우
-        // 해당 날짜의 로그를 기반으로 명단을 구성합니다. (로그가 없으면 빈 배열)
         playerNames = [...loggedAttendees].sort((a, b) => a.localeCompare(b, 'ko-KR'));
-        checkStatusSet = loggedAttendeesSet; // 로그 기준(loggedAttendeesSet)으로 체크
+        checkStatusSet = loggedAttendeesSet;
     }
 
-    // 3. 체크리스트를 렌더링합니다.
     if (playerNames.length === 0) {
-        // [수정] 전체 선수를 불러오는 대신 안내 메시지를 표시합니다.
         checklistContainer.innerHTML = '<p class="text-gray-500 text-sm">표시할 참석자가 없습니다.<br>팀 배정기에서 명단을 가져오거나, 다른 날짜를 선택해주세요.</p>';
         return;
     }
 
     playerNames.forEach(name => {
-        const isChecked = checkStatusSet.has(name); // 결정된 세트(checkStatusSet)를 기준으로 체크 여부 판단
+        const isChecked = checkStatusSet.has(name);
         const div = document.createElement('div');
         div.className = 'flex items-center';
         div.innerHTML = `<input id="check-${name}" type="checkbox" value="${name}" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 admin-control" ${isChecked ? 'checked' : ''} ${!state.isAdmin ? 'disabled' : ''}><label for="check-${name}" class="ml-2 text-sm font-medium text-gray-900">${name}</label>`;
         checklistContainer.appendChild(div);
     });
 }
+
+// [추가] '기록 있는 날 바로가기' 드롭다운 채우기 (달력 점 표시의 가벼운 대안)
+function populateDateJump() {
+    if (!recordDateJump) return;
+    const dateCount = {};
+    state.attendanceLog.forEach(l => { if (l.date) dateCount[l.date] = (dateCount[l.date] || 0) + 1; });
+    state.expenseLog.forEach(l => { if (l.date && !(l.date in dateCount)) dateCount[l.date] = 0; });
+    const dates = Object.keys(dateCount).sort((a, b) => b.localeCompare(a)); // 최신순
+    const cur = attendanceDate.value;
+    recordDateJump.innerHTML =
+        `<option value="">📌 기록 있는 날 바로가기 (${dates.length}일)</option>` +
+        dates.map(d => `<option value="${d}" ${d === cur ? 'selected' : ''}>${d} · 참석 ${dateCount[d]}명</option>`).join('');
+}
+
 function renderAttendanceLogTable(logs) {
     if(!logBody) return;
     logBody.innerHTML = '';
@@ -75,7 +101,6 @@ function renderAttendanceLogTable(logs) {
         const docId = log.id;
         const row = document.createElement('tr');
         row.className = 'bg-white border-b';
-        // [수정] 모바일 뷰를 위해 각 td에 data-label 속성 추가
         row.innerHTML = `
             <td data-label="#" class="py-2 px-4 font-medium text-gray-700">${index + 1}</td> <td data-label="날짜" class="py-2 px-4">${log.date}</td>
             <td data-label="이름" class="py-2 px-4 font-medium text-gray-900">${log.name}</td>
@@ -105,7 +130,6 @@ function renderExpenseLog(logs) {
         totalAmount += log.amount;
         const row = document.createElement('tr');
         row.className = 'bg-white border-b';
-        // [수정] 모바일 뷰를 위해 각 td에 data-label 속성 추가
         row.innerHTML = `
             <td data-label="날짜" class="py-2 px-4">${log.date}</td>
             <td data-label="항목" class="py-2 px-4 font-medium text-gray-900">${log.item}</td>
@@ -144,7 +168,7 @@ async function handleExpenseSubmit(e) {
         await addDoc(collection(db, "expenses"), {
             item: item,
             amount: Number(amount),
-            date: new Date().toISOString().split('T')[0],
+            date: attendanceDate.value || localDateStr(),
             createdAt: serverTimestamp()
         });
         window.showNotification('지출 내역이 추가되었습니다.');
@@ -200,23 +224,81 @@ function renderAccountingChart() {
     });
 }
 
-function downloadExcel(incomeLogs, expenseLogs) {
-    const incomeData = incomeLogs.map(log => ({
-        '날짜': log.date, '이름': log.name, '납부 상태': log.paymentStatus, '납부액': Number(log.paymentAmount), '비고': log.note
-    }));
-    const expenseData = expenseLogs.map(log => ({
-        '날짜': log.date, '항목': log.item, '금액': log.amount
-    }));
-    
+// [전면 개편] 4개 시트(요약·인별집계·월별집계·상세)로 완성도 높은 엑셀 생성
+function downloadExcel(incomeLogs, expenseLogs, startDate, endDate) {
+    const totalIncome = incomeLogs.reduce((s, l) => s + Number(l.paymentAmount || 0), 0);
+    const totalExpense = expenseLogs.reduce((s, l) => s + Number(l.amount || 0), 0);
+    const balance = totalIncome - totalExpense;
+    const unpaidCount = incomeLogs.filter(l => l.paymentStatus === '✕').length;
+    const partialCount = incomeLogs.filter(l => l.paymentStatus === '△').length;
+
     const wb = XLSX.utils.book_new();
-    const incomeSheet = XLSX.utils.json_to_sheet(incomeData);
-    const expenseSheet = XLSX.utils.json_to_sheet(expenseData);
 
-    XLSX.utils.book_append_sheet(wb, incomeSheet, "수입 내역");
-    XLSX.utils.book_append_sheet(wb, expenseSheet, "지출 내역");
+    // ── 시트1: 요약 ──
+    const summaryAoa = [
+        ['BareaPlay 회계 요약'],
+        ['조회 기간', `${startDate || '전체'} ~ ${endDate || '전체'}`],
+        ['생성일', localDateStr()],
+        [],
+        ['항목', '금액 (Dhs)'],
+        ['총 수입 (회비)', totalIncome],
+        ['총 지출', totalExpense],
+        ['잔액', balance],
+        [],
+        ['참석 연인원(건)', incomeLogs.length],
+        ['미납(✕) 건수', unpaidCount],
+        ['일부납부(△) 건수', partialCount],
+    ];
+    const summarySheet = XLSX.utils.aoa_to_sheet(summaryAoa);
+    summarySheet['!cols'] = [{ wch: 18 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, summarySheet, "요약");
 
-    XLSX.writeFile(wb, `BareaPlay_회계_${new Date().toISOString().split('T')[0]}.xlsx`);
-    window.showNotification("엑셀 파일이 다운로드되었습니다.");
+    // ── 시트2: 인별 집계 ──
+    const perPerson = {};
+    incomeLogs.forEach(l => {
+        const k = l.name || '(이름없음)';
+        if (!perPerson[k]) perPerson[k] = { name: k, count: 0, paid: 0, full: 0, partial: 0, unpaid: 0 };
+        perPerson[k].count += 1;
+        perPerson[k].paid += Number(l.paymentAmount || 0);
+        if (l.paymentStatus === '●') perPerson[k].full += 1;
+        else if (l.paymentStatus === '△') perPerson[k].partial += 1;
+        else if (l.paymentStatus === '✕') perPerson[k].unpaid += 1;
+    });
+    const perPersonRows = Object.values(perPerson)
+        .sort((a, b) => a.name.localeCompare(b.name, 'ko-KR'))
+        .map(p => ({
+            '이름': p.name, '참석 횟수': p.count, '총 납부액': p.paid,
+            '완납(●)': p.full, '일부(△)': p.partial, '미납(✕)': p.unpaid
+        }));
+    const perPersonSheet = XLSX.utils.json_to_sheet(perPersonRows.length ? perPersonRows : [{ '이름': '데이터 없음' }]);
+    XLSX.utils.book_append_sheet(wb, perPersonSheet, "인별 집계");
+
+    // ── 시트3: 월별 집계 ──
+    const monthly = {};
+    incomeLogs.forEach(l => { const m = (l.date || '').substring(0, 7); if (m) { monthly[m] = monthly[m] || { income: 0, expense: 0 }; monthly[m].income += Number(l.paymentAmount || 0); } });
+    expenseLogs.forEach(l => { const m = (l.date || '').substring(0, 7); if (m) { monthly[m] = monthly[m] || { income: 0, expense: 0 }; monthly[m].expense += Number(l.amount || 0); } });
+    const monthlyRows = Object.keys(monthly).sort().map(m => ({
+        '월': m, '수입': monthly[m].income, '지출': monthly[m].expense, '잔액': monthly[m].income - monthly[m].expense
+    }));
+    const monthlySheet = XLSX.utils.json_to_sheet(monthlyRows.length ? monthlyRows : [{ '월': '데이터 없음' }]);
+    XLSX.utils.book_append_sheet(wb, monthlySheet, "월별 집계");
+
+    // ── 시트4: 상세 - 회비 ──
+    const incomeData = incomeLogs
+        .slice().sort((a, b) => (a.date || '').localeCompare(b.date || '') || a.name.localeCompare(b.name, 'ko-KR'))
+        .map(log => ({ '날짜': log.date, '이름': log.name, '납부 상태': log.paymentStatus, '납부액': Number(log.paymentAmount || 0), '비고': log.note || '' }));
+    const incomeSheet = XLSX.utils.json_to_sheet(incomeData.length ? incomeData : [{ '날짜': '데이터 없음' }]);
+    XLSX.utils.book_append_sheet(wb, incomeSheet, "상세-회비");
+
+    // ── 시트5: 상세 - 지출 ──
+    const expenseData = expenseLogs
+        .slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+        .map(log => ({ '날짜': log.date, '항목': log.item, '금액': Number(log.amount || 0) }));
+    const expenseSheet = XLSX.utils.json_to_sheet(expenseData.length ? expenseData : [{ '날짜': '데이터 없음' }]);
+    XLSX.utils.book_append_sheet(wb, expenseSheet, "상세-지출");
+
+    XLSX.writeFile(wb, `BareaPlay_회계_${localDateStr()}.xlsx`);
+    window.showNotification("엑셀 파일이 다운로드되었습니다. (5개 시트)");
 }
 
 export function renderForDate() {
@@ -230,6 +312,7 @@ export function renderForDate() {
     
     calculateAndRenderTotalBalance();
     renderAccountingChart();
+    populateDateJump();
 
     const selectedDate = attendanceDate.value;
     if(selectedDate) renderFullPlayerChecklist();
@@ -237,7 +320,7 @@ export function renderForDate() {
 
 export function autoFillAttendees(names) {
     state.currentAttendees = names;
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateStr();
     attendanceDate.value = today;
     
     filterStartDateEl.value = today;
@@ -254,8 +337,7 @@ export function init(dependencies) {
     state.currentAttendees = [];
 
     const pageElement = document.getElementById('page-accounting');
-// [수정] 이 코드 블록 전체를 복사하여 pageElement.innerHTML = ...; 부분을 통째로 붙여넣으세요.
-    pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 space-y-8"><div class="bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">출석 기록 관리</h2><button id="admin-login-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1 px-3 rounded-lg">관리자 로그인</button></div><div class="mb-4"><label for="attendance-date" class="block text-md font-semibold text-gray-700 mb-2">날짜 선택</label><input type="date" id="attendance-date" class="w-full p-2 border rounded-lg"></div><div class="mb-4"><div class="flex justify-between items-center mb-2"><label class="block text-md font-semibold text-gray-700">참석자 선택</label><div class="space-x-2"><button id="check-all-btn" class="text-xs text-indigo-600 hover:underline admin-control" disabled>모두 선택</button><button id="uncheck-all-btn" class="text-xs text-gray-500 hover:underline admin-control" disabled>모두 해제</button></div></div><div id="attendance-checklist" class="max-h-60 overflow-y-auto border rounded-lg p-3 space-y-2"></div><div class="flex space-x-2 mt-2"><input type="text" id="manual-attendee-name" class="flex-grow bg-gray-50 border border-gray-300 text-sm rounded-lg p-2 admin-control" placeholder="수동 추가..."><button type="button" id="manual-attendee-add-btn" class="text-white bg-indigo-600 hover:bg-indigo-700 font-medium rounded-lg text-sm px-4 py-2 admin-control">추가</button></div></div><button id="record-attendance-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition-transform transform hover:scale-105 shadow-lg admin-control" disabled>선택한 날짜 출석 저장</button></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">💰 총 잔액</h2><p id="total-balance" class="text-4xl font-bold text-indigo-600">0 Dhs</p></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">📊 월별 요약</h2><div class="w-full"><canvas id="accountingChart"></canvas></div></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">Remark / 특정 메모</h2><textarea id="memo-area" class="w-full p-3 border rounded-lg admin-control bg-gray-50" rows="5" placeholder="미납자 정보, 주요 공지 등..." disabled></textarea><p class="text-xs text-gray-500 mt-2">메모는 자동으로 저장됩니다.</p>
+    pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 space-y-8"><div class="bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">출석 기록 관리</h2><button id="admin-login-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1 px-3 rounded-lg">관리자 로그인</button></div><div class="mb-3"><label for="attendance-date" class="block text-md font-semibold text-gray-700 mb-2">날짜 선택</label><input type="date" id="attendance-date" class="w-full p-2 border rounded-lg"></div><div class="mb-3"><select id="record-date-jump" class="w-full p-2 border rounded-lg bg-white text-sm text-gray-700"><option value="">📌 기록 있는 날 바로가기</option></select></div><div class="mb-4"><label class="flex items-center gap-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg cursor-pointer admin-control"><input type="checkbox" id="grass-toggle" class="w-4 h-4 text-emerald-600 rounded"><span class="text-sm font-semibold text-emerald-800">🌱 천연잔디 날 (일반 70 / 학생 35)</span></label><p class="text-xs text-gray-400 mt-1">체크 후 저장하면 이 날의 회비가 천연잔디 금액으로 자동 입력됩니다.</p></div><div class="mb-4"><div class="flex justify-between items-center mb-2"><label class="block text-md font-semibold text-gray-700">참석자 선택</label><div class="space-x-2"><button id="check-all-btn" class="text-xs text-indigo-600 hover:underline admin-control" disabled>모두 선택</button><button id="uncheck-all-btn" class="text-xs text-gray-500 hover:underline admin-control" disabled>모두 해제</button></div></div><div id="attendance-checklist" class="max-h-60 overflow-y-auto border rounded-lg p-3 space-y-2"></div><div class="flex space-x-2 mt-2"><input type="text" id="manual-attendee-name" class="flex-grow bg-gray-50 border border-gray-300 text-sm rounded-lg p-2 admin-control" placeholder="수동 추가..."><button type="button" id="manual-attendee-add-btn" class="text-white bg-indigo-600 hover:bg-indigo-700 font-medium rounded-lg text-sm px-4 py-2 admin-control">추가</button></div></div><button id="record-attendance-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition-transform transform hover:scale-105 shadow-lg admin-control" disabled>선택한 날짜 출석 저장</button></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">💰 총 잔액</h2><p id="total-balance" class="text-4xl font-bold text-indigo-600">0 Dhs</p></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">📊 월별 요약</h2><div class="w-full"><canvas id="accountingChart"></canvas></div></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">Remark / 특정 메모</h2><textarea id="memo-area" class="w-full p-3 border rounded-lg admin-control bg-gray-50" rows="5" placeholder="미납자 정보, 주요 공지 등..." disabled></textarea><p class="text-xs text-gray-500 mt-2">메모는 자동으로 저장됩니다.</p>
         <div class="mt-4 p-4 bg-gray-50 rounded-lg space-y-3">
             <div>
                 <label for="filter-start-date" class="block text-sm font-medium text-gray-700 mb-1">조회 기간</label>
@@ -299,8 +381,10 @@ export function init(dependencies) {
     filterEndDateEl = document.getElementById('filter-end-date');
     filterPeriodSelectEl = document.getElementById('filter-period-select');
     excelDownloadBtn = document.getElementById('excel-download-btn');
+    grassToggle = document.getElementById('grass-toggle');
+    recordDateJump = document.getElementById('record-date-jump');
     
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateStr();
     if(attendanceDate) attendanceDate.value = today;
 
    if(attendanceDate) attendanceDate.addEventListener('change', () => {
@@ -308,8 +392,18 @@ export function init(dependencies) {
         const selectedDate = attendanceDate.value;
         filterStartDateEl.value = selectedDate;
         filterEndDateEl.value = selectedDate;
-        // filterPeriodSelectEl.value = 'all'; // <-- 이 줄을 삭제하거나 주석 처리합니다.
-        renderForDate(); // 이제 renderForDate()가 올바른 날짜로 필터링합니다.
+        renderForDate();
+    });
+
+    // [추가] 기록 있는 날 바로가기
+    if (recordDateJump) recordDateJump.addEventListener('change', () => {
+        const d = recordDateJump.value;
+        if (!d) return;
+        state.currentAttendees = [];
+        attendanceDate.value = d;
+        filterStartDateEl.value = d;
+        filterEndDateEl.value = d;
+        renderForDate();
     });
 
     if(adminLoginBtn) adminLoginBtn.addEventListener('click', window.promptForAdminPassword);
@@ -332,8 +426,8 @@ export function init(dependencies) {
             if (period === '1m') startDate.setMonth(today.getMonth() - 1);
             else if (period === '3m') startDate.setMonth(today.getMonth() - 3);
             else if (period === '6m') startDate.setMonth(today.getMonth() - 6);
-            filterStartDateEl.value = startDate.toISOString().split('T')[0];
-            filterEndDateEl.value = today.toISOString().split('T')[0];
+            filterStartDateEl.value = localDateStr(startDate);
+            filterEndDateEl.value = localDateStr(today);
         }
         renderForDate();
     });
@@ -342,7 +436,7 @@ export function init(dependencies) {
         const endDate = filterEndDateEl.value;
         const filteredAttendance = state.attendanceLog.filter(log => (!startDate || log.date >= startDate) && (!endDate || log.date <= endDate));
         const filteredExpenses = state.expenseLog.filter(log => (!startDate || log.date >= startDate) && (!endDate || log.date <= endDate));
-        downloadExcel(filteredAttendance, filteredExpenses);
+        downloadExcel(filteredAttendance, filteredExpenses, startDate, endDate);
     });
 const manualAttendeeName = document.getElementById('manual-attendee-name');
     const manualAttendeeAddBtn = document.getElementById('manual-attendee-add-btn');
@@ -352,18 +446,15 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
             const name = manualAttendeeName.value.trim();
             if (!name) return;
 
-            // 이미 목록에 있는지 확인
             if (document.getElementById(`check-${name}`)) {
                 window.showNotification('이미 목록에 있습니다.', 'error');
                 return;
             }
 
-            // 새 체크박스 생성
             const div = document.createElement('div');
             div.className = 'flex items-center';
             div.innerHTML = `<input id="check-${name}" type="checkbox" value="${name}" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 admin-control" checked ${!state.isAdmin ? 'disabled' : ''}><label for="check-${name}" class="ml-2 text-sm font-medium text-gray-900">${name} (수동)</label>`;
             
-            // 목록이 비어있었다면 안내 문구 제거
             const placeholder = checklistContainer.querySelector('p');
             if (placeholder) placeholder.remove();
 
@@ -386,6 +477,7 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
     if(recordBtn) recordBtn.addEventListener('click', async () => {
         const date = attendanceDate.value;
         if (!date) { window.showNotification('날짜를 선택해주세요.', 'error'); return; }
+        const isGrass = !!(grassToggle && grassToggle.checked);
         const checkedBoxes = checklistContainer.querySelectorAll('input[type=checkbox]:checked');
         const currentlyCheckedNames = new Set(Array.from(checkedBoxes).map(cb => cb.value));
         const alreadyLoggedNames = new Set(state.attendanceLog.filter(log => log.date === date).map(log => log.name));
@@ -393,7 +485,9 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
         currentlyCheckedNames.forEach(name => {
             if (!alreadyLoggedNames.has(name)) {
                 const docId = `${date}_${name}`;
-                const newLog = { date, name, paymentStatus: '●', paymentAmount: '50', note: '' };
+                // [수정] 회비 유형 + 천연/인조 자동 계산
+                const fee = computeFee(name, isGrass);
+                const newLog = { date, name, paymentStatus: '●', paymentAmount: fee, note: '', grass: isGrass };
                 promises.push(setDoc(doc(db, "attendance", docId), newLog));
             }
         });
@@ -403,14 +497,13 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
             }
         });
         await Promise.all(promises);
-        window.showNotification(`${date} 출석 현황이 저장되었습니다.`);
+        window.showNotification(`${date} 출석 현황이 저장되었습니다.${isGrass ? ' (천연잔디 금액 적용)' : ''}`);
     });
 
     const debouncedUpdate = window.debounce(async (docId, updatedField) => {
         await setDoc(doc(db, "attendance", docId), updatedField, { merge: true });
     }, 500);
 
-    // [수정] 한글 입력 문제를 해결하기 위해 'input' 이벤트를 'change' 이벤트로 변경
     if(logBody) logBody.addEventListener('change', (e) => {
         const target = e.target;
         const docId = target.dataset.id;

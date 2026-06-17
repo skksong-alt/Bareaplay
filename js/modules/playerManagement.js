@@ -11,11 +11,20 @@ function parsePositions(posCell) {
     return Array.from(new Set(positions.map(p => p.toUpperCase().trim()).filter(p => VALID.includes(p))));
 }
 
+// [추가] 회비 유형 한글 라벨
+function feeTypeLabel(feeType) {
+    if (feeType === 'admin') return '운영진(0)';
+    if (feeType === 'student') return '학생(25/35)';
+    return '일반(50/70)';
+}
+
 function resetForm() {
     form.reset();
     playerIdInput.value = '';
     formTitle.textContent = '새 선수 추가';
     cancelBtn.classList.add('hidden');
+    const feeSel = document.getElementById('player-fee-type');
+    if (feeSel) feeSel.value = 'normal';
 }
 
 async function handleFormSubmit(e) {
@@ -40,6 +49,8 @@ async function handleFormSubmit(e) {
         s1: parseInt(document.getElementById('player-s1').value) || 0,
         pos2: parsePositions(document.getElementById('player-pos2').value),
         s2: parseInt(document.getElementById('player-s2').value) || 0,
+        // [추가] 회비 유형: normal(일반) / admin(운영진) / student(학생)
+        feeType: document.getElementById('player-fee-type').value || 'normal',
     };
     await setDoc(doc(db, "players", name), newPlayerData);
     if (id && id !== name) await deleteDoc(doc(db, "players", id));
@@ -62,6 +73,7 @@ async function handleTableClick(e) {
         document.getElementById('player-s1').value = p.s1;
         document.getElementById('player-pos2').value = (p.pos2 || []).join(', ');
         document.getElementById('player-s2').value = p.s2;
+        document.getElementById('player-fee-type').value = p.feeType || 'normal';
         cancelBtn.classList.remove('hidden');
         form.scrollIntoView({ behavior: 'smooth' });
     }
@@ -90,6 +102,7 @@ export function init(dependencies) {
                                 <th scope="col" class="py-3 px-6">이름</th>
                                 <th scope="col" class="py-3 px-6">주 포지션 / 능력치</th>
                                 <th scope="col" class="py-3 px-6">부 포지션 / 능력치</th>
+                                <th scope="col" class="py-3 px-6">회비 유형</th>
                                 <th scope="col" class="py-3 px-6">출석률</th>
                                 <th scope="col" class="py-3 px-6">관리</th>
                             </tr>
@@ -108,6 +121,14 @@ export function init(dependencies) {
                         <div><label for="player-s1" class="block mb-2 text-sm font-medium">주 능력치</label><input type="number" id="player-s1" min="0" max="100" class="bg-gray-50 border border-gray-300 text-sm rounded-lg block w-full p-2.5"></div>
                         <div><label for="player-pos2" class="block mb-2 text-sm font-medium">부 포지션</label><input type="text" id="player-pos2" placeholder="예: MF" class="bg-gray-50 border border-gray-300 text-sm rounded-lg block w-full p-2.5"></div>
                         <div><label for="player-s2" class="block mb-2 text-sm font-medium">부 능력치</label><input type="number" id="player-s2" min="0" max="100" class="bg-gray-50 border border-gray-300 text-sm rounded-lg block w-full p-2.5"></div>
+                        <div><label for="player-fee-type" class="block mb-2 text-sm font-medium">회비 유형</label>
+                            <select id="player-fee-type" class="bg-gray-50 border border-gray-300 text-sm rounded-lg block w-full p-2.5">
+                                <option value="normal">일반 (인조 50 / 천연 70)</option>
+                                <option value="admin">운영진 (항상 0)</option>
+                                <option value="student">학생 (인조 25 / 천연 35)</option>
+                            </select>
+                            <p class="text-xs text-gray-400 mt-1">출석 저장 시 이 유형에 맞춰 금액이 자동 입력됩니다.</p>
+                        </div>
                         <div class="flex space-x-2"><button type="submit" class="w-full text-white bg-indigo-600 hover:bg-indigo-700 font-medium rounded-lg text-sm px-5 py-2.5 text-center">저장</button><button type="button" id="cancel-edit-btn" class="w-full text-gray-900 bg-white border border-gray-300 hover:bg-gray-100 font-medium rounded-lg text-sm px-5 py-2.5 text-center hidden">취소</button></div>
                     </form>
                 </div>
@@ -144,7 +165,7 @@ export function renderPlayerTable() {
     tableBody.innerHTML = '';
     const playerNames = Object.keys(state.playerDB).sort((a, b) => a.localeCompare(b, 'ko-KR'));
     if (playerNames.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-gray-500">등록된 선수가 없습니다.</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-gray-500">등록된 선수가 없습니다.</td></tr>`;
         return;
     }
     playerNames.forEach(name => {
@@ -153,7 +174,7 @@ export function renderPlayerTable() {
         const attendanceRate = ((attendanceCount / totalMeetings) * 100).toFixed(1);
         const row = document.createElement('tr');
         row.className = 'bg-white border-b';
-        row.innerHTML = `<td class="py-4 px-6 font-medium text-gray-900 whitespace-nowrap">${p.name}</td><td class="py-4 px-6 text-gray-700">${(p.pos1 || []).join(', ')} (${p.s1 || 0})</td><td class="py-4 px-6 text-gray-700">${(p.pos2 || []).join(', ')} (${p.s2 || 0})</td><td class="py-4 px-6 text-gray-700">${attendanceRate}% (${attendanceCount}/${totalMeetings})</td><td class="py-4 px-6"><button class="edit-btn font-medium text-blue-600 hover:underline mr-3" data-name="${p.name}">수정</button><button class="delete-btn font-medium text-red-600 hover:underline" data-name="${p.name}">삭제</button></td>`;
+        row.innerHTML = `<td class="py-4 px-6 font-medium text-gray-900 whitespace-nowrap">${p.name}</td><td class="py-4 px-6 text-gray-700">${(p.pos1 || []).join(', ')} (${p.s1 || 0})</td><td class="py-4 px-6 text-gray-700">${(p.pos2 || []).join(', ')} (${p.s2 || 0})</td><td class="py-4 px-6 text-gray-700">${feeTypeLabel(p.feeType)}</td><td class="py-4 px-6 text-gray-700">${attendanceRate}% (${attendanceCount}/${totalMeetings})</td><td class="py-4 px-6"><button class="edit-btn font-medium text-blue-600 hover:underline mr-3" data-name="${p.name}">수정</button><button class="delete-btn font-medium text-red-600 hover:underline" data-name="${p.name}">삭제</button></td>`;
         tableBody.appendChild(row);
     });
 }
