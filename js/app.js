@@ -298,7 +298,7 @@ window.promptForAdminPassword = function() {
 }
 
 function switchTab(activeKey, force = false) {
-    if ((activeKey === 'players' || activeKey === 'share' || activeKey === 'balancer' || activeKey === 'lineup') && !state.isAdmin && !force) {
+    if ((activeKey === 'players' || activeKey === 'share') && !state.isAdmin && !force) {
         pendingTabSwitch = activeKey; 
         promptForAdminPassword();
         return; 
@@ -383,14 +383,30 @@ function renderSharePageView(shareData) {
 
 document.addEventListener('DOMContentLoaded', async () => {
     const loadingOverlay = document.getElementById('loading-overlay');
-
-    // [수정] 투표/보드 링크는 메인 앱을 그리기 '전에' 즉시 처리 → 메인 화면 깜빡임 방지
+    
+    // [추가] 투표/보드 링크는 메인 앱을 그리기 전에 즉시 처리 → 메인 화면 깜빡임 방지
     const earlyParams = new URLSearchParams(window.location.search);
     const earlyVoteId = earlyParams.get('voteId');
+    const earlyShareId = earlyParams.get('shareId');
     if (earlyVoteId) {
         window.__db = db;
         if (loadingOverlay) loadingOverlay.style.display = 'none';
         await voteMgmt.renderVotePage(earlyVoteId);
+        return;
+    }
+    if (earlyShareId) {
+        window.__db = db;
+        if (loadingOverlay) { loadingOverlay.style.display = 'flex'; loadingOverlay.style.opacity = 1; }
+        try {
+            const shareDoc = await getDoc(doc(db, "shares", earlyShareId));
+            if (shareDoc.exists()) shareMgmt.renderBoardView(shareDoc.data());
+            else document.body.innerHTML = `<p class="text-center text-red-500 text-2xl mt-10">공유된 데이터를 찾을 수 없습니다.</p>`;
+        } catch (e) {
+            console.error(e);
+            document.body.innerHTML = `<p class="text-center text-red-500 text-2xl mt-10">데이터를 불러오는 중 오류가 발생했습니다.</p>`;
+        } finally {
+            if (loadingOverlay) loadingOverlay.style.display = 'none';
+        }
         return;
     }
 
@@ -412,6 +428,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     const urlParams = new URLSearchParams(window.location.search);
     const shareId = urlParams.get('shareId');
+    const voteId = urlParams.get('voteId');
+
+    if (voteId) {
+        loadingOverlay.style.display = 'none';
+        await voteMgmt.renderVotePage(voteId);
+        return;
+    }
+
 
     if (shareId) {
         loadingOverlay.style.display = 'flex';
@@ -495,24 +519,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                 updateAdminUI();
             }
         });
-        onSnapshot(doc(db, "settings", "activeMeeting"), (snap) => {
+        onSnapshot(doc(db, "settings", "activeMeeting"), (doc) => {
             const placeholder = document.getElementById('realtime-link-placeholder');
-            if (!placeholder) return;
             placeholder.innerHTML = '';
-            if (!snap.exists()) return;
-            const data = snap.data();
-            // [수정] 새 방식(voteId) 우선, 과거 방식(shareId) 호환
-            let href = '';
-            if (data.voteId) href = `${window.location.origin}${window.location.pathname}?voteId=${encodeURIComponent(data.voteId)}`;
-            else if (data.shareId) href = `${window.location.origin}${window.location.pathname}?shareId=${data.shareId}`;
-            if (!href) return;
-            const linkText = data.linkText || "오늘 모임 보드 확인하기";
-            const link = document.createElement('a');
-            link.href = href;
-            link.target = "_blank";
-            link.className = 'realtime-link-button';
-            link.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clip-rule="evenodd" /></svg>${esc(linkText)}`;
-            placeholder.appendChild(link);
+            if (doc.exists() && doc.data().shareId) {
+                const shareId = doc.data().shareId;
+                const linkText = doc.data().linkText || "오늘 모임 결과 확인하기";
+                const link = document.createElement('a');
+                link.href = `${window.location.origin}${window.location.pathname}?shareId=${shareId}`;
+                link.target = "_blank";
+                link.className = 'realtime-link-button';
+                link.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clip-rule="evenodd" /></svg>${esc(linkText)}`;
+                placeholder.appendChild(link);
+            }
         });
         try {
             loadPlayerDB(); 
@@ -548,8 +567,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             loadingOverlay.style.opacity = 0;
             setTimeout(() => loadingOverlay.style.display = 'none', 300);
             updateAdminUI();
-            // [수정] 팀배정/라인업은 운영진 전용이므로, 시작 탭은 누구나 볼 수 있는 회계로
-            switchTab('accounting', true);
+            switchTab('balancer', true);
         }
     }
 });
