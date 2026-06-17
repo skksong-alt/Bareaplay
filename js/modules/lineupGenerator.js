@@ -327,6 +327,10 @@ function executeLineupGeneration(members, formations, isSilent = false) {
         const secondaryGks = members.filter(m => !(localPlayerDB[m].pos1 || []).includes('GK') && (localPlayerDB[m].pos2 || []).includes('GK'));
         // [기능 3] 1,2지망 모두 GK인 '슈퍼 GK' 식별
         const superGks = members.filter(m => (localPlayerDB[m].pos1 || []).includes('GK') && (localPlayerDB[m].pos2 || []).includes('GK'));
+        // [추가] 키퍼 최소 1회 보장 대상: 주/부에 GK가 있으나 전담(슈퍼GK)은 아닌 선수
+        const gkGuarColumn = members.filter(m => !superGks.includes(m) && ((localPlayerDB[m].pos1 || []).includes('GK') || (localPlayerDB[m].pos2 || []).includes('GK')));
+        const hasDedicatedGk = superGks.length > 0;
+        const rankOf = (m) => { const i = initialOrder.indexOf(normalizeName(m)); return i === -1 ? 9999 : i; }; // 클수록 명단 아래(늦은 투표)
 
         // [재설계] 선호 포지션 보장 + 무작위 탐색
         // 규칙: 주포지션 우선 → 같은 자리 경쟁 시 점수 높은 사람 먼저, 낮은 사람은 부포지션
@@ -369,12 +373,13 @@ function executeLineupGeneration(members, formations, isSilent = false) {
             members.forEach(m => refereeUsage[m] = 0);
 
             let restQueuePointer = 0;
-            let secondaryGkUsage = {};
-            let fillerGkUsage = {};
             const pos1Usage = {};
             const pos2Usage = {};
             const onFieldCount = {};
-            members.forEach(m => { pos1Usage[m] = 0; pos2Usage[m] = 0; onFieldCount[m] = 0; });
+            const gkCount = {};                 // [추가] 각자 키퍼 맡은 횟수
+            members.forEach(m => { pos1Usage[m] = 0; pos2Usage[m] = 0; onFieldCount[m] = 0; gkCount[m] = 0; });
+            let gkLast = null;                  // [추가] 직전 쿼터 키퍼(전담 제외)
+            let restRefLast = new Set();        // [추가] 직전 쿼터 휴식/심판자 집합
 
             let qualityCost = 0; // 포지션 적합도 비용 (낮을수록 좋음)
 
@@ -383,23 +388,25 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                 const slots = posCellMap[formation]?.map(c => c.pos) || [];
                 const numToRest = members.length - slots.length;
 
-                const quarterResters = [...new Set(fullRestQueue.slice(restQueuePointer, restQueuePointer + numToRest))];
-                restQueuePointer += numToRest;
+                // ---- 휴식 선정: 큐(투표 아래부터 순환)에서, 단 직전 키퍼(전담 제외)는 이번 휴식 제외 ----
+                const quarterResters = [];
+                const qLen = fullRestQueue.length || 1;
+                let scan = 0;
+                while (quarterResters.length < numToRest && scan < qLen * 3) {
+                    const cand = fullRestQueue[(restQueuePointer + scan) % qLen];
+                    scan++;
+                    if (cand === gkLast) continue;           // 키퍼 직후 휴식 금지(전담 제외 → gkLast는 비전담만 세팅됨)
+                    if (quarterResters.includes(cand)) continue;
+                    quarterResters.push(cand);
+                }
+                restQueuePointer = (restQueuePointer + numToRest) % qLen; // 회전(로테이션) 유지
                 resters.push(quarterResters);
 
-                // 심판 배정 (휴식자 중 횟수 적은 순 -> 늦게 온 순)
+                // ---- 심판 배정: 휴식자 중 직전 키퍼 제외, 투표 아래(늦은)부터 ----
                 let assignedRef = null;
-                if (quarterResters.length > 0) {
-                    let candidates = [...quarterResters];
-                    candidates.sort((a, b) => {
-                        if (refereeUsage[a] !== refereeUsage[b]) return refereeUsage[a] - refereeUsage[b];
-                        const idxA = initialOrder.indexOf(normalizeName(a));
-                        const idxB = initialOrder.indexOf(normalizeName(b));
-                        return idxB - idxA;
-                    });
-                    assignedRef = candidates[0];
-                    refereeUsage[assignedRef]++;
-                }
+                const refCands = quarterResters.filter(m => m !== gkLast).sort((a, b) => rankOf(b) - rankOf(a));
+                if (refCands.length > 0) assignedRef = refCands[0];
+                else if (quarterResters.length > 0) assignedRef = quarterResters[0];
                 referees.push(assignedRef);
 
                 let onField = sortedMembers.filter(m => !quarterResters.includes(m));
@@ -407,30 +414,28 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                 let assignment = {};
                 let availablePlayers = [...onField];
 
-                // ---- GK 배정 (기존 우선순위 유지) ----
+                // ---- 키퍼(GK) 배정: 전담 우선 / 그 외엔 투표 아래부터 로테이션 + 공정성 제약 ----
+                let assignedGk = null;
                 const gkSlotExists = slots.includes('GK');
                 if (gkSlotExists) {
-                    let assignedGk = null;
-                    let availableSuperGks = superGks.filter(gk => availablePlayers.includes(gk));
-                    if (availableSuperGks.length > 0) assignedGk = availableSuperGks[0];
-                    if (!assignedGk) {
-                        let availablePrimaryGks = primaryGks.filter(gk => availablePlayers.includes(gk));
-                        if (availablePrimaryGks.length > 0) assignedGk = availablePrimaryGks[0];
-                    }
-                    if (!assignedGk) {
-                        let availableSecondaryGks = secondaryGks.filter(gk => availablePlayers.includes(gk) && !secondaryGkUsage[gk]);
-                        if (availableSecondaryGks.length > 0) { assignedGk = availableSecondaryGks[0]; secondaryGkUsage[assignedGk] = 1; }
-                    }
-                    if (!assignedGk) {
-                        for (let i = availablePlayers.length - 1; i >= 0; i--) {
-                            const candidate = availablePlayers[i];
-                            if (!fillerGkUsage[candidate]) { assignedGk = candidate; fillerGkUsage[assignedGk] = 1; break; }
-                        }
-                        if (!assignedGk && availablePlayers.length > 0) assignedGk = availablePlayers[availablePlayers.length - 1];
+                    const onFieldSuper = onField.filter(m => superGks.includes(m));
+                    if (onFieldSuper.length > 0) {
+                        assignedGk = onFieldSuper[0];        // 전담 키퍼는 항상 골문
+                    } else {
+                        const banned = new Set(restRefLast); // 직전 휴식/심판자 → 이번 키퍼 금지
+                        if (gkLast) banned.add(gkLast);      // 직전 키퍼 → 연속 금지
+                        let elig = availablePlayers.filter(m => !banned.has(m));
+                        if (elig.length === 0) elig = [...availablePlayers]; // 불가피하면 완화
+                        // 1순위: 키퍼 보장 미충족(주/부 GK) 중 투표 아래부터 → 부GK ≥1회 보장
+                        const need = elig.filter(m => gkGuarColumn.includes(m) && gkCount[m] === 0);
+                        const pool = need.length > 0 ? need : elig;
+                        pool.sort((a, b) => rankOf(b) - rankOf(a)); // 아래(늦은 투표)부터
+                        assignedGk = pool[0];
                     }
                     if (assignedGk) {
                         assignment['GK'] = [assignedGk];
                         availablePlayers.splice(availablePlayers.indexOf(assignedGk), 1);
+                        gkCount[assignedGk]++;
                         const gp = localPlayerDB[assignedGk];
                         if ((gp.pos1 || []).includes('GK')) { pos1Usage[assignedGk]++; }
                         else if ((gp.pos2 || []).includes('GK')) { pos2Usage[assignedGk]++; qualityCost += 2; }
@@ -476,6 +481,15 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                     }
                 }
                 lineups.push(assignment);
+
+                // [추가] 다음 쿼터 제약용 상태 갱신 (직전 키퍼/휴식/심판 기록)
+                if (assignedGk && superGks.includes(assignedGk)) {
+                    gkLast = null; restRefLast = new Set();          // 전담 키퍼는 연속 허용
+                } else {
+                    gkLast = assignedGk || null;
+                    restRefLast = new Set(quarterResters);
+                    if (assignedRef) restRefLast.add(assignedRef);
+                }
             }
 
             // ---- 최종 비용 계산 ----
@@ -487,11 +501,17 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                 preferShort += Math.max(0, Math.min(PREF_TARGET, ofq) - pos1Usage[m]);
             });
 
+            // [추가] 키퍼 보장: 전담 키퍼가 없을 때, GK 보유자가 한 번도 골문에 안 서면 페널티
+            let gkGuaranteeShort = 0;
+            if (!hasDedicatedGk) {
+                gkGuarColumn.forEach(m => { if ((gkCount[m] || 0) === 0 && onFieldCount[m] > 0) gkGuaranteeShort++; });
+            }
+
             // 쿼터별 팀 전력 편차(표시용; 휴식 로테이션이 고정이라 시도와 무관하게 일정)
             const qScores = lineups.map(l => Object.values(l).flat().filter(Boolean).reduce((sum, name) => sum + (localPlayerDB[name]?.s1 || 65), 0));
             const balance = qScores.length > 1 ? Math.max(...qScores) - Math.min(...qScores) : 0;
 
-            const totalCost = guaranteeShort * 1000 + qualityCost + preferShort * 15;
+            const totalCost = guaranteeShort * 1000 + gkGuaranteeShort * 800 + qualityCost + preferShort * 15;
 
             if (totalCost < bestCost) {
                 bestCost = totalCost;

@@ -312,9 +312,42 @@ function downloadExcel(incomeLogs, expenseLogs, startDate, endDate) {
     window.showNotification("엑셀 파일이 다운로드되었습니다. (5개 시트)");
 }
 
+// [추가] 현재 보기 모드: 'day'(선택한 날짜) | 'all'(전체) | 'range'(기간 지정)
+let viewMode = 'day';
+
+// [추가] 보기 모드에 따른 실제 조회 범위 계산
+function effectiveRange() {
+    if (viewMode === 'all') return ['', ''];
+    if (viewMode === 'range') return [filterStartDateEl.value, filterEndDateEl.value];
+    const d = attendanceDate.value;            // 'day'
+    return [d, d];
+}
+
+// [추가] 보기 모드 버튼/범위 표시 UI 갱신
+function updateViewModeUI() {
+    const map = { day: 'view-day-btn', all: 'view-all-btn', range: 'view-range-btn' };
+    Object.entries(map).forEach(([mode, id]) => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        const on = (mode === viewMode);
+        btn.classList.toggle('bg-indigo-600', on);
+        btn.classList.toggle('text-white', on);
+        btn.classList.toggle('text-gray-600', !on);
+        btn.classList.toggle('bg-white', !on);
+    });
+    const picker = document.getElementById('range-picker');
+    if (picker) picker.classList.toggle('hidden', viewMode !== 'range');
+    const label = document.getElementById('log-range-label');
+    if (label) {
+        const [s, e] = effectiveRange();
+        if (viewMode === 'all') label.textContent = '— 전체';
+        else if (viewMode === 'day') label.textContent = s ? `— ${s}` : '';
+        else label.textContent = `— ${s || '처음'} ~ ${e || '끝'}`;
+    }
+}
+
 export function renderForDate() {
-    const startDate = filterStartDateEl.value;
-    const endDate = filterEndDateEl.value;
+    const [startDate, endDate] = effectiveRange();
 
     const filteredAttendance = state.attendanceLog.filter(log => (!startDate || log.date >= startDate) && (!endDate || log.date <= endDate));
 
@@ -324,6 +357,7 @@ export function renderForDate() {
     calculateAndRenderTotalBalance();
     renderAccountingChart();
     populateDateJump();
+    updateViewModeUI();
 
     const selectedDate = attendanceDate.value;
     if(selectedDate) renderFullPlayerChecklist();
@@ -333,10 +367,7 @@ export function autoFillAttendees(names) {
     state.currentAttendees = names;
     const today = localDateStr();
     attendanceDate.value = today;
-
-    filterStartDateEl.value = today;
-    filterEndDateEl.value = today;
-    filterPeriodSelectEl.value = 'all';
+    viewMode = 'day';   // 팀배정에서 넘어오면 오늘 날짜 보기로
 
     renderFullPlayerChecklist();
     renderForDate();
@@ -349,25 +380,7 @@ export function init(dependencies) {
 
     const pageElement = document.getElementById('page-accounting');
     pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 space-y-8"><div class="bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">출석 기록 관리</h2><button id="admin-login-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1 px-3 rounded-lg">관리자 로그인</button></div><div class="mb-3"><label for="attendance-date" class="block text-md font-semibold text-gray-700 mb-2">날짜 선택</label><input type="date" id="attendance-date" class="w-full p-2 border rounded-lg"></div><div class="mb-3"><select id="record-date-jump" class="w-full p-2 border rounded-lg bg-white text-sm text-gray-700"><option value="">📌 기록 있는 날 바로가기</option></select></div><div class="mb-4"><label class="flex items-center gap-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg cursor-pointer admin-control"><input type="checkbox" id="grass-toggle" class="w-4 h-4 text-emerald-600 rounded"><span class="text-sm font-semibold text-emerald-800">🌱 천연잔디 날 (일반 70 / 학생 35)</span></label><p class="text-xs text-gray-400 mt-1">체크 후 저장하면 이 날의 회비가 천연잔디 금액으로 자동 입력됩니다.</p></div><div class="mb-4"><div class="flex justify-between items-center mb-2"><label class="block text-md font-semibold text-gray-700">참석자 선택</label><div class="space-x-2"><button id="check-all-btn" class="text-xs text-indigo-600 hover:underline admin-control" disabled>모두 선택</button><button id="uncheck-all-btn" class="text-xs text-gray-500 hover:underline admin-control" disabled>모두 해제</button></div></div><div id="attendance-checklist" class="max-h-60 overflow-y-auto border rounded-lg p-3 space-y-2"></div><div class="flex space-x-2 mt-2"><input type="text" id="manual-attendee-name" class="flex-grow bg-gray-50 border border-gray-300 text-sm rounded-lg p-2 admin-control" placeholder="수동 추가..."><button type="button" id="manual-attendee-add-btn" class="text-white bg-indigo-600 hover:bg-indigo-700 font-medium rounded-lg text-sm px-4 py-2 admin-control">추가</button></div></div><button id="record-attendance-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition-transform transform hover:scale-105 shadow-lg admin-control" disabled>선택한 날짜 출석 저장</button></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">💰 총 잔액</h2><p id="total-balance" class="text-4xl font-bold text-indigo-600">0 Dhs</p></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">📊 월별 요약</h2><div class="w-full"><canvas id="accountingChart"></canvas></div></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">Remark / 특정 메모</h2><textarea id="memo-area" class="w-full p-3 border rounded-lg admin-control bg-gray-50" rows="5" placeholder="미납자 정보, 주요 공지 등..." disabled></textarea><p class="text-xs text-gray-500 mt-2">메모는 자동으로 저장됩니다.</p>
-        <div class="mt-4 p-4 bg-gray-50 rounded-lg space-y-3">
-            <div>
-                <label for="filter-start-date" class="block text-sm font-medium text-gray-700 mb-1">조회 기간</label>
-                <div class="grid grid-cols-2 gap-2">
-                    <input type="date" id="filter-start-date" class="p-2 border rounded-md w-full text-sm bg-white">
-                    <input type="date" id="filter-end-date" class="p-2 border rounded-md w-full text-sm bg-white">
-                </div>
-            </div>
-            <div>
-                <select id="filter-period-select" class="p-2 border rounded-md bg-white w-full text-sm">
-                    <option value="all">전체 기간</option>
-                    <option value="1m">최근 1개월</option>
-                    <option value="3m">최근 3개월</option>
-                    <option value="6m">최근 6개월</option>
-                </select>
-            </div>
-            <button id="excel-download-btn" class="w-full bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700">엑셀 다운로드</button>
-        </div>
-    </div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="border-b border-gray-200 mb-4"><nav class="flex -mb-px space-x-6" aria-label="Tabs"><button id="income-tab-btn" class="accounting-tab active text-indigo-600 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💰 회비 (수입)</button><button id="expense-tab-btn" class="accounting-tab text-gray-500 hover:text-gray-700 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💸 지출</button></nav></div><div id="income-log-section"><div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold">회비 로그</h2><button id="delete-range-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1.5 px-3 rounded-lg admin-control" disabled>이 조회기간 전체 삭제</button></div><div class="overflow-x-auto max-h-[80vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">#</th> <th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">이름</th><th scope="col" class="py-3 px-4">납부 상태</th><th scope="col" class="py-3 px-4">납부액</th><th scope="col" class="py-3 px-4">비고</th></tr></thead><tbody id="accounting-log-body"></tbody><tfoot id="accounting-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div><div id="expense-log-section" class="hidden"><h2 class="text-2xl font-bold mb-4">지출 로그</h2><form id="expense-form" class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6 items-end"><div class="sm:col-span-2"><label for="expense-item" class="block text-sm font-medium">항목</label><input type="text" id="expense-item" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><div><label for="expense-amount" class="block text-sm font-medium">금액</label><input type="number" id="expense-amount" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><button type="submit" class="w-full bg-red-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600 admin-control" disabled>지출 추가</button></form><div class="overflow-x-auto max-h-[70vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">항목</th><th scope="col" class="py-3 px-4">금액</th><th scope="col" class="py-3 px-4">관리</th></tr></thead><tbody id="expense-log-body"></tbody><tfoot id="expense-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div></div></div>`;
+    </div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="border-b border-gray-200 mb-4"><nav class="flex -mb-px space-x-6" aria-label="Tabs"><button id="income-tab-btn" class="accounting-tab active text-indigo-600 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💰 회비 (수입)</button><button id="expense-tab-btn" class="accounting-tab text-gray-500 hover:text-gray-700 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💸 지출</button></nav></div><div id="income-log-section"><div class="mb-4"><div class="flex flex-wrap justify-between items-center gap-2 mb-2"><h2 class="text-2xl font-bold">회비 로그 <span id="log-range-label" class="text-base font-normal text-gray-500"></span></h2><div class="flex gap-2"><button id="excel-download-btn" class="text-sm text-white bg-green-600 hover:bg-green-700 font-bold py-1.5 px-3 rounded-lg">엑셀</button><button id="delete-range-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1.5 px-3 rounded-lg admin-control" disabled>이 범위 삭제</button></div></div><div class="flex flex-wrap items-center gap-2"><div class="inline-flex rounded-lg border border-gray-300 overflow-hidden text-sm"><button id="view-day-btn" class="view-mode-btn px-3 py-1.5 font-medium">선택한 날짜</button><button id="view-all-btn" class="view-mode-btn px-3 py-1.5 font-medium border-l border-gray-300">전체</button><button id="view-range-btn" class="view-mode-btn px-3 py-1.5 font-medium border-l border-gray-300">기간 지정</button></div><div id="range-picker" class="hidden flex items-center gap-1"><input type="date" id="filter-start-date" class="p-1.5 border rounded-md text-sm bg-white"><span class="text-gray-400">~</span><input type="date" id="filter-end-date" class="p-1.5 border rounded-md text-sm bg-white"><select id="filter-period-select" class="p-1.5 border rounded-md bg-white text-sm"><option value="custom">직접 지정</option><option value="1m">최근 1개월</option><option value="3m">최근 3개월</option><option value="6m">최근 6개월</option><option value="all">전체</option></select></div></div></div><div class="overflow-x-auto max-h-[80vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">#</th> <th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">이름</th><th scope="col" class="py-3 px-4">납부 상태</th><th scope="col" class="py-3 px-4">납부액</th><th scope="col" class="py-3 px-4">비고</th></tr></thead><tbody id="accounting-log-body"></tbody><tfoot id="accounting-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div><div id="expense-log-section" class="hidden"><h2 class="text-2xl font-bold mb-4">지출 로그</h2><form id="expense-form" class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6 items-end"><div class="sm:col-span-2"><label for="expense-item" class="block text-sm font-medium">항목</label><input type="text" id="expense-item" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><div><label for="expense-amount" class="block text-sm font-medium">금액</label><input type="number" id="expense-amount" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><button type="submit" class="w-full bg-red-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600 admin-control" disabled>지출 추가</button></form><div class="overflow-x-auto max-h-[70vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">항목</th><th scope="col" class="py-3 px-4">금액</th><th scope="col" class="py-3 px-4">관리</th></tr></thead><tbody id="expense-log-body"></tbody><tfoot id="expense-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div></div></div>`;
 
     attendanceDate = document.getElementById('attendance-date');
     checklistContainer = document.getElementById('attendance-checklist');
@@ -401,20 +414,31 @@ export function init(dependencies) {
 
    if(attendanceDate) attendanceDate.addEventListener('change', () => {
         state.currentAttendees = [];
-        const selectedDate = attendanceDate.value;
-        filterStartDateEl.value = selectedDate;
-        filterEndDateEl.value = selectedDate;
+        // 날짜를 바꾸면 자동으로 '선택한 날짜' 보기로 전환 (그 날 기록만 표시)
+        viewMode = 'day';
         renderForDate();
     });
 
-    // [추가] 기록 있는 날 바로가기
+    // [추가] 기록 있는 날 바로가기 → 그 날짜 + '선택한 날짜' 보기로 이동
     if (recordDateJump) recordDateJump.addEventListener('change', () => {
         const d = recordDateJump.value;
         if (!d) return;
         state.currentAttendees = [];
         attendanceDate.value = d;
-        filterStartDateEl.value = d;
-        filterEndDateEl.value = d;
+        viewMode = 'day';
+        renderForDate();
+    });
+
+    // [추가] 보기 모드 버튼 (선택한 날짜 / 전체 / 기간 지정)
+    const viewDayBtn = document.getElementById('view-day-btn');
+    const viewAllBtn = document.getElementById('view-all-btn');
+    const viewRangeBtn = document.getElementById('view-range-btn');
+    if (viewDayBtn) viewDayBtn.addEventListener('click', () => { viewMode = 'day'; renderForDate(); });
+    if (viewAllBtn) viewAllBtn.addEventListener('click', () => { viewMode = 'all'; renderForDate(); });
+    if (viewRangeBtn) viewRangeBtn.addEventListener('click', () => {
+        viewMode = 'range';
+        if (!filterStartDateEl.value) filterStartDateEl.value = attendanceDate.value;
+        if (!filterEndDateEl.value) filterEndDateEl.value = attendanceDate.value;
         renderForDate();
     });
 
@@ -425,15 +449,18 @@ export function init(dependencies) {
     if(checkAllBtn) checkAllBtn.addEventListener('click', () => checklistContainer.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = true));
     if(uncheckAllBtn) uncheckAllBtn.addEventListener('click', () => checklistContainer.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = false));
 
-    filterStartDateEl.addEventListener('change', renderForDate);
-    filterEndDateEl.addEventListener('change', renderForDate);
-    filterPeriodSelectEl.addEventListener('change', (e) => {
+    if(filterStartDateEl) filterStartDateEl.addEventListener('change', () => { viewMode = 'range'; renderForDate(); });
+    if(filterEndDateEl) filterEndDateEl.addEventListener('change', () => { viewMode = 'range'; renderForDate(); });
+    if(filterPeriodSelectEl) filterPeriodSelectEl.addEventListener('change', (e) => {
         const period = e.target.value;
+        viewMode = 'range';
         const today = new Date();
         let startDate = new Date();
         if (period === 'all') {
             filterStartDateEl.value = '';
             filterEndDateEl.value = '';
+        } else if (period === 'custom') {
+            // 직접 지정: 입력칸 값을 그대로 사용
         } else {
             if (period === '1m') startDate.setMonth(today.getMonth() - 1);
             else if (period === '3m') startDate.setMonth(today.getMonth() - 3);
@@ -444,18 +471,16 @@ export function init(dependencies) {
         renderForDate();
     });
     excelDownloadBtn.addEventListener('click', () => {
-        const startDate = filterStartDateEl.value;
-        const endDate = filterEndDateEl.value;
+        const [startDate, endDate] = effectiveRange();
         const filteredAttendance = state.attendanceLog.filter(log => (!startDate || log.date >= startDate) && (!endDate || log.date <= endDate));
         const filteredExpenses = state.expenseLog.filter(log => (!startDate || log.date >= startDate) && (!endDate || log.date <= endDate));
         downloadExcel(filteredAttendance, filteredExpenses, startDate, endDate);
     });
 
-    // [추가] 조회기간 전체 삭제: 현재 회비 로그에 보이는 모든 기록 삭제
+    // [추가] 현재 보기 범위의 회비 기록 전체 삭제
     if (deleteRangeBtn) deleteRangeBtn.addEventListener('click', async () => {
         if (!state.isAdmin) return;
-        const startDate = filterStartDateEl.value;
-        const endDate = filterEndDateEl.value;
+        const [startDate, endDate] = effectiveRange();
         const targets = state.attendanceLog.filter(log => (!startDate || log.date >= startDate) && (!endDate || log.date <= endDate));
         if (targets.length === 0) { window.showNotification('삭제할 회비 기록이 없습니다.', 'error'); return; }
         const rangeText = (startDate || endDate) ? `${startDate || '처음'} ~ ${endDate || '끝'}` : '전체 기간';
