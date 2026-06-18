@@ -132,41 +132,40 @@ function renderAdminStatus() {
     const panel = document.getElementById('vote-status-panel');
     if (!panel) return;
 
-    const attend = adminResponses.filter(r => r.status === 'attend').sort((a, b) => tsSeconds(a.attendingSince) - tsSeconds(b.attendingSince));
-    const maybe = adminResponses.filter(r => r.status === 'maybe').sort((a, b) => tsSeconds(a.updatedAt) - tsSeconds(b.updatedAt));
-    const absent = adminResponses.filter(r => r.status === 'absent').sort((a, b) => tsSeconds(a.updatedAt) - tsSeconds(b.updatedAt));
+    const attend = adminResponses.filter(r => r.status === 'attend')
+        .sort((a, b) => tsSeconds(a.attendingSince) - tsSeconds(b.attendingSince));
+    const absent = adminResponses.filter(r => r.status === 'absent')
+        .sort((a, b) => tsSeconds(a.updatedAt) - tsSeconds(b.updatedAt));
 
     const attendRows = attend.map((r, i) => `
         <li class="flex items-center justify-between py-1.5 border-b">
             <span><span class="text-gray-400 mr-2">${i + 1}</span><b>${esc(r.name)}</b>${r.guest ? ' <span class="text-xs text-amber-600">(게스트)</span>' : ''}
                 <span class="text-xs text-gray-400 ml-2">투표 ${fmtTime(r.attendingSince)}</span></span>
-            <span class="space-x-1">
-                <button data-id="${esc(r.id)}" class="vote-to-maybe text-xs text-amber-600 hover:underline">미정</button>
-                <button data-id="${esc(r.id)}" class="vote-to-absent text-xs text-yellow-600 hover:underline">불참</button>
+            <span class="space-x-2">
+                <button data-id="${esc(r.id)}" class="vote-to-absent text-xs text-yellow-600 hover:underline">불참 처리</button>
                 <button data-id="${esc(r.id)}" class="vote-del text-xs text-red-500 hover:underline">삭제</button>
             </span>
         </li>`).join('');
 
-    const simpleRows = (arr) => arr.map(r => `
+    const absentRows = absent.map(r => `
         <li class="flex items-center justify-between py-1.5 border-b text-gray-500">
             <span>${esc(r.name)}${r.guest ? ' <span class="text-xs text-amber-600">(게스트)</span>' : ''}</span>
-            <span class="space-x-1">
-                <button data-id="${esc(r.id)}" class="vote-to-attend text-xs text-green-600 hover:underline">참석</button>
+            <span class="space-x-2">
+                <button data-id="${esc(r.id)}" class="vote-to-attend text-xs text-green-600 hover:underline">참석 처리</button>
                 <button data-id="${esc(r.id)}" class="vote-del text-xs text-red-500 hover:underline">삭제</button>
             </span>
         </li>`).join('');
 
     panel.innerHTML = `
         <div class="border-t pt-4">
-            <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-                <h3 class="text-xl font-bold">투표 현황 <span class="text-green-600">참석 ${attend.length}</span> / <span class="text-amber-600">미정 ${maybe.length}</span> / <span class="text-gray-400">불참 ${absent.length}</span></h3>
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-xl font-bold">투표 현황 <span class="text-green-600">참석 ${attend.length}</span> / <span class="text-gray-400">불참 ${absent.length}</span></h3>
                 <button id="vote-to-balancer" class="bg-indigo-600 text-white text-sm font-bold py-2 px-4 rounded-lg hover:bg-indigo-700">이 투표로 팀 짜기 →</button>
             </div>
-            <p class="text-xs text-gray-400 mb-2">※ 참석자는 투표가 늦은 사람일수록 아래쪽에 있으며, 팀 배정 후 아래(늦은 투표)부터 휴식·키퍼를 맡습니다. ‘이 투표로 팀 짜기’는 참석자 명단을 팀 배정기에 세로로 채워줍니다.</p>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <p class="text-xs text-gray-400 mb-2">※ 참석자는 투표가 늦은 사람일수록 아래쪽에 있으며, 팀 배정 후 아래(늦은 투표)부터 휴식·키퍼를 맡습니다.</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div><p class="font-semibold text-green-700 mb-1">✅ 참석 (투표순)</p><ul class="text-sm">${attendRows || '<li class="text-gray-400 py-2">아직 없음</li>'}</ul></div>
-                <div><p class="font-semibold text-amber-600 mb-1">🤔 미정</p><ul class="text-sm">${simpleRows(maybe) || '<li class="text-gray-400 py-2">아직 없음</li>'}</ul></div>
-                <div><p class="font-semibold text-gray-600 mb-1">❌ 불참</p><ul class="text-sm">${simpleRows(absent) || '<li class="text-gray-400 py-2">아직 없음</li>'}</ul></div>
+                <div><p class="font-semibold text-gray-600 mb-1">❌ 불참</p><ul class="text-sm">${absentRows || '<li class="text-gray-400 py-2">아직 없음</li>'}</ul></div>
             </div>
             <div class="mt-4 flex space-x-2">
                 <input type="text" id="vote-admin-add-name" class="flex-grow p-2 border rounded-lg text-sm" placeholder="명단에 없는 사람 직접 추가">
@@ -176,7 +175,6 @@ function renderAdminStatus() {
 
     panel.querySelectorAll('.vote-to-absent').forEach(b => b.onclick = () => adminSetStatus(b.dataset.id, 'absent'));
     panel.querySelectorAll('.vote-to-attend').forEach(b => b.onclick = () => adminSetStatus(b.dataset.id, 'attend'));
-    panel.querySelectorAll('.vote-to-maybe').forEach(b => b.onclick = () => adminSetStatus(b.dataset.id, 'maybe'));
     panel.querySelectorAll('.vote-del').forEach(b => b.onclick = () => adminDelete(b.dataset.id));
     const addBtn = document.getElementById('vote-admin-add-btn');
     if (addBtn) addBtn.onclick = adminAdd;
@@ -229,36 +227,31 @@ function sendToBalancer() {
    공개 투표 페이지 (로그인 없이 ?voteId=... 로 진입)
    ========================================================= */
 export async function renderVotePage(voteId) {
-    db = db || window.__db;
-    let vote = null;
-    try {
-        const snap = await getDoc(doc(db, "votes", voteId));
-        if (snap.exists()) vote = snap.data();
-    } catch (e) { console.error(e); }
+    db = window.__db || db;
+    if (!db) { document.body.innerHTML = `<p style="text-align:center;margin-top:40px">초기화 오류. 새로고침 해주세요.</p>`; return; }
 
+    let vote = null;
+    try { const vs = await getDoc(doc(db, "votes", voteId)); if (vs.exists()) vote = vs.data(); } catch (e) { console.error(e); }
     if (!vote) {
-        document.body.innerHTML = `<p style="text-align:center;margin-top:40px;font-size:1.3rem;color:#ef4444">투표를 찾을 수 없습니다.</p>`;
+        document.body.innerHTML = `<div style="max-width:480px;margin:60px auto;text-align:center;font-family:'Noto Sans KR',sans-serif"><h1 style="font-size:1.4rem;color:#ef4444">투표를 찾을 수 없습니다</h1><p style="color:#6b7280;margin-top:8px">링크가 만료되었거나 아직 투표가 만들어지지 않았습니다.</p></div>`;
         return;
     }
 
     let players = [];
-    try {
-        const ps = await getDocs(collection(db, "players"));
-        players = ps.docs.map(d => d.data().name).filter(Boolean).sort((a, b) => a.localeCompare(b, 'ko-KR'));
-    } catch (e) { console.error(e); }
+    try { const ps = await getDocs(collection(db, "players")); players = ps.docs.map(d => d.data().name).filter(Boolean).sort((a, b) => a.localeCompare(b, 'ko-KR')); } catch (e) { console.error(e); }
     const playerSet = new Set(players.map(normName));
 
-    const headerTitle = vote.title || `${vote.date || ''} 참석 투표`;
     const info = [vote.date, vote.time, vote.location].filter(Boolean).join(' · ');
+    const headerTitle = vote.title || `${vote.date || ''} 참석 투표`;
 
-    document.body.style.background = '#f3f4f6';
+    document.body.className = 'bg-gray-100';
     document.body.innerHTML = `
     <div style="max-width:520px;margin:0 auto;padding:16px;font-family:'Noto Sans KR',sans-serif">
         <div style="text-align:center;margin:16px 0 8px">
             <h1 style="font-size:1.6rem;font-weight:800;color:#111827">⚽ ${esc(headerTitle)}</h1>
             <p style="color:#6b7280;margin-top:6px">${esc(info)}</p>
         </div>
-        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:20px">
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08)">
             <label style="display:block;font-weight:700;margin-bottom:6px">이름</label>
             <input id="v-name" list="v-players" autocomplete="off" placeholder="이름을 입력/선택하세요"
                 style="width:100%;padding:12px;border:1px solid #d1d5db;border-radius:10px;font-size:16px;box-sizing:border-box">
@@ -275,12 +268,12 @@ export async function renderVotePage(voteId) {
         <div style="background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:20px;margin-top:16px">
             <div id="v-counts" style="font-weight:800;margin-bottom:10px"></div>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-                <div><div style="color:#16a34a;font-weight:700;border-bottom:1px solid #eee;padding-bottom:4px;margin-bottom:6px">참석</div><div id="v-list-attend" style="font-size:.92rem;line-height:1.8"></div></div>
-                <div><div style="color:#d97706;font-weight:700;border-bottom:1px solid #eee;padding-bottom:4px;margin-bottom:6px">미정</div><div id="v-list-maybe" style="font-size:.92rem;line-height:1.8"></div></div>
-                <div><div style="color:#9ca3af;font-weight:700;border-bottom:1px solid #eee;padding-bottom:4px;margin-bottom:6px">불참</div><div id="v-list-absent" style="font-size:.92rem;line-height:1.8"></div></div>
+                <div><div style="color:#16a34a;font-weight:700;border-bottom:1px solid #eee;padding-bottom:4px;margin-bottom:6px">참석</div><div id="v-l-attend" style="font-size:.92rem;line-height:1.8"></div></div>
+                <div><div style="color:#d97706;font-weight:700;border-bottom:1px solid #eee;padding-bottom:4px;margin-bottom:6px">미정</div><div id="v-l-maybe" style="font-size:.92rem;line-height:1.8"></div></div>
+                <div><div style="color:#9ca3af;font-weight:700;border-bottom:1px solid #eee;padding-bottom:4px;margin-bottom:6px">불참</div><div id="v-l-absent" style="font-size:.92rem;line-height:1.8"></div></div>
             </div>
         </div>
-        <p style="text-align:center;color:#cbd5e1;font-size:.75rem;margin:20px 0">© 2025 BareaPlay. Created by 송감독.</p>
+        <p style="text-align:center;color:#cbd5e1;font-size:.75rem;margin-top:20px">BareaPlay ⚽</p>
     </div>`;
 
     const nameInput = document.getElementById('v-name');
@@ -302,14 +295,13 @@ export async function renderVotePage(voteId) {
             await setDoc(ref, payload, { merge: true });
             const label = status === 'attend' ? '참석' : (status === 'maybe' ? '미정' : '불참');
             msg.style.color = status === 'attend' ? '#16a34a' : (status === 'maybe' ? '#d97706' : '#6b7280');
-            msg.textContent = `${name}님 → ${label}으로 등록되었습니다!`;
+            msg.textContent = `${name}님 -> ${label}으로 등록되었습니다!`;
         } catch (e) {
             console.error(e);
             msg.style.color = '#ef4444';
             msg.textContent = '저장 실패. 다시 시도해주세요.';
         }
     }
-
     document.getElementById('v-attend').addEventListener('click', () => submitVote('attend'));
     document.getElementById('v-maybe').addEventListener('click', () => submitVote('maybe'));
     document.getElementById('v-absent').addEventListener('click', () => submitVote('absent'));
@@ -320,16 +312,14 @@ export async function renderVotePage(voteId) {
         const maybe = all.filter(r => r.status === 'maybe').sort((a, b) => tsSeconds(a.updatedAt) - tsSeconds(b.updatedAt));
         const absent = all.filter(r => r.status === 'absent').sort((a, b) => tsSeconds(a.updatedAt) - tsSeconds(b.updatedAt));
         const cEl = document.getElementById('v-counts');
-        if (cEl) cEl.innerHTML = `현황 — <span style="color:#16a34a">참석 ${attend.length}</span> · <span style="color:#d97706">미정 ${maybe.length}</span> · <span style="color:#9ca3af">불참 ${absent.length}</span>`;
+        if (cEl) cEl.innerHTML = `현황 &mdash; <span style="color:#16a34a">참석 ${attend.length}</span> &middot; <span style="color:#d97706">미정 ${maybe.length}</span> &middot; <span style="color:#9ca3af">불참 ${absent.length}</span>`;
         const fill = (id, arr, withNum) => {
             const el = document.getElementById(id);
             if (!el) return;
-            el.innerHTML = arr.length
-                ? arr.map((r, i) => `<div>${withNum ? (i + 1) + '. ' : ''}${esc(r.name)}${r.guest ? ' <span style="color:#d97706;font-size:.78rem">(G)</span>' : ''}</div>`).join('')
-                : '<span style="color:#cbd5e1">-</span>';
+            el.innerHTML = arr.length ? arr.map((r, i) => `<div>${withNum ? (i + 1) + '. ' : ''}${esc(r.name)}${r.guest ? ' <span style="color:#d97706;font-size:.78rem">(G)</span>' : ''}</div>`).join('') : '<span style="color:#cbd5e1">-</span>';
         };
-        fill('v-list-attend', attend, true);
-        fill('v-list-maybe', maybe, false);
-        fill('v-list-absent', absent, false);
+        fill('v-l-attend', attend, true);
+        fill('v-l-maybe', maybe, false);
+        fill('v-l-absent', absent, false);
     });
 }

@@ -298,7 +298,7 @@ window.promptForAdminPassword = function() {
 }
 
 function switchTab(activeKey, force = false) {
-    if ((activeKey === 'players' || activeKey === 'share') && !state.isAdmin && !force) {
+    if ((activeKey === 'players' || activeKey === 'share' || activeKey === 'balancer' || activeKey === 'lineup') && !state.isAdmin && !force) {
         pendingTabSwitch = activeKey; 
         promptForAdminPassword();
         return; 
@@ -327,87 +327,129 @@ window.refreshData = async function(collectionName) {
 };
 
 function renderSharePageView(shareData) {
-    const { meetingInfo, teams: teamsObject, lineups } = shareData;
+    const POS_MAP = { '4-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 75}, {pos: 'CB', x: 65, y: 80}, {pos: 'CB', x: 35, y: 80}, {pos: 'LB', x: 15, y: 75}, {pos: 'RW', x: 85, y: 45}, {pos: 'CM', x: 65, y: 55}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 15, y: 45}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-3-3': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 88, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 12, y: 78}, {pos: 'CM', x: 50, y: 65}, {pos: 'MF', x: 70, y: 50}, {pos: 'MF', x: 30, y: 50}, {pos: 'RW', x: 80, y: 25}, {pos: 'FW', x: 50, y: 18}, {pos: 'LW', x: 20, y: 25} ], '3-5-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 75, y: 80}, {pos: 'CB', x: 50, y: 85}, {pos: 'CB', x: 25, y: 80}, {pos: 'RW', x: 90, y: 50}, {pos: 'CM', x: 65, y: 55}, {pos: 'MF', x: 50, y: 65}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 10, y: 50}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-2-3-1': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 15, y: 78}, {pos: 'MF', x: 60, y: 65}, {pos: 'MF', x: 40, y: 65}, {pos: 'RW', x: 80, y: 40}, {pos: 'MF', x: 50, y: 45}, {pos: 'LW', x: 20, y: 40}, {pos: 'FW', x: 50, y: 18} ], '3-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 80, y: 80}, {pos: 'CB', x: 50, y: 82}, {pos: 'CB', x: 20, y: 80}, {pos: 'RW', x: 85, y: 50}, {pos: 'CM', x: 60, y: 60}, {pos: 'CM', x: 40, y: 60}, {pos: 'LW', x: 15, y: 50}, {pos: 'FW', x: 65, y: 25}, {pos: 'FW', x: 35, y: 25} ], '3-4-1': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 80, y: 80}, {pos: 'CB', x: 50, y: 82}, {pos: 'CB', x: 20, y: 80}, {pos: 'RW', x: 85, y: 50}, {pos: 'CM', x: 60, y: 60}, {pos: 'CM', x: 40, y: 60}, {pos: 'LW', x: 15, y: 50}, {pos: 'FW', x: 50, y: 20} ] };
+    const { meetingInfo = {}, teams: teamsObject = {}, lineups = {}, attendance = null } = shareData || {};
     const teams = Object.values(teamsObject || {});
-    document.body.innerHTML = '';
-    document.body.className = "bg-gray-100";
-        let locationHtml = safeUrl(meetingInfo.locationUrl) ? `<a href="${esc(safeUrl(meetingInfo.locationUrl))}" target="_blank" class="text-blue-600 underline">${esc(meetingInfo.location)}</a>` : (esc(meetingInfo.location) || '미정');
-    let contentHtml = `<div class="container mx-auto p-4 md:p-8"><header class="text-center mb-8 relative"><h1 class="text-4xl md:text-5xl font-bold text-gray-900">BareaPlay⚽</h1><p class="mt-2 text-lg text-gray-600">모임 결과</p></header><div class="bg-white p-6 rounded-lg shadow-md mb-8 max-w-2xl mx-auto"><h2 class="text-2xl font-bold mb-4 border-b pb-2">📅 모임 정보</h2><p class="text-gray-700 mb-2"><strong>시간:</strong> ${new Date(meetingInfo.time).toLocaleString('ko-KR')}</p><p class="text-gray-700"><strong>장소:</strong> ${locationHtml}</p></div><div class="bg-white p-6 rounded-lg shadow-md mb-8 max-w-4xl mx-auto"><h2 class="text-2xl font-bold mb-4 border-b pb-2">⚖️ 팀 배정 결과</h2><div class="grid grid-cols-1 md:grid-cols-${teams.length > 2 ? '3' : '2'} gap-4">`;
-    const colors = ["#14B8A6","#0288D1","#7B1FA2","#43A047","#F4511E"];
-    teams.forEach((team, i) => { contentHtml += `<div class="rounded-lg p-4 text-white" style="background-color:${colors[i%5]}"><h3 class="font-bold text-xl mb-2 border-b border-white/30 pb-2">팀 ${i + 1}</h3><ul class="space-y-1">${[...team].sort((a,b) => a.name.localeCompare(b.name, 'ko-KR')).map(p => `<li class="bg-white/20 p-2 rounded-md">${esc(p.name.replace(' (신규)',''))}</li>`).join('')}</ul></div>`; });
-    contentHtml += `</div></div>`;
-    
-    // [수정] 공유 페이지 뷰 렌더링 로직 수정 (심판/휴식 분리)
-    const createQuarterHTML = (teamLineup, qIndex) => {
-        if (!teamLineup || !teamLineup.lineups || !teamLineup.lineups[qIndex]) return '<div class="p-2 border rounded-lg bg-gray-50 text-center text-gray-400">데이터 없음</div>';
+    const colors = ["#0D9488", "#0288D1", "#7B1FA2", "#43A047", "#F4511E"];
+
+    let timeStr = '';
+    try { timeStr = meetingInfo.time ? new Date(meetingInfo.time).toLocaleString('ko-KR') : ''; } catch (e) { timeStr = String(meetingInfo.time || ''); }
+    const locationHtml = safeUrl(meetingInfo.locationUrl)
+        ? `<a href="${esc(safeUrl(meetingInfo.locationUrl))}" target="_blank" style="color:#2563eb;text-decoration:underline">${esc(meetingInfo.location)}</a>`
+        : (esc(meetingInfo.location) || '미정');
+
+    const getQ = (obj, idx) => { if (!obj) return null; if (Array.isArray(obj)) return obj[idx]; return obj[`q${idx + 1}`] || obj[`q_${idx}`] || null; };
+
+    function pitchHTML(teamLineup, qIndex) {
+        if (!teamLineup || !teamLineup.lineups || !teamLineup.lineups[qIndex]) {
+            return `<div class="bp-quarter"><div class="bp-pitch" style="display:flex;align-items:center;justify-content:center;color:#cbd5e1">-</div></div>`;
+        }
         const lineup = teamLineup.lineups[qIndex];
-        const formation = teamLineup.formations[qIndex];
-        
-        // 데이터 안전 접근
-        const getQData = (dataObj, idx) => {
-            if (Array.isArray(dataObj)) return dataObj[idx];
-            return dataObj[`q_${idx}`] || dataObj[`q${idx+1}`] || null;
-        };
+        const formation = (teamLineup.formations && teamLineup.formations[qIndex]) || '';
+        const referee = getQ(teamLineup.referees, qIndex);
+        const rawResters = getQ(teamLineup.resters, qIndex) || [];
+        const resters = Array.isArray(rawResters) ? rawResters.filter(r => r !== referee) : [];
+        let marks = '';
+        const counters = {};
+        (POS_MAP[formation] || []).forEach(fc => {
+            counters[fc.pos] = counters[fc.pos] || 0;
+            const name = (lineup[fc.pos] || [])[counters[fc.pos]] || '미배정';
+            let icon = '❓', bg = '#78909C';
+            if (fc.pos === 'GK') { icon = '🧤'; bg = '#00C853'; }
+            else if (['LB', 'RB', 'CB', 'DF'].includes(fc.pos)) { icon = '🛡'; bg = '#03A9F4'; }
+            else if (['MF', 'CM'].includes(fc.pos)) { icon = '⚙'; bg = '#FBC02D'; }
+            else if (['LW', 'RW', 'FW'].includes(fc.pos)) { icon = '🎯'; bg = '#FB8C00'; }
+            marks += `<div class="bp-marker" style="left:${fc.x}%;top:${fc.y}%"><div class="bp-icon" style="background:${bg}">${name === '미배정' ? '❓' : icon}</div><div class="bp-name">${name === '미배정' ? '-' : esc(name)}</div></div>`;
+            counters[fc.pos]++;
+        });
+        let foot = '';
+        if (referee) foot += `<span style="margin-right:8px"><b>⚖️</b> ${esc(referee)}</span>`;
+        foot += `<span><b>🛌</b> ${esc(resters.join(', ')) || '없음'}</span>`;
+        return `<div class="bp-quarter">
+            <div class="bp-pitch">
+                <div class="bp-qtitle">${qIndex + 1}쿼터 ${formation ? '(' + esc(formation) + ')' : ''}</div>
+                <div class="bp-line" style="top:50%;left:0;width:100%;height:1.5px"></div>
+                <div class="bp-circle" style="top:50%;left:50%;width:24%;height:17%;transform:translate(-50%,-50%)"></div>
+                <div class="bp-box" style="top:83%;left:20%;width:60%;height:17%"></div>
+                <div class="bp-box" style="top:0;left:20%;width:60%;height:17%"></div>
+                ${marks}
+            </div>
+            <div class="bp-foot">${foot}</div>
+        </div>`;
+    }
 
-        const rawResters = getQData(teamLineup.resters || {}, qIndex) || [];
-        const referee = getQData(teamLineup.referees || {}, qIndex);
-        
-        // 휴식자 목록에서 심판 제외
-        const realResters = Array.isArray(rawResters) 
-            ? rawResters.filter(r => r !== referee) 
-            : [];
+    let attendHtml = '';
+    if (attendance) {
+        const col = (title, color, arr, withNum) => `<div style="flex:1"><div style="font-weight:700;color:${color};border-bottom:1px solid #eee;padding-bottom:4px;margin-bottom:6px">${title} ${arr.length}</div>${arr.length ? arr.map((r, i) => `<div>${withNum ? (i + 1) + '. ' : ''}${esc(r.name)}${r.guest ? ' <span style=\'color:#d97706;font-size:.78rem\'>(G)</span>' : ''}</div>`).join('') : '<span style="color:#cbd5e1">-</span>'}</div>`;
+        attendHtml = `<div class="bp-card"><h2 class="bp-h2">🗳️ 참석 현황</h2><div style="display:flex;gap:16px;font-size:.92rem;line-height:1.8">${col('참석', '#16a34a', attendance.attend || [], true)}${col('미정', '#d97706', attendance.maybe || [], false)}${col('불참', '#9ca3af', attendance.absent || [], false)}</div></div>`;
+    }
 
-        let html = `<div class="p-2 border rounded-lg"><h4 class="font-bold text-center mb-2">${qIndex + 1}쿼터 (${formation})</h4><ul class="space-y-1 text-sm">`;
-                Object.keys(lineup).sort().forEach(pos => { lineup[pos].forEach(player => { if(player) html += `<li class="p-1 bg-gray-100 rounded">${esc(pos)}: ${esc(player)}</li>`; }); });
-        html += `</ul><hr class="my-2">`;
-        
-        if (referee) html += `<p class="text-sm"><b>⚖️ 심판:</b> ${esc(referee)}</p>`;
-        html += `<p class="text-sm"><b>🛌 휴식:</b> ${esc(realResters.join(', ')) || '없음'}</p></div>`;
-        return html;
-    };
+    const teamHtml = teams.map((team, i) => `<div style="background:${colors[i % 5]};color:#fff;border-radius:12px;padding:12px"><div style="font-weight:800;border-bottom:1px solid rgba(255,255,255,.3);padding-bottom:6px;margin-bottom:6px">팀 ${i + 1}</div>${[...team].sort((a, b) => a.name.localeCompare(b.name, 'ko-KR')).map(pp => `<div style="background:rgba(255,255,255,.18);border-radius:6px;padding:5px 8px;margin-bottom:4px">${esc(String(pp.name).replace(' (신규)', ''))}</div>`).join('')}</div>`).join('');
 
-    contentHtml += `<div class="bg-white p-6 rounded-lg shadow-md max-w-6xl mx-auto"><h2 class="text-2xl font-bold mb-4 border-b pb-2">📋 라인업 결과</h2><div class="grid grid-cols-1 ${teams.length > 1 ? 'md:grid-cols-2' : ''} ${teams.length > 2 ? 'lg:grid-cols-3' : ''} gap-6">`;
-    teams.forEach((team, teamIdx) => {
-        contentHtml += `<div><h3 class="text-xl font-bold text-center mb-3">팀 ${teamIdx + 1}</h3><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">`;
-        const lineupData = lineups ? lineups[teamIdx] || lineups[`team${teamIdx + 1}`] : {};
-        for (let i = 0; i < 6; i++) { contentHtml += createQuarterHTML(lineupData, i); }
-        contentHtml += `</div></div>`;
-    });
-    contentHtml += `</div></div><div class="text-center my-8"><button id="print-share-btn" class="bg-gray-700 text-white font-bold py-3 px-6 rounded-lg hover:bg-gray-800">전체 라인업 인쇄 / PDF 저장</button></div><footer class="text-center py-4"><p class="text-sm text-gray-500">© 2025 BareaPlay. All Rights Reserved. Created by 송감독.</p></footer></div>`;
-    document.body.innerHTML = contentHtml;
-    const notificationEl = document.createElement('div');
-    notificationEl.id = 'notification';
-    document.body.appendChild(notificationEl);
-    document.getElementById('print-share-btn').addEventListener('click', () => { shareMgmt.generatePrintView(shareData); });
+    const lineupHtml = teams.map((team, teamIdx) => {
+        const lu = lineups[`team${teamIdx + 1}`] || lineups[teamIdx];
+        let q = '';
+        for (let i = 0; i < 6; i++) q += pitchHTML(lu, i);
+        return `<div style="margin-bottom:18px"><h3 style="font-weight:800;text-align:center;margin-bottom:8px">팀 ${teamIdx + 1}</h3><div class="bp-qgrid">${q}</div></div>`;
+    }).join('');
+
+    document.body.className = 'bg-gray-100';
+    document.body.innerHTML = `
+    <style>
+        .bp-wrap{max-width:1100px;margin:0 auto;padding:16px;font-family:'Noto Sans KR',sans-serif}
+        .bp-card{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:20px;margin:16px 0}
+        .bp-h2{font-size:1.3rem;font-weight:800;margin:0 0 12px;border-bottom:1px solid #eee;padding-bottom:8px}
+        .bp-qgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+        .bp-quarter{display:flex;flex-direction:column}
+        .bp-pitch{background:#2E7D32;position:relative;width:100%;aspect-ratio:7/10;border-radius:6px;overflow:hidden;border:1px solid #1b5e20}
+        .bp-qtitle{position:absolute;top:6px;left:6px;font-size:.72rem;font-weight:700;color:#fff;background:rgba(0,0,0,.5);padding:2px 6px;border-radius:5px;z-index:5}
+        .bp-circle{position:absolute;border:1.5px solid rgba(255,255,255,.5);border-radius:50%}
+        .bp-box{position:absolute;border:1.5px solid rgba(255,255,255,.5)}
+        .bp-line{position:absolute;background:rgba(255,255,255,.5)}
+        .bp-marker{position:absolute;transform:translate(-50%,-50%);text-align:center;z-index:3}
+        .bp-icon{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:.7rem;border:1.5px solid #fff;margin:0 auto;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+        .bp-name{background:rgba(0,0,0,.7);color:#fff;font-size:.62rem;padding:1px 4px;border-radius:5px;margin-top:2px;white-space:nowrap}
+        .bp-foot{text-align:center;margin-top:6px;padding:4px;font-size:.75rem;font-weight:700;background:#f3f4f6;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    </style>
+    <div class="bp-wrap">
+        <div style="text-align:center;margin:12px 0"><h1 style="font-size:1.8rem;font-weight:800;color:#111827">BareaPlay ⚽</h1><p style="color:#6b7280;margin-top:4px">모임 보드</p></div>
+        <div class="bp-card"><h2 class="bp-h2">📅 모임 정보</h2><p style="margin:4px 0"><b>시간:</b> ${esc(timeStr)}</p><p style="margin:4px 0"><b>장소:</b> ${locationHtml}</p></div>
+        ${attendHtml}
+        <div class="bp-card"><h2 class="bp-h2">⚖️ 팀 배정</h2><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">${teamHtml}</div></div>
+        <div class="bp-card"><h2 class="bp-h2">📋 라인업</h2>${lineupHtml}</div>
+        <footer style="text-align:center;padding:16px;color:#9ca3af;font-size:.8rem">© 2025 BareaPlay. Created by 송감독.</footer>
+    </div>`;
+    const __n = document.createElement('div'); __n.id = 'notification'; document.body.appendChild(__n);
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
     const loadingOverlay = document.getElementById('loading-overlay');
     
-    // [추가] 투표/보드 링크는 메인 앱을 그리기 전에 즉시 처리 → 메인 화면 깜빡임 방지
-    const earlyParams = new URLSearchParams(window.location.search);
-    const earlyVoteId = earlyParams.get('voteId');
-    const earlyShareId = earlyParams.get('shareId');
-    if (earlyVoteId) {
-        window.__db = db;
-        if (loadingOverlay) loadingOverlay.style.display = 'none';
-        await voteMgmt.renderVotePage(earlyVoteId);
-        return;
-    }
-    if (earlyShareId) {
-        window.__db = db;
-        if (loadingOverlay) { loadingOverlay.style.display = 'flex'; loadingOverlay.style.opacity = 1; }
-        try {
-            const shareDoc = await getDoc(doc(db, "shares", earlyShareId));
-            if (shareDoc.exists()) shareMgmt.renderBoardView(shareDoc.data());
-            else document.body.innerHTML = `<p class="text-center text-red-500 text-2xl mt-10">공유된 데이터를 찾을 수 없습니다.</p>`;
-        } catch (e) {
-            console.error(e);
-            document.body.innerHTML = `<p class="text-center text-red-500 text-2xl mt-10">데이터를 불러오는 중 오류가 발생했습니다.</p>`;
-        } finally {
+    // [중요] 투표/보드 링크는 메인 앱을 그리기 전에 즉시 처리 -> 메인 화면 깜빡임 방지
+    {
+        const __p = new URLSearchParams(window.location.search);
+        const __voteId = __p.get('voteId');
+        const __shareId = __p.get('shareId');
+        if (__voteId) {
+            window.__db = db;
             if (loadingOverlay) loadingOverlay.style.display = 'none';
+            await voteMgmt.renderVotePage(__voteId);
+            return;
         }
-        return;
+        if (__shareId) {
+            window.__db = db;
+            try {
+                const sDoc = await getDoc(doc(db, "shares", __shareId));
+                if (sDoc.exists()) renderSharePageView(sDoc.data());
+                else document.body.innerHTML = `<p class="text-center text-red-500 text-2xl mt-10">공유된 데이터를 찾을 수 없습니다.</p>`;
+            } catch (e) {
+                console.error("share load error", e);
+                document.body.innerHTML = `<p class="text-center text-red-500 text-2xl mt-10">데이터를 불러오는 중 오류가 발생했습니다.</p>`;
+            } finally {
+                if (loadingOverlay) loadingOverlay.style.display = 'none';
+            }
+            return;
+        }
     }
 
     const modules = { playerMgmt, balancer, lineup, accounting, shareMgmt, voteMgmt, lineupStats };
@@ -567,7 +609,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             loadingOverlay.style.opacity = 0;
             setTimeout(() => loadingOverlay.style.display = 'none', 300);
             updateAdminUI();
-            switchTab('balancer', true);
+            switchTab('accounting', true);
         }
     }
 });
