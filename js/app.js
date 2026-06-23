@@ -4,7 +4,7 @@ import { getFirestore, collection, doc, onSnapshot, getDocs, getDoc, setDoc, del
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
 import { state, setAdmin } from './store.js?v=2';
 import * as playerMgmt from './modules/playerManagement.js?v=2';
-import * as balancer from './modules/teamBalancer.js?v=2';
+import * as balancer from './modules/teamBalancer.js?v=3';
 import * as lineup from './modules/lineupGenerator.js?v=2';
 import * as accounting from './modules/accounting.js?v=2';
 import * as shareMgmt from './modules/shareManagement.js?v=2';
@@ -30,6 +30,9 @@ const tabs = {};
 let pendingTabSwitch = null;
 // [수정] 이 브라우저(기기)만의 서명. 내가 저장한 데이터의 메아리를 구분하는 데 사용
 const CLIENT_ID = Math.random().toString(36).slice(2) + Date.now().toString(36);
+// [A방식] 현재 선택된 모임 날짜(기본: 오늘). 명단·팀배정·라인업을 이 날짜 문서에 저장/로드한다.
+let selectedMeetingDate = null;
+let meetingUnsub = null; // 현재 날짜 문서의 실시간 구독 해제 함수
 
 window.showNotification = function(message, type = 'success') {
     let notificationEl = document.getElementById('notification');
@@ -85,7 +88,7 @@ window.safeUrl = function(url) {
 
 const saveDailyMeetingData = window.debounce(async () => {
     if (!state.isAdmin) return;
-    const today = new Date().toISOString().split('T')[0];
+    const today = selectedMeetingDate || window.getLocalDate();
 
     const teamsObject = {};
     (state.teams || []).forEach((team, index) => {
@@ -118,6 +121,7 @@ const saveDailyMeetingData = window.debounce(async () => {
         teams: teamsObject,
         teamLineupCache: transformedCache,
         initialAttendeeOrder: state.initialAttendeeOrder || [],
+        aceNames: state.aceNames || [], // [A방식] 에이스 명단도 날짜별로 함께 저장
         lastWriter: CLIENT_ID, // [수정] 누가 저장했는지 서명
         lastUpdatedAt: serverTimestamp()
 
@@ -132,62 +136,81 @@ const saveDailyMeetingData = window.debounce(async () => {
     }
 }, 1000);
 
-function loadAndSyncDailyMeetingData() {
-    const today = new Date().toISOString().split('T')[0];
-    const meetingDocRef = doc(db, "dailyMeetings", today);
+// [A방식] 서버 문서 데이터를 화면/상태에 반영 (명단·에이스·팀배정·라인업 복원)
+function applyMeetingData(data) {
+    if (data) {
+        state.teams = Object.values(data.teams || {});
+        state.initialAttendeeOrder = data.initialAttendeeOrder || [];
+        state.aceNames = data.aceNames || [];
 
-    onSnapshot(meetingDocRef, (doc) => {
-        if (doc.metadata.hasPendingWrites) return; // 아직 서버 전송 중인 내 데이터는 무시
-        if (doc.exists() && doc.data().lastWriter === CLIENT_ID) return; // 내가 저장한 메아리는 무시
-        if (doc.exists()) {
-            console.log("외부 변경 감지, 데이터 동기화.");
-            const data = doc.data();
+        const originalCache = {};
+        Object.keys(data.teamLineupCache || {}).forEach(teamIndex => {
+            const transformedLineup = data.teamLineupCache[teamIndex];
+            let restoredResters = [];
+            let restoredReferees = [];
 
-            state.teams = Object.values(data.teams || {});
-            
-            // [수정] 참가자 순서 불러오기
-            if (data.initialAttendeeOrder) {
-                state.initialAttendeeOrder = data.initialAttendeeOrder;
+            if (transformedLineup && typeof transformedLineup.resters === 'object' && !Array.isArray(transformedLineup.resters)) {
+                restoredResters = Object.keys(transformedLineup.resters).sort().map(key => transformedLineup.resters[key]);
+            } else if (transformedLineup && Array.isArray(transformedLineup.resters)) {
+                restoredResters = transformedLineup.resters;
             }
 
-            const originalCache = {};
-            Object.keys(data.teamLineupCache || {}).forEach(teamIndex => {
-                const transformedLineup = data.teamLineupCache[teamIndex];
-                let restoredResters = [];
-                let restoredReferees = [];
+            if (transformedLineup && typeof transformedLineup.referees === 'object' && !Array.isArray(transformedLineup.referees)) {
+                restoredReferees = Object.keys(transformedLineup.referees).sort().map(key => transformedLineup.referees[key]);
+            } else if (transformedLineup && Array.isArray(transformedLineup.referees)) {
+                restoredReferees = transformedLineup.referees;
+            }
 
-                if (transformedLineup && typeof transformedLineup.resters === 'object' && !Array.isArray(transformedLineup.resters)) {
-                    restoredResters = Object.keys(transformedLineup.resters).sort().map(key => transformedLineup.resters[key]);
-                } else if (transformedLineup && Array.isArray(transformedLineup.resters)) {
-                    restoredResters = transformedLineup.resters;
-                }
+            if (transformedLineup) {
+                originalCache[teamIndex] = { ...transformedLineup, resters: restoredResters, referees: restoredReferees };
+            }
+        });
+        state.teamLineupCache = originalCache;
+    } else {
+        // 해당 날짜에 저장된 내용이 없으면 빈 상태로 시작 (예: 다음주 날짜)
+        state.teams = [];
+        state.teamLineupCache = {};
+        state.initialAttendeeOrder = [];
+        state.aceNames = [];
+    }
 
-                // 심판 데이터 복원
-                if (transformedLineup && typeof transformedLineup.referees === 'object' && !Array.isArray(transformedLineup.referees)) {
-                    restoredReferees = Object.keys(transformedLineup.referees).sort().map(key => transformedLineup.referees[key]);
-                } else if (transformedLineup && Array.isArray(transformedLineup.referees)) {
-                    restoredReferees = transformedLineup.referees;
-                }
+    // 명단·에이스 textarea 복원 (사용자가 그 칸을 편집 중이면 setAttendees/setAces 내부에서 건드리지 않음)
+    if (balancer.setAttendees) balancer.setAttendees(state.initialAttendeeOrder);
+    if (balancer.setAces) balancer.setAces(state.aceNames);
+    balancer.renderResults(state.teams);
+    lineup.renderTeamSelectTabs(state.teams);
+}
 
-                if (transformedLineup) {
-                    originalCache[teamIndex] = { ...transformedLineup, resters: restoredResters, referees: restoredReferees };
-                }
-            });
-            state.teamLineupCache = originalCache;
+// [A방식] 선택한 날짜의 문서를 즉시 강제 로드하고, 그 날짜에 대한 실시간 동기화를 건다.
+async function changeMeetingDate(date) {
+    selectedMeetingDate = date;
+    // 이전 날짜 구독 해제
+    if (meetingUnsub) { meetingUnsub(); meetingUnsub = null; }
 
-            balancer.renderResults(state.teams);
-            lineup.renderTeamSelectTabs(state.teams);
-            window.showNotification("다른 기기 내용이 동기화되었습니다.");
-        } else {
-            console.log(`${today} 데이터 없음, 초기화.`);
-            state.teams = [];
-            state.teamLineupCache = {};
-            state.initialAttendeeOrder = [];
-            balancer.renderResults(state.teams);
-            lineup.renderTeamSelectTabs(state.teams);
-        }
+    const meetingDocRef = doc(db, "dailyMeetings", date);
+
+    // 1) 날짜 전환 시에는 내 서명 여부와 상관없이 무조건 한 번 강제로 로드한다.
+    try {
+        const snap = await getDoc(meetingDocRef);
+        applyMeetingData(snap.exists() ? snap.data() : null);
+        console.log(snap.exists() ? `${date} 데이터를 불러왔습니다.` : `${date} 데이터 없음 → 빈 상태로 시작.`);
+    } catch (error) {
+        console.error("날짜 데이터 로드 실패:", error);
+    }
+
+    // 2) 이후에는 다른 기기의 변경을 실시간으로 반영한다.
+    let firstSnap = true; // getDoc으로 이미 처리한 첫 스냅샷은 건너뛴다(중복/불필요 알림 방지)
+    meetingUnsub = onSnapshot(meetingDocRef, (docSnap) => {
+        if (firstSnap) { firstSnap = false; return; }
+        if (docSnap.metadata.hasPendingWrites) return;                       // 아직 서버 전송 중인 내 데이터는 무시
+        if (docSnap.exists() && docSnap.data().lastWriter === CLIENT_ID) return; // 내가 저장한 메아리는 무시
+        if (selectedMeetingDate !== date) return;                            // 날짜가 이미 바뀌었으면 무시(오래된 구독)
+        console.log("외부 변경 감지, 데이터 동기화.");
+        applyMeetingData(docSnap.exists() ? docSnap.data() : null);
+        window.showNotification("다른 기기 내용이 동기화되었습니다.");
     });
 }
+window.changeMeetingDate = changeMeetingDate;
 
 function updateUIAccess() {
     const isViewOnly = !state.isAdmin;
@@ -300,76 +323,95 @@ window.promptForAdminPassword = function() {
 function renderManual() {
     const el = document.getElementById('page-manual');
     if (!el) return;
+    const sec = (icon, title, body) => `<section class="mb-8"><h3 class="text-xl font-bold mb-3 border-b-2 border-indigo-100 pb-2">${icon} ${title}</h3>${body}</section>`;
+    const tip = (t) => `<div class="bg-blue-50 border-l-4 border-blue-400 text-blue-900 text-sm rounded-r-lg p-3 my-2">\uD83D\uDCA1 <b>알아두면 좋아요</b><br>${t}</div>`;
+    const warn = (t) => `<div class="bg-amber-50 border-l-4 border-amber-400 text-amber-900 text-sm rounded-r-lg p-3 my-2">\u26A0\uFE0F <b>주의</b><br>${t}</div>`;
+
+    const sLogin = sec('\uD83D\uDD11', '관리자 로그인 (먼저 알아두기)', `
+        <ul class="list-disc pl-5 space-y-1.5 text-sm">
+            <li>이 앱은 <b>누구나 화면을 볼 수 있지만</b>, 팀 배정\u00B7라인업\u00B7출석\u00B7회비\u00B7선수 정보를 <b>수정하는 것은 운영진(관리자)만</b> 할 수 있습니다.</li>
+            <li>수정 기능을 누르면 <b>Google 로그인</b> 창이 뜹니다. 운영진 계정으로 로그인하면 모든 편집 기능이 열립니다.</li>
+            <li>로그인하지 않은 사람은 버튼이 잠겨 있거나, 누르면 로그인 안내가 뜹니다. (구경은 자유, 수정은 운영진만)</li>
+        </ul>
+        ${tip('새 운영진을 추가하려면 맨 아래 <b>인수인계</b> 항목의 Firebase 설정이 필요합니다. 앱 안에서는 추가할 수 없습니다.')}`);
+
+    const sBalancer = sec('\u2696\uFE0F', '팀 배정기 \u2014 팀 나누기', `
+        <p class="text-sm mb-2">참가자 이름을 넣고 버튼 한 번이면 실력\u00B7포지션\u00B7인원이 균형 잡힌 팀으로 자동으로 나눠집니다.</p>
+        <ul class="list-disc pl-5 space-y-1.5 text-sm">
+            <li><b>참가자 명단</b>: 한 줄에 한 명씩 이름을 적습니다. <b>모든 선수 불러오기</b> 버튼을 누르면 등록된 선수 전체가 한 번에 채워집니다.</li>
+            <li><b>명단은 저장됩니다</b>: 새로고침하거나 앱을 껐다 켜도 입력한 명단이 그대로 남아 있습니다. <b>명단 초기화</b> 버튼을 눌러야만 비워집니다.</li>
+            <li><b>\u2B50 에이스 지정 (선택)</b>: 잘하는 핵심 선수를 여기에 적으면, 그 선수들이 <b>각 팀에 고르게 나뉩니다</b>. 예를 들어 에이스 6명을 적고 2팀으로 나누면 한 팀에 몰리지 않고 <b>3:3</b>으로 갈립니다. 홀수(5명)면 3:2로 나뉘고 남는 1명은 팀 평균 실력에 맞춰 배정됩니다. 배정 결과에 \u2B50 표시가 붙습니다.</li>
+            <li><b>밸런스 가중치</b>: 능력치\u00B7포지션\u00B7인원수 슬라이더로 "무엇을 더 중요하게 맞출지"를 조절합니다. 능력치를 높이면 실력 균형을, 포지션을 높이면 포지션 분포를 우선합니다.</li>
+            <li><b>수동 이동</b>: 자동 배정 후 마음에 안 들면 선수를 <b>드래그</b>해서 다른 팀으로 옮길 수 있습니다.</li>
+        </ul>
+        ${warn('에이스는 <b>선수관리에 등록된 선수만</b> 인정됩니다. 명단에만 있고 등록 안 된 "신규" 선수는 에이스로 지정되지 않습니다.')}`);
+
+    const sLineup = sec('\uD83D\uDCCB', '라인업 생성기 \u2014 쿼터별 포지션', `
+        <p class="text-sm mb-2">팀을 나눈 뒤, 팀별로 <b>6쿼터 라인업</b>(누가 어느 쿼터에 어느 포지션을 보는지)을 자동으로 만들어 줍니다.</p>
+        <ul class="list-disc pl-5 space-y-1.5 text-sm">
+            <li>각 선수의 <b>주 포지션을 우선</b> 배치하고, 모두가 비슷하게 뛰도록 <b>휴식을 돌아가며</b> 배정합니다.</li>
+            <li><b>골키퍼\u00B7심판</b>도 자동으로 공평하게 나눠집니다.</li>
+            <li><b>최소 9명</b>이 있어야 라인업을 만들 수 있습니다.</li>
+            <li><b>교체 방법</b>: PC는 선수를 <b>드래그</b>, 휴대폰은 <b>두 선수를 차례로 톡톡</b> 누르면 같은 쿼터 안에서 자리가 바뀝니다.</li>
+        </ul>`);
+
+    const sAccounting = sec('\uD83D\uDCC8', '출석 & 회계 \u2014 참석/회비 관리', `
+        <p class="text-sm mb-2">경기 날짜별로 참석자를 체크하고 회비를 기록\u00B7정산하는 곳입니다.</p>
+        <ul class="list-disc pl-5 space-y-1.5 text-sm">
+            <li><b>날짜 선택</b>: 위쪽 날짜를 바꾸면 그 날짜의 출석\u00B7회비 기록이 나타납니다. 과거 날짜를 고르면 그날의 기록이 그대로 보입니다.</li>
+            <li><b>참석자 체크</b>: 명단에서 온 사람을 체크하면 회비 표에 추가됩니다.</li>
+            <li><b>납부 상태</b>: <b>\u25CF 완납 / \u25B3 일부 / \u2715 미납 / N 노쇼</b> 중에서 고릅니다.</li>
+            <li><b>금액 자동 0</b>: 납부 상태를 <b>\u2715 미납</b> 또는 <b>N 노쇼</b>로 바꾸면 그 사람의 납부액이 <b>자동으로 0원</b>이 됩니다. (완납\u00B7일부는 적은 금액 그대로 유지)</li>
+            <li><b>노쇼 기록</b>: "온다고 해놓고 안 온" 사람을 N 노쇼로 표시하면, 벌금 같은 불이익 없이 <b>기록만</b> 남습니다. 이름 옆에 <b>누적 노쇼 횟수</b>가 표시되고 엑셀에도 집계됩니다.</li>
+        </ul>
+        ${tip('<b>비고(메모)는 한 번 적으면 계속 따라다닙니다.</b> 어떤 선수의 비고란에 메모(예: "지난주 회비 5천원 남음")를 적어두면, <b>다른 날짜에 그 선수를 다시 불러와도 같은 메모가 자동으로 떠 있습니다.</b> 해결돼서 <b>메모를 지우면</b> 그 다음부터는 더 이상 보이지 않습니다. 날짜마다 다시 적을 필요가 없어요.')}
+        ${tip('<b>엑셀 내보내기</b>로 기간별\u00B7사람별 정산 내역(참석 횟수, 납부액, 완납/일부/미납/노쇼 횟수)을 한 번에 받을 수 있습니다.')}`);
+
+    const sShare = sec('\uD83D\uDCE2', '모임배포 \u2014 투표 & 공유 링크', `
+        <ul class="list-disc pl-5 space-y-1.5 text-sm">
+            <li><b>투표 링크</b>: 링크를 만들어 단톡방에 올리면 멤버들이 <b>참석/미정/불참</b>을 직접 누릅니다. 그 결과를 팀 배정기로 불러올 수 있습니다.</li>
+            <li><b>공유 보드 링크</b>: 팀배정\u00B7라인업이 끝난 결과를 한 화면으로 공유합니다. 받는 사람은 <b>토글(접고 펴기)</b>로 보고 싶은 것만 봅니다 \u2014 <b>팀 배정은 접힌 상태, 라인업은 펼쳐진 상태</b>가 기본입니다.</li>
+        </ul>
+        ${tip('공유 보드에는 <b>참석 현황(투표 결과)이 표시되지 않습니다.</b> 투표를 안 한 사람을 나중에 팀배정에 직접 추가하는 경우 투표 결과와 어긋나 혼란을 줄 수 있어, 팀배정\u00B7라인업 결과만 깔끔하게 보여주도록 했습니다.')}`);
+
+    const sPlayers = sec('\uD83D\uDC64', '선수관리 \u2014 실력 & 포지션 등록', `
+        <ul class="list-disc pl-5 space-y-1.5 text-sm">
+            <li>각 선수의 <b>실력(능력치)</b>과 <b>주 포지션\u00B7부 포지션</b>을 등록\u00B7수정합니다.</li>
+            <li>이 정보가 정확할수록 <b>팀 배정과 라인업의 품질</b>이 좋아집니다. (능력치가 비어 있으면 균형을 맞추기 어렵습니다)</li>
+            <li><b>엑셀 양식</b>으로 여러 선수를 한 번에 일괄 등록\u00B7수정할 수 있습니다.</li>
+        </ul>`);
+
     el.innerHTML = `
     <div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg max-w-4xl mx-auto leading-relaxed text-gray-800">
-        <h2 class="text-3xl font-bold mb-2">\u{1F4D6} BareaPlay \uC0AC\uC6A9\uC124\uBA85\uC11C</h2>
-        <p class="text-gray-500 mb-6">\uC6B4\uC601\uC9C4\uC774 \uBC14\uB00C\uC5B4\uB3C4 \uB204\uAD6C\uB098 \uC774 \uBB38\uC11C\uB9CC \uBCF4\uBA74 \uD504\uB85C\uADF8\uB7A8\uC744 \uB611\uAC19\uC774 \uC6B4\uC601\uD560 \uC218 \uC788\uB3C4\uB85D \uC815\uB9AC\uD588\uC2B5\uB2C8\uB2E4. (\uB85C\uADF8\uC778 \uC5C6\uC774 \uB204\uAD6C\uB098 \uC5F4\uB78C \uAC00\uB2A5)</p>
+        <h2 class="text-3xl font-bold mb-1">\uD83D\uDCD6 BareaPlay 사용설명서</h2>
+        <p class="text-gray-500 mb-6">처음 쓰시는 분도 이 문서만 천천히 따라 하면 팀배정부터 공유까지 모두 할 수 있습니다. (로그인 없이 누구나 열람 가능)</p>
 
         <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-8">
-            <h3 class="font-bold text-indigo-800 mb-2">\u26A1 \uD55C\uB208\uC5D0 \uBCF4\uB294 \uC804\uCCB4 \uD750\uB984</h3>
-            <p class="text-sm text-indigo-900">\u2460 \uD22C\uD45C(\uBAA8\uC784\uBC30\uD3EC\uC5D0\uC11C \uD22C\uD45C \uB9C1\uD06C \uC0DD\uC131\u00B7\uACF5\uC720) \u2192 \u2461 \uCD9C\uC11D&\uD68C\uACC4\uC5D0\uC11C \uCC38\uC11D\uC790 \uD655\uC815 \u2192 \u2462 \uD300 \uBC30\uC815\uAE30\uC5D0\uC11C \uD300 \uB098\uB204\uAE30 \u2192 \u2463 \uB77C\uC778\uC5C5 \uC0DD\uC131\uAE30\uC5D0\uC11C \uCFFC\uD130\uBCC4 \uB77C\uC778\uC5C5 \u2192 \u2464 \uBAA8\uC784\uBC30\uD3EC\uC5D0\uC11C \uCD5C\uC885 \uB9C1\uD06C \uACF5\uC720</p>
-        </div>
-
-        <h3 class="text-xl font-bold mt-8 mb-3 border-b pb-2">\u{1F511} \uAD00\uB9AC\uC790 \uB85C\uADF8\uC778</h3>
-        <ul class="list-disc pl-5 space-y-1 text-sm">
-            <li>\uC77C\uBC18 \uC5F4\uB78C\uC740 \uB204\uAD6C\uB098 \uAC00\uB2A5\uD558\uC9C0\uB9CC, <b>\uD300 \uBC30\uC815\u00B7\uB77C\uC778\uC5C5\u00B7\uC120\uC218\uAD00\uB9AC\u00B7\uBAA8\uC784\uBC30\uD3EC \uB4F1 \uD3B8\uC9D1 \uAE30\uB2A5\uC740 \uAD00\uB9AC\uC790\uB9CC</b> \uC4F8 \uC218 \uC788\uC2B5\uB2C8\uB2E4.</li>
-            <li>\uD3B8\uC9D1 \uAE30\uB2A5\uC744 \uB204\uB974\uBA74 <b>Google \uB85C\uADF8\uC778</b> \uCC3D\uC774 \uB73C\uB2C8\uB2E4. \uC6B4\uC601\uC9C4 \uACC4\uC815\uC73C\uB85C \uB85C\uADF8\uC778\uD558\uC138\uC694.</li>
-            <li>\uC0C8 \uC6B4\uC601\uC9C4\uC744 \uCD94\uAC00\uD558\uB824\uBA74 \uC544\uB798 <b>\uC778\uC218\uC778\uACC4</b> \uD56D\uBAA9\uC758 Firebase \uC124\uC815\uC774 \uD544\uC694\uD569\uB2C8\uB2E4.</li>
-        </ul>
-
-        <h3 class="text-xl font-bold mt-8 mb-3 border-b pb-2">\u2696\uFE0F \uD300 \uBC30\uC815\uAE30</h3>
-        <ul class="list-disc pl-5 space-y-1 text-sm">
-            <li><b>\uCC38\uAC00\uC790 \uBA85\uB2E8</b>: \uD55C \uC904\uC5D0 \uD55C \uBA85\uC529 \uC785\uB825\uD569\uB2C8\uB2E4. '\uBAA8\uB4E0 \uC120\uC218 \uBD88\uB7EC\uC624\uAE30'\uB85C \uB4F1\uB85D \uC120\uC218 \uC804\uCCB4\uB97C \uCC44\uC6B8 \uC218 \uC788\uC2B5\uB2C8\uB2E4.</li>
-            <li>\uBA85\uB2E8\uC740 <b>\uC0C8\uB85C\uACE0\uCE68\u00B7\uC7AC\uC811\uC18D\uD574\uB3C4 \uADF8\uB300\uB85C \uC720\uC9C0</b>\uB429\uB2C8\uB2E4. <b>\uBA85\uB2E8 \uCD08\uAE30\uD654</b> \uBC84\uD2BC\uC744 \uB20C\uB7EC\uC57C\uB9CC \uBE44\uC6CC\uC9D1\uB2C8\uB2E4.</li>
-            <li><b>\u2B50 \uC5D0\uC774\uC2A4 \uC9C0\uC815 (\uC120\uD0DD)</b>: \uC798\uD558\uB294 \uD575\uC2EC \uC120\uC218\uB97C \uC801\uC73C\uBA74, \uADF8 \uC120\uC218\uB4E4\uC774 <b>\uAC01 \uD300\uC5D0 \uACE0\uB974\uAC8C \uB098\uB269\uB2C8\uB2E4</b>. \uC608) \uC5D0\uC774\uC2A4 6\uBA85\u00B72\uD300 \u2192 \uD55C \uD300\uC5D0 \uBAB0\uB9AC\uC9C0 \uC54A\uACE0 3:3. \uD640\uC218(5\uBA85)\uBA74 3:2\uB85C \uB098\uB204\uACE0 \uB0A8\uB294 1\uBA85\uC740 \uD300 \uD3C9\uADE0 \uC2E4\uB825\uC5D0 \uB9DE\uCDB0 \uBC30\uC815\uB429\uB2C8\uB2E4. \uACB0\uACFC \uCE74\uB4DC\uC5D0 \u2B50\uB85C \uD45C\uC2DC\uB429\uB2C8\uB2E4. (DB\uC5D0 \uB4F1\uB85D\uB41C \uC120\uC218\uB9CC \uC5D0\uC774\uC2A4\uB85C \uC778\uC815)</li>
-            <li><b>\uBC38\uB7F0\uC2A4 \uAC00\uC911\uCE58</b>(\uB2A5\uB825\uCE58\u00B7\uD3EC\uC9C0\uC158\u00B7\uC778\uC6D0\uC218) \uC2AC\uB77C\uC774\uB354\uB85C \uBB34\uC5C7\uC744 \uB354 \uC911\uC694\uD558\uAC8C \uB9DE\uCD9C\uC9C0 \uC870\uC808\uD569\uB2C8\uB2E4.</li>
-            <li>\uC0DD\uC131 \uD6C4 \uC120\uC218\uB97C <b>\uB4DC\uB798\uADF8</b>\uD574 \uD300 \uAC04 \uC218\uB3D9 \uC774\uB3D9\uC774 \uAC00\uB2A5\uD569\uB2C8\uB2E4.</li>
-        </ul>
-
-        <h3 class="text-xl font-bold mt-8 mb-3 border-b pb-2">\u{1F4CB} \uB77C\uC778\uC5C5 \uC0DD\uC131\uAE30</h3>
-        <ul class="list-disc pl-5 space-y-1 text-sm">
-            <li>\uD300 \uBC30\uC815 \uD6C4, \uD300\uBCC4 <b>6\uCFFC\uD130 \uB77C\uC778\uC5C5</b>\uC744 \uC790\uB3D9 \uC0DD\uC131\uD569\uB2C8\uB2E4. (\uCD5C\uC18C 9\uBA85 \uD544\uC694)</li>
-            <li>\uC8FC\uD3EC\uC9C0\uC158 \uC6B0\uC120 \uBC30\uCE58, \uD734\uC2DD \uB85C\uD14C\uC774\uC158, \uACE8\uD0A4\uD37C\u00B7\uC2EC\uD310 \uC790\uB3D9 \uBC30\uBD84\uC774 \uC801\uC6A9\uB429\uB2C8\uB2E4.</li>
-            <li>PC\uB294 <b>\uB4DC\uB798\uADF8</b>, \uBAA8\uBC14\uC77C\uC740 <b>\uB450 \uC120\uC218\uB97C \uCC28\uB840\uB85C \uD0ED</b>\uD574 \uAC19\uC740 \uCFFC\uD130 \uC548\uC5D0\uC11C \uAD50\uCCB4\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.</li>
-        </ul>
-
-        <h3 class="text-xl font-bold mt-8 mb-3 border-b pb-2">\u{1F4C8} \uCD9C\uC11D & \uD68C\uACC4</h3>
-        <ul class="list-disc pl-5 space-y-1 text-sm">
-            <li>\uB0A0\uC9DC\uBCC4 \uCC38\uC11D\uC790\uB97C \uCCB4\uD06C\uD558\uACE0 \uD68C\uBE44\uB97C \uAE30\uB85D\uD569\uB2C8\uB2E4.</li>
-            <li><b>\uB0A9\uBD80 \uC0C1\uD0DC</b>: \u25CF \uC644\uB0A9 / \u25B3 \uC77C\uBD80 / \u2715 \uBBF8\uB0A9 / <b>N \uB178\uC1FC</b> \uC911\uC5D0\uC11C \uC120\uD0DD\uD569\uB2C8\uB2E4.</li>
-            <li><b>\uBBF8\uB0A9(\u2715) \uB610\uB294 \uB178\uC1FC(N)</b>\uB97C \uC120\uD0DD\uD558\uBA74 \uADF8 \uC0AC\uB78C\uC758 \uB0A9\uBD80\uC561\uC774 <b>\uC790\uB3D9\uC73C\uB85C 0</b>\uC774 \uB429\uB2C8\uB2E4. (\uC644\uB0A9\u00B7\uC77C\uBD80\uB294 \uADF8\uB300\uB85C)</li>
-            <li><b>\uB178\uC1FC</b>\uB294 \uD328\uB110\uD2F0 \uC5C6\uC774 \uAE30\uB85D\uB9CC \uB0A8\uC73C\uBA70, \uC774\uB984 \uC606\uC5D0 <b>\uB204\uC801 \uB178\uC1FC \uD69F\uC218</b>\uAC00 \uD45C\uC2DC\uB418\uACE0 \uC5D1\uC140\uC5D0\uB3C4 \uC9D1\uACC4\uB429\uB2C8\uB2E4.</li>
-            <li>\uC5D1\uC140 \uB0B4\uBCF4\uB0B4\uAE30\uB85C \uAE30\uAC04\uBCC4\u00B7\uC778\uBCC4 \uC815\uC0B0 \uB0B4\uC5ED\uC744 \uBC1B\uC744 \uC218 \uC788\uC2B5\uB2C8\uB2E4.</li>
-        </ul>
-
-        <h3 class="text-xl font-bold mt-8 mb-3 border-b pb-2">\u{1F4E2} \uBAA8\uC784\uBC30\uD3EC</h3>
-        <ul class="list-disc pl-5 space-y-1 text-sm">
-            <li><b>\uD22C\uD45C \uB9C1\uD06C</b>\uB97C \uB9CC\uB4E4\uC5B4 \uB2E8\uD1A1\uBC29\uC5D0 \uACF5\uC720\uD558\uBA74, \uCC38\uC11D/\uBBF8\uC815/\uBD88\uCC38 \uC751\uB2F5\uC774 \uBAA8\uC785\uB2C8\uB2E4.</li>
-            <li>\uCD5C\uC885 <b>\uACF5\uC720 \uBCF4\uB4DC \uB9C1\uD06C</b>\uC5D0\uB294 <b>\uD300 \uBC30\uC815(\uC811\uD798) / \uB77C\uC778\uC5C5(\uAE30\uBCF8 \uD3BC\uCCD0\uC9D0)</b>\uC774 \uD1A0\uAE00\uB85C \uD45C\uC2DC\uB429\uB2C8\uB2E4. \uBCF4\uACE0 \uC2F6\uC740 \uAC83\uB9CC \uD3BC\uCCD0 \uBCF4\uC138\uC694.</li>
-            <li>\uCC38\uC11D \uD604\uD669\uC740 \uD22C\uD45C \uACB0\uACFC\uB9CC \uBC18\uC601\uD558\uC5EC \uD63C\uB780\uC744 \uC904 \uC218 \uC788\uC5B4 \uACF5\uC720 \uBCF4\uB4DC\uC5D0\uC11C\uB294 \uD45C\uC2DC\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.</li>
-        </ul>
-
-        <h3 class="text-xl font-bold mt-8 mb-3 border-b pb-2">\u{1F464} \uC120\uC218\uAD00\uB9AC</h3>
-        <ul class="list-disc pl-5 space-y-1 text-sm">
-            <li>\uC120\uC218\uC758 \uC2E4\uB825(\uB2A5\uB825\uCE58)\uACFC \uC8FC/\uBD80 \uD3EC\uC9C0\uC158\uC744 \uB4F1\uB85D\u00B7\uC218\uC815\uD569\uB2C8\uB2E4. \uC774 \uC815\uBCF4\uAC00 \uD300 \uBC30\uC815\u00B7\uB77C\uC778\uC5C5 \uD488\uC9C8\uC744 \uACB0\uC815\uD569\uB2C8\uB2E4.</li>
-            <li>\uC815\uD574\uC9C4 <b>\uC5D1\uC140 \uC591\uC2DD</b>\uC73C\uB85C \uC5EC\uB7EC \uC120\uC218\uB97C \uD55C \uBC88\uC5D0 \uC77C\uAD04 \uC5C5\uB370\uC774\uD2B8\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.</li>
-        </ul>
-
-        <div class="bg-amber-50 border border-amber-200 rounded-xl p-5 mt-10">
-            <h3 class="text-xl font-bold mb-3 text-amber-900">\u{1F6E0}\uFE0F \uC778\uC218\uC778\uACC4 (\uAE30\uC220 \uB2F4\uB2F9\uC6A9)</h3>
-            <p class="text-sm text-amber-900 mb-3">\uC774 \uC571\uC740 <b>GitHub</b>\uC5D0 \uCF54\uB4DC\uB97C \uC62C\uB9AC\uBA74 <b>Vercel</b>\uC774 \uC790\uB3D9\uC73C\uB85C \uBC30\uD3EC\uD558\uACE0, \uB370\uC774\uD130\uB294 <b>Firebase</b>\uC5D0 \uC800\uC7A5\uB429\uB2C8\uB2E4.</p>
-            <ol class="list-decimal pl-5 space-y-2 text-sm text-amber-900">
-                <li><b>\uCF54\uB4DC \uC218\uC815\u00B7\uBC30\uD3EC</b>: \uD30C\uC77C\uC744 \uACE0\uCE5C \uB4A4 \uD130\uBBF8\uB110\uC5D0\uC11C
-                    <div class="bg-gray-800 text-gray-100 rounded-md p-3 mt-1 font-mono text-xs">git add .<br>git commit -m "\uC218\uC815 \uB0B4\uC6A9"<br>git push</div>
-                    push\uD558\uBA74 Vercel\uC774 \uC790\uB3D9 \uBC30\uD3EC\uD569\uB2C8\uB2E4.
-                </li>
-                <li><b>\uCE90\uC2DC\u00B7\uBC84\uC804 \uADDC\uCE59 (\uC911\uC694)</b>: \uB0B4\uC6A9\uC744 \uBC14\uAFB8 \uD30C\uC77C\uC740 \uBD88\uB7EC\uC624\uB294 \uC8FC\uC18C \uB05D\uC758 <code class="bg-amber-100 px-1 rounded">?v=\uC22B\uC790</code>\uB97C \uD55C \uB2E8\uACC4 \uC62C\uB824\uC57C \uC0AC\uC6A9\uC790\uAC00 \uC0C8 \uD30C\uC77C\uC744 \uBC1B\uC2B5\uB2C8\uB2E4. \uADF8\uB9AC\uACE0 <code class="bg-amber-100 px-1 rounded">sw.js</code>\uC758 <code class="bg-amber-100 px-1 rounded">CACHE_NAME</code> \uC22B\uC790\uB3C4 \uD568\uAED8 \uC62C\uB824\uC8FC\uC138\uC694.</li>
-                <li><b>\uC6B4\uC601\uC9C4(\uAD00\uB9AC\uC790) \uCD94\uAC00</b>: Firebase Console \u2192 Firestore\uC758 <code class="bg-amber-100 px-1 rounded">admins</code> \uCEEC\uB809\uC158\uC5D0 \uC0C8 \uC6B4\uC601\uC9C4\uC758 \uACC4\uC815 UID\uB97C \uB4F1\uB85D\uD574\uC57C \uAD00\uB9AC\uC790 \uAD8C\uD55C\uC774 \uC0DD\uAE41\uB2C8\uB2E4.</li>
-                <li><b>\uB0A0\uC9DC \uAE30\uC900</b>: \uBAA8\uB4E0 \uB0A0\uC9DC\uB294 \uB450\uBC14\uC774 \uD604\uC9C0 \uC2DC\uAC01 \uAE30\uC900\uC73C\uB85C \uC800\uC7A5\uB429\uB2C8\uB2E4.</li>
+            <h3 class="font-bold text-indigo-800 mb-2">\u26A1 한눈에 보는 전체 흐름</h3>
+            <ol class="list-decimal pl-5 space-y-1 text-sm text-indigo-900">
+                <li><b>모임배포</b> 탭에서 투표 링크를 만들어 단톡방에 공유 \u2192 참석 응답을 받습니다.</li>
+                <li><b>출석 & 회계</b> 탭에서 그날 참석자와 회비를 정리합니다.</li>
+                <li><b>팀 배정기</b>에서 명단을 넣고 팀을 나눕니다.</li>
+                <li><b>라인업 생성기</b>에서 쿼터별 라인업을 만듭니다.</li>
+                <li><b>모임배포</b>에서 최종 공유 링크를 단톡방에 뿌립니다.</li>
             </ol>
         </div>
-
-        <p class="text-xs text-gray-400 mt-8 text-center">\u00A9 BareaPlay \u00B7 \uB450\uBC14\uC774 \uD55C\uC778\uCD95\uAD6C\uD300 Barea</p>
+        ${sLogin}${sBalancer}${sLineup}${sAccounting}${sShare}${sPlayers}
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-5 mt-10">
+            <h3 class="text-xl font-bold mb-3 text-amber-900">\uD83D\uDEE0\uFE0F 인수인계 (기술 담당용)</h3>
+            <p class="text-sm text-amber-900 mb-3">이 앱은 <b>GitHub</b>에 코드를 올리면 <b>Vercel</b>이 자동 배포하고, 데이터는 <b>Firebase</b>에 저장됩니다.</p>
+            <ol class="list-decimal pl-5 space-y-2 text-sm text-amber-900">
+                <li><b>코드 수정\u00B7배포</b>: 파일을 고친 뒤 터미널에서
+                    <div class="bg-gray-800 text-gray-100 rounded-md p-3 mt-1 font-mono text-xs">git add .<br>git commit -m "수정 내용"<br>git push</div>
+                    push하면 Vercel이 자동 배포합니다.</li>
+                <li><b>\u2757 저장 사고 주의</b>: 코드 에디터에서 여러 파일을 열어둔 채 "모두 저장"을 누르면, 새로 교체한 파일이 에디터에 열려 있던 옛날 내용으로 다시 덮어쓰일 수 있습니다. <b>파일 교체 후에는 에디터 탭을 모두 닫고 저장\u00B7push하세요.</b></li>
+                <li><b>캐시\u00B7버전 규칙</b>: 내용을 바꾼 파일은 불러오는 주소 끝 <code class="bg-amber-100 px-1 rounded">?v=숫자</code>를 한 단계 올리고, <code class="bg-amber-100 px-1 rounded">sw.js</code>의 <code class="bg-amber-100 px-1 rounded">CACHE_NAME</code> 숫자도 함께 올립니다.</li>
+                <li><b>배포 후 확인법</b>: GitHub 레포 웹에서 그 파일을 열고 <code class="bg-amber-100 px-1 rounded">Ctrl+F</code>로 바꾼 내용을 검색해 실제 반영됐는지 확인하세요.</li>
+                <li><b>운영진(관리자) 추가</b>: Firebase Console \u2192 Firestore의 <code class="bg-amber-100 px-1 rounded">admins</code> 컬렉션에 새 운영진 계정 UID를 등록해야 관리자 권한이 생깁니다.</li>
+                <li><b>날짜 기준</b>: 모든 날짜는 두바이 현지 시각으로 저장됩니다.</li>
+            </ol>
+        </div>
+        <p class="text-xs text-gray-400 mt-8 text-center">\u00A9 BareaPlay \u00B7 두바이 한인축구팀 Barea</p>
     </div>`;
 }
 
@@ -681,7 +723,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             onSnapshot(doc(db, "memos", "accounting_memo"), (doc) => { const memoArea = document.getElementById('memo-area'); if (doc.exists() && memoArea && document.activeElement !== memoArea) { memoArea.value = doc.data().content; } });
             playerMgmt.renderPlayerTable();
             accounting.renderForDate();
-            loadAndSyncDailyMeetingData();
+            await changeMeetingDate(window.getLocalDate()); // [A방식] 오늘 날짜로 시작
         } catch (error) {
             console.error("초기 데이터 로딩 실패:", error);
             showNotification('데이터 로딩에 실패했습니다.', 'error');
