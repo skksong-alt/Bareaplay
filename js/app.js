@@ -2,14 +2,14 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
 import { getFirestore, collection, doc, onSnapshot, getDocs, getDoc, setDoc, deleteDoc, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
-import { state, setAdmin } from './store.js?v=3';
-import * as playerMgmt from './modules/playerManagement.js?v=3';
-import * as balancer from './modules/teamBalancer.js?v=3';
-import * as lineup from './modules/lineupGenerator.js?v=3';
-import * as accounting from './modules/accounting.js?v=3';
-import * as shareMgmt from './modules/shareManagement.js?v=3';
-import * as voteMgmt from './modules/voteManagement.js?v=3';
-import * as lineupStats from './modules/lineupStats.js?v=3';
+import { state, setAdmin } from './store.js?v=2';
+import * as playerMgmt from './modules/playerManagement.js?v=2';
+import * as balancer from './modules/teamBalancer.js?v=2';
+import * as lineup from './modules/lineupGenerator.js?v=2';
+import * as accounting from './modules/accounting.js?v=2';
+import * as shareMgmt from './modules/shareManagement.js?v=2';
+import * as voteMgmt from './modules/voteManagement.js?v=1';
+import * as lineupStats from './modules/lineupStats.js?v=1';
 
 const firebaseConfig = {
     apiKey: "AIzaSyD_2tm5-hYbCeU8yi0QiWW9Oqm0O7oPBco",
@@ -85,7 +85,7 @@ window.safeUrl = function(url) {
 
 const saveDailyMeetingData = window.debounce(async () => {
     if (!state.isAdmin) return;
-    const today = window.getLocalDate(); // [수정] UTC 대신 두바이 현지 날짜 사용 (자정 무렵 날짜 밀림 방지)
+    const today = new Date().toISOString().split('T')[0];
 
     const teamsObject = {};
     (state.teams || []).forEach((team, index) => {
@@ -133,7 +133,7 @@ const saveDailyMeetingData = window.debounce(async () => {
 }, 1000);
 
 function loadAndSyncDailyMeetingData() {
-    const today = window.getLocalDate(); // [수정] UTC 대신 두바이 현지 날짜 사용 (자정 무렵 날짜 밀림 방지)
+    const today = new Date().toISOString().split('T')[0];
     const meetingDocRef = doc(db, "dailyMeetings", today);
 
     onSnapshot(meetingDocRef, (doc) => {
@@ -412,7 +412,7 @@ function renderSharePageView(shareData) {
         .bp-foot{text-align:center;margin-top:6px;padding:4px;font-size:.75rem;font-weight:700;background:#f3f4f6;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         details.bp-card>summary{list-style:none;cursor:pointer;font-size:1.3rem;font-weight:800;display:flex;align-items:center;justify-content:space-between;padding-bottom:8px;border-bottom:1px solid #eee}
         details.bp-card>summary::-webkit-details-marker{display:none}
-        details.bp-card>summary::after{content:'\25BE';font-size:.9rem;color:#9ca3af;transition:transform .2s;margin-left:8px}
+        details.bp-card>summary::after{content:'▾';font-size:.9rem;color:#9ca3af;transition:transform .2s;margin-left:8px}
         details.bp-card:not([open])>summary{border-bottom:none;padding-bottom:0}
         details.bp-card:not([open])>summary::after{transform:rotate(-90deg)}
         details.bp-card>.bp-body{margin-top:12px}
