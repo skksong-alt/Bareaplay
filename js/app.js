@@ -297,6 +297,82 @@ window.promptForAdminPassword = function() {
     adminModal.classList.remove('hidden');
 }
 
+function renderManual() {
+    const el = document.getElementById('page-manual');
+    if (!el) return;
+    el.innerHTML = `
+    <div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg max-w-4xl mx-auto leading-relaxed text-gray-800">
+        <h2 class="text-3xl font-bold mb-2">\u{1F4D6} BareaPlay \uC0AC\uC6A9\uC124\uBA85\uC11C</h2>
+        <p class="text-gray-500 mb-6">\uC6B4\uC601\uC9C4\uC774 \uBC14\uB00C\uC5B4\uB3C4 \uB204\uAD6C\uB098 \uC774 \uBB38\uC11C\uB9CC \uBCF4\uBA74 \uD504\uB85C\uADF8\uB7A8\uC744 \uB611\uAC19\uC774 \uC6B4\uC601\uD560 \uC218 \uC788\uB3C4\uB85D \uC815\uB9AC\uD588\uC2B5\uB2C8\uB2E4. (\uB85C\uADF8\uC778 \uC5C6\uC774 \uB204\uAD6C\uB098 \uC5F4\uB78C \uAC00\uB2A5)</p>
+
+        <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-8">
+            <h3 class="font-bold text-indigo-800 mb-2">\u26A1 \uD55C\uB208\uC5D0 \uBCF4\uB294 \uC804\uCCB4 \uD750\uB984</h3>
+            <p class="text-sm text-indigo-900">\u2460 \uD22C\uD45C(\uBAA8\uC784\uBC30\uD3EC\uC5D0\uC11C \uD22C\uD45C \uB9C1\uD06C \uC0DD\uC131\u00B7\uACF5\uC720) \u2192 \u2461 \uCD9C\uC11D&\uD68C\uACC4\uC5D0\uC11C \uCC38\uC11D\uC790 \uD655\uC815 \u2192 \u2462 \uD300 \uBC30\uC815\uAE30\uC5D0\uC11C \uD300 \uB098\uB204\uAE30 \u2192 \u2463 \uB77C\uC778\uC5C5 \uC0DD\uC131\uAE30\uC5D0\uC11C \uCFFC\uD130\uBCC4 \uB77C\uC778\uC5C5 \u2192 \u2464 \uBAA8\uC784\uBC30\uD3EC\uC5D0\uC11C \uCD5C\uC885 \uB9C1\uD06C \uACF5\uC720</p>
+        </div>
+
+        <h3 class="text-xl font-bold mt-8 mb-3 border-b pb-2">\u{1F511} \uAD00\uB9AC\uC790 \uB85C\uADF8\uC778</h3>
+        <ul class="list-disc pl-5 space-y-1 text-sm">
+            <li>\uC77C\uBC18 \uC5F4\uB78C\uC740 \uB204\uAD6C\uB098 \uAC00\uB2A5\uD558\uC9C0\uB9CC, <b>\uD300 \uBC30\uC815\u00B7\uB77C\uC778\uC5C5\u00B7\uC120\uC218\uAD00\uB9AC\u00B7\uBAA8\uC784\uBC30\uD3EC \uB4F1 \uD3B8\uC9D1 \uAE30\uB2A5\uC740 \uAD00\uB9AC\uC790\uB9CC</b> \uC4F8 \uC218 \uC788\uC2B5\uB2C8\uB2E4.</li>
+            <li>\uD3B8\uC9D1 \uAE30\uB2A5\uC744 \uB204\uB974\uBA74 <b>Google \uB85C\uADF8\uC778</b> \uCC3D\uC774 \uB73C\uB2C8\uB2E4. \uC6B4\uC601\uC9C4 \uACC4\uC815\uC73C\uB85C \uB85C\uADF8\uC778\uD558\uC138\uC694.</li>
+            <li>\uC0C8 \uC6B4\uC601\uC9C4\uC744 \uCD94\uAC00\uD558\uB824\uBA74 \uC544\uB798 <b>\uC778\uC218\uC778\uACC4</b> \uD56D\uBAA9\uC758 Firebase \uC124\uC815\uC774 \uD544\uC694\uD569\uB2C8\uB2E4.</li>
+        </ul>
+
+        <h3 class="text-xl font-bold mt-8 mb-3 border-b pb-2">\u2696\uFE0F \uD300 \uBC30\uC815\uAE30</h3>
+        <ul class="list-disc pl-5 space-y-1 text-sm">
+            <li><b>\uCC38\uAC00\uC790 \uBA85\uB2E8</b>: \uD55C \uC904\uC5D0 \uD55C \uBA85\uC529 \uC785\uB825\uD569\uB2C8\uB2E4. '\uBAA8\uB4E0 \uC120\uC218 \uBD88\uB7EC\uC624\uAE30'\uB85C \uB4F1\uB85D \uC120\uC218 \uC804\uCCB4\uB97C \uCC44\uC6B8 \uC218 \uC788\uC2B5\uB2C8\uB2E4.</li>
+            <li>\uBA85\uB2E8\uC740 <b>\uC0C8\uB85C\uACE0\uCE68\u00B7\uC7AC\uC811\uC18D\uD574\uB3C4 \uADF8\uB300\uB85C \uC720\uC9C0</b>\uB429\uB2C8\uB2E4. <b>\uBA85\uB2E8 \uCD08\uAE30\uD654</b> \uBC84\uD2BC\uC744 \uB20C\uB7EC\uC57C\uB9CC \uBE44\uC6CC\uC9D1\uB2C8\uB2E4.</li>
+            <li><b>\u2B50 \uC5D0\uC774\uC2A4 \uC9C0\uC815 (\uC120\uD0DD)</b>: \uC798\uD558\uB294 \uD575\uC2EC \uC120\uC218\uB97C \uC801\uC73C\uBA74, \uADF8 \uC120\uC218\uB4E4\uC774 <b>\uAC01 \uD300\uC5D0 \uACE0\uB974\uAC8C \uB098\uB269\uB2C8\uB2E4</b>. \uC608) \uC5D0\uC774\uC2A4 6\uBA85\u00B72\uD300 \u2192 \uD55C \uD300\uC5D0 \uBAB0\uB9AC\uC9C0 \uC54A\uACE0 3:3. \uD640\uC218(5\uBA85)\uBA74 3:2\uB85C \uB098\uB204\uACE0 \uB0A8\uB294 1\uBA85\uC740 \uD300 \uD3C9\uADE0 \uC2E4\uB825\uC5D0 \uB9DE\uCDB0 \uBC30\uC815\uB429\uB2C8\uB2E4. \uACB0\uACFC \uCE74\uB4DC\uC5D0 \u2B50\uB85C \uD45C\uC2DC\uB429\uB2C8\uB2E4. (DB\uC5D0 \uB4F1\uB85D\uB41C \uC120\uC218\uB9CC \uC5D0\uC774\uC2A4\uB85C \uC778\uC815)</li>
+            <li><b>\uBC38\uB7F0\uC2A4 \uAC00\uC911\uCE58</b>(\uB2A5\uB825\uCE58\u00B7\uD3EC\uC9C0\uC158\u00B7\uC778\uC6D0\uC218) \uC2AC\uB77C\uC774\uB354\uB85C \uBB34\uC5C7\uC744 \uB354 \uC911\uC694\uD558\uAC8C \uB9DE\uCD9C\uC9C0 \uC870\uC808\uD569\uB2C8\uB2E4.</li>
+            <li>\uC0DD\uC131 \uD6C4 \uC120\uC218\uB97C <b>\uB4DC\uB798\uADF8</b>\uD574 \uD300 \uAC04 \uC218\uB3D9 \uC774\uB3D9\uC774 \uAC00\uB2A5\uD569\uB2C8\uB2E4.</li>
+        </ul>
+
+        <h3 class="text-xl font-bold mt-8 mb-3 border-b pb-2">\u{1F4CB} \uB77C\uC778\uC5C5 \uC0DD\uC131\uAE30</h3>
+        <ul class="list-disc pl-5 space-y-1 text-sm">
+            <li>\uD300 \uBC30\uC815 \uD6C4, \uD300\uBCC4 <b>6\uCFFC\uD130 \uB77C\uC778\uC5C5</b>\uC744 \uC790\uB3D9 \uC0DD\uC131\uD569\uB2C8\uB2E4. (\uCD5C\uC18C 9\uBA85 \uD544\uC694)</li>
+            <li>\uC8FC\uD3EC\uC9C0\uC158 \uC6B0\uC120 \uBC30\uCE58, \uD734\uC2DD \uB85C\uD14C\uC774\uC158, \uACE8\uD0A4\uD37C\u00B7\uC2EC\uD310 \uC790\uB3D9 \uBC30\uBD84\uC774 \uC801\uC6A9\uB429\uB2C8\uB2E4.</li>
+            <li>PC\uB294 <b>\uB4DC\uB798\uADF8</b>, \uBAA8\uBC14\uC77C\uC740 <b>\uB450 \uC120\uC218\uB97C \uCC28\uB840\uB85C \uD0ED</b>\uD574 \uAC19\uC740 \uCFFC\uD130 \uC548\uC5D0\uC11C \uAD50\uCCB4\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.</li>
+        </ul>
+
+        <h3 class="text-xl font-bold mt-8 mb-3 border-b pb-2">\u{1F4C8} \uCD9C\uC11D & \uD68C\uACC4</h3>
+        <ul class="list-disc pl-5 space-y-1 text-sm">
+            <li>\uB0A0\uC9DC\uBCC4 \uCC38\uC11D\uC790\uB97C \uCCB4\uD06C\uD558\uACE0 \uD68C\uBE44\uB97C \uAE30\uB85D\uD569\uB2C8\uB2E4.</li>
+            <li><b>\uB0A9\uBD80 \uC0C1\uD0DC</b>: \u25CF \uC644\uB0A9 / \u25B3 \uC77C\uBD80 / \u2715 \uBBF8\uB0A9 / <b>N \uB178\uC1FC</b> \uC911\uC5D0\uC11C \uC120\uD0DD\uD569\uB2C8\uB2E4.</li>
+            <li><b>\uBBF8\uB0A9(\u2715) \uB610\uB294 \uB178\uC1FC(N)</b>\uB97C \uC120\uD0DD\uD558\uBA74 \uADF8 \uC0AC\uB78C\uC758 \uB0A9\uBD80\uC561\uC774 <b>\uC790\uB3D9\uC73C\uB85C 0</b>\uC774 \uB429\uB2C8\uB2E4. (\uC644\uB0A9\u00B7\uC77C\uBD80\uB294 \uADF8\uB300\uB85C)</li>
+            <li><b>\uB178\uC1FC</b>\uB294 \uD328\uB110\uD2F0 \uC5C6\uC774 \uAE30\uB85D\uB9CC \uB0A8\uC73C\uBA70, \uC774\uB984 \uC606\uC5D0 <b>\uB204\uC801 \uB178\uC1FC \uD69F\uC218</b>\uAC00 \uD45C\uC2DC\uB418\uACE0 \uC5D1\uC140\uC5D0\uB3C4 \uC9D1\uACC4\uB429\uB2C8\uB2E4.</li>
+            <li>\uC5D1\uC140 \uB0B4\uBCF4\uB0B4\uAE30\uB85C \uAE30\uAC04\uBCC4\u00B7\uC778\uBCC4 \uC815\uC0B0 \uB0B4\uC5ED\uC744 \uBC1B\uC744 \uC218 \uC788\uC2B5\uB2C8\uB2E4.</li>
+        </ul>
+
+        <h3 class="text-xl font-bold mt-8 mb-3 border-b pb-2">\u{1F4E2} \uBAA8\uC784\uBC30\uD3EC</h3>
+        <ul class="list-disc pl-5 space-y-1 text-sm">
+            <li><b>\uD22C\uD45C \uB9C1\uD06C</b>\uB97C \uB9CC\uB4E4\uC5B4 \uB2E8\uD1A1\uBC29\uC5D0 \uACF5\uC720\uD558\uBA74, \uCC38\uC11D/\uBBF8\uC815/\uBD88\uCC38 \uC751\uB2F5\uC774 \uBAA8\uC785\uB2C8\uB2E4.</li>
+            <li>\uCD5C\uC885 <b>\uACF5\uC720 \uBCF4\uB4DC \uB9C1\uD06C</b>\uC5D0\uB294 <b>\uD300 \uBC30\uC815(\uC811\uD798) / \uB77C\uC778\uC5C5(\uAE30\uBCF8 \uD3BC\uCCD0\uC9D0)</b>\uC774 \uD1A0\uAE00\uB85C \uD45C\uC2DC\uB429\uB2C8\uB2E4. \uBCF4\uACE0 \uC2F6\uC740 \uAC83\uB9CC \uD3BC\uCCD0 \uBCF4\uC138\uC694.</li>
+            <li>\uCC38\uC11D \uD604\uD669\uC740 \uD22C\uD45C \uACB0\uACFC\uB9CC \uBC18\uC601\uD558\uC5EC \uD63C\uB780\uC744 \uC904 \uC218 \uC788\uC5B4 \uACF5\uC720 \uBCF4\uB4DC\uC5D0\uC11C\uB294 \uD45C\uC2DC\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.</li>
+        </ul>
+
+        <h3 class="text-xl font-bold mt-8 mb-3 border-b pb-2">\u{1F464} \uC120\uC218\uAD00\uB9AC</h3>
+        <ul class="list-disc pl-5 space-y-1 text-sm">
+            <li>\uC120\uC218\uC758 \uC2E4\uB825(\uB2A5\uB825\uCE58)\uACFC \uC8FC/\uBD80 \uD3EC\uC9C0\uC158\uC744 \uB4F1\uB85D\u00B7\uC218\uC815\uD569\uB2C8\uB2E4. \uC774 \uC815\uBCF4\uAC00 \uD300 \uBC30\uC815\u00B7\uB77C\uC778\uC5C5 \uD488\uC9C8\uC744 \uACB0\uC815\uD569\uB2C8\uB2E4.</li>
+            <li>\uC815\uD574\uC9C4 <b>\uC5D1\uC140 \uC591\uC2DD</b>\uC73C\uB85C \uC5EC\uB7EC \uC120\uC218\uB97C \uD55C \uBC88\uC5D0 \uC77C\uAD04 \uC5C5\uB370\uC774\uD2B8\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.</li>
+        </ul>
+
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-5 mt-10">
+            <h3 class="text-xl font-bold mb-3 text-amber-900">\u{1F6E0}\uFE0F \uC778\uC218\uC778\uACC4 (\uAE30\uC220 \uB2F4\uB2F9\uC6A9)</h3>
+            <p class="text-sm text-amber-900 mb-3">\uC774 \uC571\uC740 <b>GitHub</b>\uC5D0 \uCF54\uB4DC\uB97C \uC62C\uB9AC\uBA74 <b>Vercel</b>\uC774 \uC790\uB3D9\uC73C\uB85C \uBC30\uD3EC\uD558\uACE0, \uB370\uC774\uD130\uB294 <b>Firebase</b>\uC5D0 \uC800\uC7A5\uB429\uB2C8\uB2E4.</p>
+            <ol class="list-decimal pl-5 space-y-2 text-sm text-amber-900">
+                <li><b>\uCF54\uB4DC \uC218\uC815\u00B7\uBC30\uD3EC</b>: \uD30C\uC77C\uC744 \uACE0\uCE5C \uB4A4 \uD130\uBBF8\uB110\uC5D0\uC11C
+                    <div class="bg-gray-800 text-gray-100 rounded-md p-3 mt-1 font-mono text-xs">git add .<br>git commit -m "\uC218\uC815 \uB0B4\uC6A9"<br>git push</div>
+                    push\uD558\uBA74 Vercel\uC774 \uC790\uB3D9 \uBC30\uD3EC\uD569\uB2C8\uB2E4.
+                </li>
+                <li><b>\uCE90\uC2DC\u00B7\uBC84\uC804 \uADDC\uCE59 (\uC911\uC694)</b>: \uB0B4\uC6A9\uC744 \uBC14\uAFB8 \uD30C\uC77C\uC740 \uBD88\uB7EC\uC624\uB294 \uC8FC\uC18C \uB05D\uC758 <code class="bg-amber-100 px-1 rounded">?v=\uC22B\uC790</code>\uB97C \uD55C \uB2E8\uACC4 \uC62C\uB824\uC57C \uC0AC\uC6A9\uC790\uAC00 \uC0C8 \uD30C\uC77C\uC744 \uBC1B\uC2B5\uB2C8\uB2E4. \uADF8\uB9AC\uACE0 <code class="bg-amber-100 px-1 rounded">sw.js</code>\uC758 <code class="bg-amber-100 px-1 rounded">CACHE_NAME</code> \uC22B\uC790\uB3C4 \uD568\uAED8 \uC62C\uB824\uC8FC\uC138\uC694.</li>
+                <li><b>\uC6B4\uC601\uC9C4(\uAD00\uB9AC\uC790) \uCD94\uAC00</b>: Firebase Console \u2192 Firestore\uC758 <code class="bg-amber-100 px-1 rounded">admins</code> \uCEEC\uB809\uC158\uC5D0 \uC0C8 \uC6B4\uC601\uC9C4\uC758 \uACC4\uC815 UID\uB97C \uB4F1\uB85D\uD574\uC57C \uAD00\uB9AC\uC790 \uAD8C\uD55C\uC774 \uC0DD\uAE41\uB2C8\uB2E4.</li>
+                <li><b>\uB0A0\uC9DC \uAE30\uC900</b>: \uBAA8\uB4E0 \uB0A0\uC9DC\uB294 \uB450\uBC14\uC774 \uD604\uC9C0 \uC2DC\uAC01 \uAE30\uC900\uC73C\uB85C \uC800\uC7A5\uB429\uB2C8\uB2E4.</li>
+            </ol>
+        </div>
+
+        <p class="text-xs text-gray-400 mt-8 text-center">\u00A9 BareaPlay \u00B7 \uB450\uBC14\uC774 \uD55C\uC778\uCD95\uAD6C\uD300 Barea</p>
+    </div>`;
+}
+
 function switchTab(activeKey, force = false) {
     if ((activeKey === 'players' || activeKey === 'share' || activeKey === 'balancer' || activeKey === 'lineup') && !state.isAdmin && !force) {
         pendingTabSwitch = activeKey; 
@@ -378,11 +454,8 @@ function renderSharePageView(shareData) {
         </div>`;
     }
 
+    // [수정] 공유 보드에서 참석 현황 섹션 제거 — 투표 결과만 반영하므로 수동 추가 인원과 불일치하여 혼란 방지
     let attendHtml = '';
-    if (attendance) {
-        const col = (title, color, arr, withNum) => `<div style="flex:1"><div style="font-weight:700;color:${color};border-bottom:1px solid #eee;padding-bottom:4px;margin-bottom:6px">${title} ${arr.length}</div>${arr.length ? arr.map((r, i) => `<div>${withNum ? (i + 1) + '. ' : ''}${esc(r.name)}${r.guest ? ' <span style=\'color:#d97706;font-size:.78rem\'>(G)</span>' : ''}</div>`).join('') : '<span style="color:#cbd5e1">-</span>'}</div>`;
-        attendHtml = `<details class="bp-card"><summary>🗳️ 참석 현황</summary><div class="bp-body" style="display:flex;gap:16px;font-size:.92rem;line-height:1.8">${col('참석', '#16a34a', attendance.attend || [], true)}${col('미정', '#d97706', attendance.maybe || [], false)}${col('불참', '#9ca3af', attendance.absent || [], false)}</div></details>`;
-    }
 
     const teamHtml = teams.map((team, i) => `<div style="background:${colors[i % 5]};color:#fff;border-radius:12px;padding:12px"><div style="font-weight:800;border-bottom:1px solid rgba(255,255,255,.3);padding-bottom:6px;margin-bottom:6px">팀 ${i + 1}</div>${[...team].sort((a, b) => a.name.localeCompare(b.name, 'ko-KR')).map(pp => `<div style="background:rgba(255,255,255,.18);border-radius:6px;padding:5px 8px;margin-bottom:4px">${esc(String(pp.name).replace(' (신규)', ''))}</div>`).join('')}</div>`).join('');
 
@@ -499,8 +572,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             loadingOverlay.style.display = 'none';
         }
     } else {
-        Object.assign(pages, { players: document.getElementById('page-players'), balancer: document.getElementById('page-balancer'), lineup: document.getElementById('page-lineup'), accounting: document.getElementById('page-accounting'), share: document.getElementById('page-share') });
-        Object.assign(tabs, { players: document.getElementById('tab-players'), balancer: document.getElementById('tab-balancer'), lineup: document.getElementById('tab-lineup'), accounting: document.getElementById('tab-accounting'), share: document.getElementById('tab-share') });
+        Object.assign(pages, { players: document.getElementById('page-players'), balancer: document.getElementById('page-balancer'), lineup: document.getElementById('page-lineup'), accounting: document.getElementById('page-accounting'), share: document.getElementById('page-share'), manual: document.getElementById('page-manual') });
+        Object.assign(tabs, { players: document.getElementById('tab-players'), balancer: document.getElementById('tab-balancer'), lineup: document.getElementById('tab-lineup'), accounting: document.getElementById('tab-accounting'), share: document.getElementById('tab-share'), manual: document.getElementById('tab-manual') });
+        renderManual();
         adminModal = document.getElementById('admin-modal');
         modalCancelBtn = document.getElementById('modal-cancel-btn'); 
 
