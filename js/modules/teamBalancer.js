@@ -1,7 +1,7 @@
 // js/modules/teamBalancer.js
 import { state } from '../store.js?v=2'; // [중요] ?v=2를 붙여서 app.js와 주소를 통일함
 
-let generateButton, attendeesTextarea, teamCountSelect, resultContainer, loadingSpinner, placeholder, loadAllPlayersBtn;
+let generateButton, attendeesTextarea, teamCountSelect, resultContainer, loadingSpinner, placeholder, loadAllPlayersBtn, aceTextarea;
 let sliders = {};
 let sliderVals = {};
 
@@ -105,8 +105,11 @@ export function renderResults(teams) {
             const displayName = player.name.replace(' (신규)', '');
             const isNew = player.name.includes(' (신규)');
             const newBadge = isNew ? `<span class="ml-1 text-[10px] bg-yellow-400 text-black px-1 rounded">NEW</span>` : '';
+            // [추가] 에이스 표시(⭐)
+            const isAce = (state.aceNames || []).includes(normalizeName(displayName));
+            const aceBadge = isAce ? `<span class="mr-1" title="에이스">⭐</span>` : '';
 
-            playerTag.innerHTML = `<span class="font-semibold flex items-center">${displayName}${newBadge}</span><div class="flex items-center"><span class="text-sm opacity-90 mr-2">${posIcons}</span></div>`;
+            playerTag.innerHTML = `<span class="font-semibold flex items-center">${aceBadge}${displayName}${newBadge}</span><div class="flex items-center"><span class="text-sm opacity-90 mr-2">${posIcons}</span></div>`;
             playerTag.addEventListener('dragstart', (e) => handlePlayerDragStart(e, player.name, index));
             playersContainer.appendChild(playerTag);
         });
@@ -221,65 +224,95 @@ function executeTeamAssignmentGA() {
     state.initialAttendeeOrder = [...attendNames];
     const teamCount = parseInt(teamCountSelect.value, 10);
     const W = { SKILL: Number(sliders.skill.value), POS: Number(sliders.pos.value), SIZE: Number(sliders.size.value) };
-    
-    let knownPlayers = []; 
+
+    // [추가] 에이스(핵심 선수) 명단 파싱 — 실제 참가자에 포함된 사람만 유효
+    const attendSet = new Set(attendNames);
+    const aceNames = [...new Set(
+        (aceTextarea ? aceTextarea.value.split('\n') : [])
+            .map(n => normalizeName(n))
+            .filter(n => n && attendSet.has(n))
+    )];
+    const aceSet = new Set(aceNames);
+    state.aceNames = aceNames; // renderResults에서 ⭐ 표시용
+
+    let knownPlayers = [];
     let unknownPlayers = [];
-    
-    // 3. DB 매칭 (이제 state.playerDB가 제대로 채워져 있을 것입니다)
-    attendNames.forEach(name => { 
+
+    // 3. DB 매칭
+    attendNames.forEach(name => {
         let dbPlayer = state.playerDB[name];
         if (!dbPlayer) {
-            // 키 정규화 검색
             const normalizedKey = Object.keys(state.playerDB).find(k => normalizeName(k) === name);
             if (normalizedKey) dbPlayer = state.playerDB[normalizedKey];
         }
-
-        if (dbPlayer) {
-            knownPlayers.push({ ...dbPlayer }); 
-        } else {
-            unknownPlayers.push(name); 
-        }
+        if (dbPlayer) { knownPlayers.push({ ...dbPlayer }); }
+        else { unknownPlayers.push(name); }
     });
-    
-    let bestOverallTeams = Array.from({ length: teamCount }, () => []);
-    
-    // 4. GA 실행
+
+    // [추가] 에이스 / 일반 선수 분리 (에이스는 DB 등록 선수만 인정)
+    const acePlayers = knownPlayers.filter(p => aceSet.has(normalizeName(p.name)));
+    const restPlayers = knownPlayers.filter(p => !aceSet.has(normalizeName(p.name)));
+
+    // [추가] 에이스를 각 팀에 균등 분산 (스네이크 드래프트)
+    //  - 팀 수로 나눠떨어지면 정확히 동일 인원
+    //  - 홀수(나머지)면 능력치 순서에 따라 팀 평균에 맞춰 자동 배분
+    const teamsBase = Array.from({ length: teamCount }, () => []);
+    [...acePlayers].sort((a, b) => (b.s1 || 0) - (a.s1 || 0)).forEach((p, i) => {
+        const cycle = Math.floor(i / teamCount);
+        const pos = i % teamCount;
+        const teamIndex = (cycle % 2 === 0) ? pos : (teamCount - 1 - pos);
+        teamsBase[teamIndex].push(p);
+    });
+
+    // [추가] 에이스 고정 상태에서 나머지 선수를 '가장 적은 팀'부터 채우는 빌더 (인원 균형 유지)
+    const buildTeams = (orderedRest) => {
+        const teams = teamsBase.map(t => [...t]);
+        orderedRest.forEach(player => {
+            let minI = 0;
+            for (let i = 1; i < teamCount; i++) {
+                if (teams[i].length < teams[minI].length) minI = i;
+            }
+            teams[minI].push(player);
+        });
+        return teams;
+    };
+
+    let bestOverallTeams = buildTeams(restPlayers);
+
+    // 4. GA 실행 — 에이스는 고정, 나머지 선수의 조합만 최적화
     if (knownPlayers.length > 0) {
-        // 기본 배치
-        knownPlayers.forEach((p, i) => bestOverallTeams[i % teamCount].push(p));
         let bestOverallScore = calculateScore(bestOverallTeams, W);
 
-        const POPULATION_SIZE = 50; 
-        const GENERATIONS = 100; 
-        const MUTATION_RATE = 0.1; 
+        const POPULATION_SIZE = 50;
+        const GENERATIONS = 100;
+        const MUTATION_RATE = 0.1;
         const ELITISM_COUNT = 2;
-        
+
         let population = [];
-        for (let i = 0; i < POPULATION_SIZE; i++) { 
-            let chromosome = [...knownPlayers]; 
-            window.shuffleLocal(chromosome); 
-            population.push(chromosome); 
+        for (let i = 0; i < POPULATION_SIZE; i++) {
+            let chromosome = [...restPlayers];
+            window.shuffleLocal(chromosome);
+            population.push(chromosome);
         }
 
         try {
             for (let gen = 0; gen < GENERATIONS; gen++) {
                 let rankedPopulation = population.map(chromosome => {
-                    let teams = Array.from({ length: teamCount }, () => []);
-                    chromosome.forEach((player, index) => { teams[index % teamCount].push(player); });
+                    const teams = buildTeams(chromosome);
                     const score = calculateScore(teams, W);
                     return { chromosome, teams, score };
                 }).sort((a, b) => a.score - b.score);
 
-                if (rankedPopulation[0].score < bestOverallScore) { 
-                    bestOverallScore = rankedPopulation[0].score; 
-                    bestOverallTeams = rankedPopulation[0].teams; 
+                if (rankedPopulation[0].score < bestOverallScore) {
+                    bestOverallScore = rankedPopulation[0].score;
+                    bestOverallTeams = rankedPopulation[0].teams;
                 }
 
                 let newPopulation = [];
-                for (let i = 0; i < ELITISM_COUNT; i++) { 
-                    if (rankedPopulation[i]) newPopulation.push(rankedPopulation[i].chromosome); 
+                for (let i = 0; i < ELITISM_COUNT; i++) {
+                    if (rankedPopulation[i]) newPopulation.push(rankedPopulation[i].chromosome);
                 }
-                
+
                 while (newPopulation.length < POPULATION_SIZE) {
                     if (rankedPopulation.length === 0) break;
                     const parent1 = tournamentSelection(rankedPopulation).chromosome;
@@ -292,7 +325,6 @@ function executeTeamAssignmentGA() {
             }
         } catch (err) {
             console.error("GA Error:", err);
-            // 오류 발생 시 기본 배치 유지
         }
     }
 
@@ -300,7 +332,7 @@ function executeTeamAssignmentGA() {
         bestOverallTeams = Array.from({ length: teamCount }, () => []);
     }
 
-    // 5. 신규 선수 배정
+    // 5. 신규(미등록) 선수 배정 — 가장 적은 팀부터 채움
     unknownPlayers.forEach(nm => {
         let minIndex = bestOverallTeams.reduce((minIdx, team, i, arr) => team.length < arr[minIdx].length ? i : minIdx, 0);
         bestOverallTeams[minIndex].push({ name: `${nm} (신규)`, s1: 65, pos1: [] });
@@ -329,7 +361,7 @@ export function init(dependencies) {
     if (dependencies.state) Object.assign(state, dependencies.state);
     
     const pageElement = document.getElementById('page-balancer');
-    pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">입력 정보</h2><div class="mb-4"><div class="flex justify-between items-center mb-2"><label for="attendees" class="block text-md font-semibold text-gray-700">참가자 명단</label><button id="load-all-players-btn" class="text-sm text-indigo-600 hover:underline">모든 선수 불러오기</button></div><textarea id="attendees" rows="12" class="w-full p-3 border border-gray-300 rounded-lg bg-gray-50" placeholder="선수 이름을 한 줄에 한 명씩 입력하세요."></textarea></div><div class="mb-6"><label for="teamCount" class="block text-md font-semibold text-gray-700 mb-2">생성할 팀 수</label><select id="teamCount" class="w-full p-3 border border-gray-300 rounded-lg bg-white"><option value="2" selected>2팀</option><option value="3">3팀</option><option value="4">4팀</option><option value="5">5팀</option></select></div><div><h3 class="text-lg font-semibold text-gray-700 mb-3">밸런스 가중치</h3><div class="space-y-4"><div><label for="w_skill" class="flex justify-between items-center text-sm font-medium"><span>⚡ 능력치</span><span id="w_skill_val" class="font-bold text-indigo-600">100</span></label><input id="w_skill" type="range" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"></div><div><label for="w_pos" class="flex justify-between items-center text-sm font-medium"><span>🛡️ 포지션</span><span id="w_pos_val" class="font-bold text-indigo-600">100</span></label><input id="w_pos" type="range" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"></div><div><label for="w_size" class="flex justify-between items-center text-sm font-medium"><span>👥 인원수</span><span id="w_size_val" class="font-bold text-indigo-600">100</span></label><input id="w_size" type="range" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"></div></div></div><div class="mt-8"><button id="generateButton" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition-transform transform hover:scale-105 shadow-lg">팀 생성하기!</button></div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">팀 배정 결과</h2><div id="loading-balancer" class="hidden"><svg class="animate-spin h-6 w-6 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div></div><p class="text-sm text-gray-500 mb-4 -mt-2">💡 생성된 팀 간에 선수를 드래그하여 수동으로 조정할 수 있습니다.</p><div id="result-container-balancer" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 min-h-[60vh]"><div id="placeholder-balancer" class="col-span-full flex items-center justify-center text-gray-400"><p>팀 생성 버튼을 눌러주세요.</p></div></div></div></div>`;
+    pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">입력 정보</h2><div class="mb-4"><div class="flex justify-between items-center mb-2"><label for="attendees" class="block text-md font-semibold text-gray-700">참가자 명단</label><button id="load-all-players-btn" class="text-sm text-indigo-600 hover:underline">모든 선수 불러오기</button></div><textarea id="attendees" rows="12" class="w-full p-3 border border-gray-300 rounded-lg bg-gray-50" placeholder="선수 이름을 한 줄에 한 명씩 입력하세요."></textarea></div><div class="mb-4"><label for="ace-list" class="block text-md font-semibold text-gray-700 mb-2">⭐ 에이스(핵심 선수) 지정</label><textarea id="ace-list" rows="4" class="w-full p-3 border border-yellow-300 rounded-lg bg-yellow-50" placeholder="에이스 이름을 한 줄에 한 명씩 입력하세요. 여기 적은 선수는 각 팀에 최대한 균등하게 나뉩니다."></textarea><p class="text-xs text-gray-400 mt-1">예) 6명 지정 + 2팀 → 3:3 분산. 홀수면 팀 평균 능력에 맞춰 배분됩니다. (DB 등록 선수만 인정)</p></div><div class="mb-6"><label for="teamCount" class="block text-md font-semibold text-gray-700 mb-2">생성할 팀 수</label><select id="teamCount" class="w-full p-3 border border-gray-300 rounded-lg bg-white"><option value="2" selected>2팀</option><option value="3">3팀</option><option value="4">4팀</option><option value="5">5팀</option></select></div><div><h3 class="text-lg font-semibold text-gray-700 mb-3">밸런스 가중치</h3><div class="space-y-4"><div><label for="w_skill" class="flex justify-between items-center text-sm font-medium"><span>⚡ 능력치</span><span id="w_skill_val" class="font-bold text-indigo-600">100</span></label><input id="w_skill" type="range" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"></div><div><label for="w_pos" class="flex justify-between items-center text-sm font-medium"><span>🛡️ 포지션</span><span id="w_pos_val" class="font-bold text-indigo-600">100</span></label><input id="w_pos" type="range" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"></div><div><label for="w_size" class="flex justify-between items-center text-sm font-medium"><span>👥 인원수</span><span id="w_size_val" class="font-bold text-indigo-600">100</span></label><input id="w_size" type="range" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"></div></div></div><div class="mt-8"><button id="generateButton" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition-transform transform hover:scale-105 shadow-lg">팀 생성하기!</button></div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">팀 배정 결과</h2><div id="loading-balancer" class="hidden"><svg class="animate-spin h-6 w-6 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div></div><p class="text-sm text-gray-500 mb-4 -mt-2">💡 생성된 팀 간에 선수를 드래그하여 수동으로 조정할 수 있습니다.</p><div id="result-container-balancer" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 min-h-[60vh]"><div id="placeholder-balancer" class="col-span-full flex items-center justify-center text-gray-400"><p>팀 생성 버튼을 눌러주세요.</p></div></div></div></div>`;
     
     generateButton = document.getElementById('generateButton');
     attendeesTextarea = document.getElementById('attendees');
@@ -338,6 +370,7 @@ export function init(dependencies) {
     loadingSpinner = document.getElementById('loading-balancer');
     placeholder = document.getElementById('placeholder-balancer');
     loadAllPlayersBtn = document.getElementById('load-all-players-btn');
+    aceTextarea = document.getElementById('ace-list');
     sliders = { skill: document.getElementById('w_skill'), pos: document.getElementById('w_pos'), size: document.getElementById('w_size') };
     sliderVals = { skill: document.getElementById('w_skill_val'), pos: document.getElementById('w_pos_val'), size: document.getElementById('w_size_val') };
 

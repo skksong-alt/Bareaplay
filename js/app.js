@@ -2,14 +2,14 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
 import { getFirestore, collection, doc, onSnapshot, getDocs, getDoc, setDoc, deleteDoc, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
-import { state, setAdmin } from './store.js?v=2';
-import * as playerMgmt from './modules/playerManagement.js?v=2';
-import * as balancer from './modules/teamBalancer.js?v=2';
-import * as lineup from './modules/lineupGenerator.js?v=2';
-import * as accounting from './modules/accounting.js?v=2';
-import * as shareMgmt from './modules/shareManagement.js?v=2';
-import * as voteMgmt from './modules/voteManagement.js?v=1';
-import * as lineupStats from './modules/lineupStats.js?v=1';
+import { state, setAdmin } from './store.js?v=3';
+import * as playerMgmt from './modules/playerManagement.js?v=3';
+import * as balancer from './modules/teamBalancer.js?v=3';
+import * as lineup from './modules/lineupGenerator.js?v=3';
+import * as accounting from './modules/accounting.js?v=3';
+import * as shareMgmt from './modules/shareManagement.js?v=3';
+import * as voteMgmt from './modules/voteManagement.js?v=3';
+import * as lineupStats from './modules/lineupStats.js?v=3';
 
 const firebaseConfig = {
     apiKey: "AIzaSyD_2tm5-hYbCeU8yi0QiWW9Oqm0O7oPBco",
@@ -85,7 +85,7 @@ window.safeUrl = function(url) {
 
 const saveDailyMeetingData = window.debounce(async () => {
     if (!state.isAdmin) return;
-    const today = new Date().toISOString().split('T')[0];
+    const today = window.getLocalDate(); // [수정] UTC 대신 두바이 현지 날짜 사용 (자정 무렵 날짜 밀림 방지)
 
     const teamsObject = {};
     (state.teams || []).forEach((team, index) => {
@@ -133,7 +133,7 @@ const saveDailyMeetingData = window.debounce(async () => {
 }, 1000);
 
 function loadAndSyncDailyMeetingData() {
-    const today = new Date().toISOString().split('T')[0];
+    const today = window.getLocalDate(); // [수정] UTC 대신 두바이 현지 날짜 사용 (자정 무렵 날짜 밀림 방지)
     const meetingDocRef = doc(db, "dailyMeetings", today);
 
     onSnapshot(meetingDocRef, (doc) => {
@@ -381,7 +381,7 @@ function renderSharePageView(shareData) {
     let attendHtml = '';
     if (attendance) {
         const col = (title, color, arr, withNum) => `<div style="flex:1"><div style="font-weight:700;color:${color};border-bottom:1px solid #eee;padding-bottom:4px;margin-bottom:6px">${title} ${arr.length}</div>${arr.length ? arr.map((r, i) => `<div>${withNum ? (i + 1) + '. ' : ''}${esc(r.name)}${r.guest ? ' <span style=\'color:#d97706;font-size:.78rem\'>(G)</span>' : ''}</div>`).join('') : '<span style="color:#cbd5e1">-</span>'}</div>`;
-        attendHtml = `<div class="bp-card"><h2 class="bp-h2">🗳️ 참석 현황</h2><div style="display:flex;gap:16px;font-size:.92rem;line-height:1.8">${col('참석', '#16a34a', attendance.attend || [], true)}${col('미정', '#d97706', attendance.maybe || [], false)}${col('불참', '#9ca3af', attendance.absent || [], false)}</div></div>`;
+        attendHtml = `<details class="bp-card"><summary>🗳️ 참석 현황</summary><div class="bp-body" style="display:flex;gap:16px;font-size:.92rem;line-height:1.8">${col('참석', '#16a34a', attendance.attend || [], true)}${col('미정', '#d97706', attendance.maybe || [], false)}${col('불참', '#9ca3af', attendance.absent || [], false)}</div></details>`;
     }
 
     const teamHtml = teams.map((team, i) => `<div style="background:${colors[i % 5]};color:#fff;border-radius:12px;padding:12px"><div style="font-weight:800;border-bottom:1px solid rgba(255,255,255,.3);padding-bottom:6px;margin-bottom:6px">팀 ${i + 1}</div>${[...team].sort((a, b) => a.name.localeCompare(b.name, 'ko-KR')).map(pp => `<div style="background:rgba(255,255,255,.18);border-radius:6px;padding:5px 8px;margin-bottom:4px">${esc(String(pp.name).replace(' (신규)', ''))}</div>`).join('')}</div>`).join('');
@@ -410,13 +410,19 @@ function renderSharePageView(shareData) {
         .bp-icon{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:.7rem;border:1.5px solid #fff;margin:0 auto;box-shadow:0 1px 3px rgba(0,0,0,.4)}
         .bp-name{background:rgba(0,0,0,.7);color:#fff;font-size:.62rem;padding:1px 4px;border-radius:5px;margin-top:2px;white-space:nowrap}
         .bp-foot{text-align:center;margin-top:6px;padding:4px;font-size:.75rem;font-weight:700;background:#f3f4f6;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        details.bp-card>summary{list-style:none;cursor:pointer;font-size:1.3rem;font-weight:800;display:flex;align-items:center;justify-content:space-between;padding-bottom:8px;border-bottom:1px solid #eee}
+        details.bp-card>summary::-webkit-details-marker{display:none}
+        details.bp-card>summary::after{content:'\25BE';font-size:.9rem;color:#9ca3af;transition:transform .2s;margin-left:8px}
+        details.bp-card:not([open])>summary{border-bottom:none;padding-bottom:0}
+        details.bp-card:not([open])>summary::after{transform:rotate(-90deg)}
+        details.bp-card>.bp-body{margin-top:12px}
     </style>
     <div class="bp-wrap">
         <div style="text-align:center;margin:12px 0"><h1 style="font-size:1.8rem;font-weight:800;color:#111827">BareaPlay ⚽</h1><p style="color:#6b7280;margin-top:4px">모임 보드</p></div>
         <div class="bp-card"><h2 class="bp-h2">📅 모임 정보</h2><p style="margin:4px 0"><b>시간:</b> ${esc(timeStr)}</p><p style="margin:4px 0"><b>장소:</b> ${locationHtml}</p></div>
         ${attendHtml}
-        <div class="bp-card"><h2 class="bp-h2">⚖️ 팀 배정</h2><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">${teamHtml}</div></div>
-        <div class="bp-card"><h2 class="bp-h2">📋 라인업</h2>${lineupHtml}</div>
+        <details class="bp-card"><summary>⚖️ 팀 배정</summary><div class="bp-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">${teamHtml}</div></details>
+        <details class="bp-card" open><summary>📋 라인업</summary><div class="bp-body">${lineupHtml}</div></details>
         <footer style="text-align:center;padding:16px;color:#9ca3af;font-size:.8rem">© 2025 BareaPlay. Created by 송감독.</footer>
     </div>`;
     const __n = document.createElement('div'); __n.id = 'notification'; document.body.appendChild(__n);
@@ -609,7 +615,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             loadingOverlay.style.opacity = 0;
             setTimeout(() => loadingOverlay.style.display = 'none', 300);
             updateAdminUI();
-            switchTab('accounting', true);
+            switchTab('balancer', true);
         }
     }
 });

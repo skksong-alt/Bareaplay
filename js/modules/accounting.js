@@ -36,11 +36,21 @@ function computeFee(name, isGrass) {
     return isGrass ? 70 : 50;
 }
 
+// [추가] 노쇼(통보 없이 불참) 상태 표식 — 회비/패널티 계산에는 영향 없음, 누적 통계용
+const NOSHOW = 'N';
+
+// [추가] 특정 선수의 누적 노쇼 횟수 (전체 기간 기준)
+function noShowCount(name) {
+    const key = normName(name);
+    return state.attendanceLog.filter(l => normName(l.name) === key && l.paymentStatus === NOSHOW).length;
+}
+
 function getStatusColor(status) {
     switch (status) {
         case "●": return "bg-green-100 text-green-800";
         case "△": return "bg-yellow-100 text-yellow-800";
         case "✕": return "bg-red-100 text-red-800";
+        case NOSHOW: return "bg-orange-100 text-orange-800";
         default: return "bg-gray-100";
     }
 }
@@ -75,7 +85,9 @@ function renderFullPlayerChecklist() {
         const isChecked = checkStatusSet.has(normName(name));
         const div = document.createElement('div');
         div.className = 'flex items-center';
-        div.innerHTML = `<input id="check-${name}" type="checkbox" value="${name}" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 admin-control" ${isChecked ? 'checked' : ''} ${!state.isAdmin ? 'disabled' : ''}><label for="check-${name}" class="ml-2 text-sm font-medium text-gray-900">${name}</label>`;
+        const nc = noShowCount(name);
+        const noShowBadge = nc > 0 ? ` <span class="ml-1 text-xs font-semibold text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded" title="누적 노쇼 횟수">노쇼 ${nc}</span>` : '';
+        div.innerHTML = `<input id="check-${name}" type="checkbox" value="${name}" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 admin-control" ${isChecked ? 'checked' : ''} ${!state.isAdmin ? 'disabled' : ''}><label for="check-${name}" class="ml-2 text-sm font-medium text-gray-900">${name}</label>${noShowBadge}`;
         checklistContainer.appendChild(div);
     });
 }
@@ -111,13 +123,15 @@ function renderAttendanceLogTable(logs) {
         const docId = log.id;
         const row = document.createElement('tr');
         row.className = 'bg-white border-b';
+        const nc = noShowCount(log.name);
+        const noShowBadge = nc > 0 ? ` <span class="text-xs font-semibold text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded" title="누적 노쇼 횟수">노쇼 ${nc}</span>` : '';
         // [추가] 이름 옆 ✕ 버튼으로 이 한 건만 삭제
         row.innerHTML = `
             <td data-label="#" class="py-2 px-4 font-medium text-gray-700">${index + 1}</td> <td data-label="날짜" class="py-2 px-4">${log.date}</td>
-            <td data-label="이름" class="py-2 px-4 font-medium text-gray-900">${log.name}<button data-id="${docId}" class="delete-log-btn ml-2 text-red-500 hover:text-red-700 font-bold admin-control" title="이 기록 삭제" ${!state.isAdmin ? 'disabled' : ''}>✕</button></td>
-            <td data-label="납부 상태"><select data-id="${docId}" class="log-status-select p-1 border rounded-md ${getStatusColor(log.paymentStatus)} admin-control" ${!state.isAdmin ? 'disabled': ''}><option value="" ${!log.paymentStatus ? 'selected' : ''}></option><option value="●" ${log.paymentStatus === '●' ? 'selected' : ''}>● 완납</option><option value="△" ${log.paymentStatus === '△' ? 'selected' : ''}>△ 일부</option><option value="✕" ${log.paymentStatus === '✕' ? 'selected' : ''}>✕ 미납</option></select></td>
+            <td data-label="이름" class="py-2 px-4 font-medium text-gray-900">${log.name}${noShowBadge}<button data-id="${docId}" data-name="${window.esc(log.name)}" class="delete-log-btn ml-2 text-red-500 hover:text-red-700 font-bold admin-control" title="이 기록 삭제" ${!state.isAdmin ? 'disabled' : ''}>✕</button></td>
+            <td data-label="납부 상태"><select data-id="${docId}" class="log-status-select p-1 border rounded-md ${getStatusColor(log.paymentStatus)} admin-control" ${!state.isAdmin ? 'disabled': ''}><option value="" ${!log.paymentStatus ? 'selected' : ''}></option><option value="●" ${log.paymentStatus === '●' ? 'selected' : ''}>● 완납</option><option value="△" ${log.paymentStatus === '△' ? 'selected' : ''}>△ 일부</option><option value="✕" ${log.paymentStatus === '✕' ? 'selected' : ''}>✕ 미납</option><option value="${NOSHOW}" ${log.paymentStatus === NOSHOW ? 'selected' : ''}>N 노쇼</option></select></td>
             <td data-label="납부액"><input type="number" data-id="${docId}" class="log-amount-input w-24 p-1 border rounded-md admin-control" placeholder="납부액" value="${log.paymentAmount || ''}" ${!state.isAdmin ? 'disabled': ''}></td>
-            <td data-label="비고"><input type="text" data-id="${docId}" class="log-note-input w-full p-1 border rounded-md admin-control" placeholder="비고 입력..." value="${log.note || ''}" ${!state.isAdmin ? 'disabled': ''}></td>
+            <td data-label="비고"><input type="text" data-id="${docId}" data-name="${window.esc(log.name)}" class="log-note-input w-full p-1 border rounded-md admin-control" placeholder="비고 입력..." value="${window.esc((state.playerNotes && state.playerNotes[normName(log.name)]) || '')}" ${!state.isAdmin ? 'disabled': ''}></td>
         `;
         logBody.appendChild(row);
     });
@@ -268,18 +282,19 @@ function downloadExcel(incomeLogs, expenseLogs, startDate, endDate) {
     const perPerson = {};
     incomeLogs.forEach(l => {
         const k = l.name || '(이름없음)';
-        if (!perPerson[k]) perPerson[k] = { name: k, count: 0, paid: 0, full: 0, partial: 0, unpaid: 0 };
+        if (!perPerson[k]) perPerson[k] = { name: k, count: 0, paid: 0, full: 0, partial: 0, unpaid: 0, noshow: 0 };
         perPerson[k].count += 1;
         perPerson[k].paid += Number(l.paymentAmount || 0);
         if (l.paymentStatus === '●') perPerson[k].full += 1;
         else if (l.paymentStatus === '△') perPerson[k].partial += 1;
         else if (l.paymentStatus === '✕') perPerson[k].unpaid += 1;
+        else if (l.paymentStatus === NOSHOW) perPerson[k].noshow += 1;
     });
     const perPersonRows = Object.values(perPerson)
         .sort((a, b) => a.name.localeCompare(b.name, 'ko-KR'))
         .map(p => ({
             '이름': p.name, '참석 횟수': p.count, '총 납부액': p.paid,
-            '완납(●)': p.full, '일부(△)': p.partial, '미납(✕)': p.unpaid
+            '완납(●)': p.full, '일부(△)': p.partial, '미납(✕)': p.unpaid, '노쇼(N)': p.noshow
         }));
     const perPersonSheet = XLSX.utils.json_to_sheet(perPersonRows.length ? perPersonRows : [{ '이름': '데이터 없음' }]);
     XLSX.utils.book_append_sheet(wb, perPersonSheet, "인별 집계");
@@ -297,7 +312,7 @@ function downloadExcel(incomeLogs, expenseLogs, startDate, endDate) {
     // 시트4: 상세 - 회비
     const incomeData = incomeLogs
         .slice().sort((a, b) => (a.date || '').localeCompare(b.date || '') || a.name.localeCompare(b.name, 'ko-KR'))
-        .map(log => ({ '날짜': log.date, '이름': log.name, '납부 상태': log.paymentStatus, '납부액': Number(log.paymentAmount || 0), '비고': log.note || '' }));
+        .map(log => ({ '날짜': log.date, '이름': log.name, '납부 상태': log.paymentStatus, '납부액': Number(log.paymentAmount || 0), '비고': (state.playerNotes && state.playerNotes[normName(log.name)]) || log.note || '' }));
     const incomeSheet = XLSX.utils.json_to_sheet(incomeData.length ? incomeData : [{ '날짜': '데이터 없음' }]);
     XLSX.utils.book_append_sheet(wb, incomeSheet, "상세-회비");
 
@@ -377,6 +392,7 @@ export function init(dependencies) {
     db = dependencies.db;
     state = dependencies.state;
     state.currentAttendees = [];
+    if (!state.playerNotes) state.playerNotes = {};
 
     const pageElement = document.getElementById('page-accounting');
     pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 space-y-8"><div class="bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">출석 기록 관리</h2><button id="admin-login-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1 px-3 rounded-lg">관리자 로그인</button></div><div class="mb-3"><label for="attendance-date" class="block text-md font-semibold text-gray-700 mb-2">날짜 선택</label><input type="date" id="attendance-date" class="w-full p-2 border rounded-lg"></div><div class="mb-3"><select id="record-date-jump" class="w-full p-2 border rounded-lg bg-white text-sm text-gray-700"><option value="">📌 기록 있는 날 바로가기</option></select></div><div class="mb-4"><label class="flex items-center gap-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg cursor-pointer admin-control"><input type="checkbox" id="grass-toggle" class="w-4 h-4 text-emerald-600 rounded"><span class="text-sm font-semibold text-emerald-800">🌱 천연잔디 날 (일반 70 / 학생 35)</span></label><p class="text-xs text-gray-400 mt-1">체크 후 저장하면 이 날의 회비가 천연잔디 금액으로 자동 입력됩니다.</p></div><div class="mb-4"><div class="flex justify-between items-center mb-2"><label class="block text-md font-semibold text-gray-700">참석자 선택</label><div class="space-x-2"><button id="check-all-btn" class="text-xs text-indigo-600 hover:underline admin-control" disabled>모두 선택</button><button id="uncheck-all-btn" class="text-xs text-gray-500 hover:underline admin-control" disabled>모두 해제</button></div></div><div id="attendance-checklist" class="max-h-60 overflow-y-auto border rounded-lg p-3 space-y-2"></div><div class="flex space-x-2 mt-2"><input type="text" id="manual-attendee-name" class="flex-grow bg-gray-50 border border-gray-300 text-sm rounded-lg p-2 admin-control" placeholder="수동 추가..."><button type="button" id="manual-attendee-add-btn" class="text-white bg-indigo-600 hover:bg-indigo-700 font-medium rounded-lg text-sm px-4 py-2 admin-control">추가</button></div></div><button id="record-attendance-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition-transform transform hover:scale-105 shadow-lg admin-control" disabled>선택한 날짜 출석 저장</button></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">💰 총 잔액</h2><p id="total-balance" class="text-4xl font-bold text-indigo-600">0 Dhs</p></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">📊 월별 요약</h2><div class="w-full"><canvas id="accountingChart"></canvas></div></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">Remark / 특정 메모</h2><textarea id="memo-area" class="w-full p-3 border rounded-lg admin-control bg-gray-50" rows="5" placeholder="미납자 정보, 주요 공지 등..." disabled></textarea><p class="text-xs text-gray-500 mt-2">메모는 자동으로 저장됩니다.</p>
@@ -390,6 +406,7 @@ export function init(dependencies) {
     memoArea = document.getElementById('memo-area');
     adminLoginBtn = document.getElementById('admin-login-btn');
     memoDoc = doc(db, "memos", "accounting_memo");
+    const playerNotesDoc = doc(db, "playerNotes", "all");
     accountingChart = document.getElementById('accountingChart');
     incomeTabBtn = document.getElementById('income-tab-btn');
     expenseTabBtn = document.getElementById('expense-tab-btn');
@@ -575,6 +592,22 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
         await setDoc(doc(db, "attendance", docId), updatedField, { merge: true });
     }, 500);
 
+    // [추가] 선수별 영구 비고 저장 (내용이 비면 키 삭제 → 다음부터 안 보임)
+    const debouncedNoteSave = window.debounce(async (name, text) => {
+        const key = normName(name);
+        if (!key) return;
+        const next = { ...(state.playerNotes || {}) };
+        const t = (text || '').trim();
+        if (t) next[key] = t; else delete next[key];
+        state.playerNotes = next;
+        try {
+            await setDoc(playerNotesDoc, { notes: next });
+        } catch (e) {
+            console.error("비고 저장 실패:", e);
+            window.showNotification("비고 저장에 실패했습니다.", "error");
+        }
+    }, 600);
+
     if(logBody) logBody.addEventListener('change', (e) => {
         const target = e.target;
         const docId = target.dataset.id;
@@ -586,7 +619,11 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
             e.target.className = `log-status-select p-1 border rounded-md ${getStatusColor(e.target.value)} admin-control`;
         }
         else if (target.classList.contains('log-amount-input')) updatedField = { paymentAmount: target.value };
-        else if (target.classList.contains('log-note-input')) updatedField = { note: target.value };
+        else if (target.classList.contains('log-note-input')) {
+            // [변경] 비고는 날짜별이 아니라 '선수별 영구 메모'로 저장 → 다른 경기날에도 자동 표시
+            debouncedNoteSave(target.dataset.name || '', target.value);
+            return;
+        }
 
         if (Object.keys(updatedField).length > 0) debouncedUpdate(docId, updatedField);
     });
@@ -599,7 +636,7 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
         const docId = btn.dataset.id;
         if (!docId) return;
         const row = btn.closest('tr');
-        const nameText = row ? row.querySelector('td[data-label="이름"]').textContent.replace('✕', '').trim() : '';
+        const nameText = btn.dataset.name || (row ? row.querySelector('td[data-label="이름"]').textContent.replace('✕', '').trim() : '');
         if (confirm(`'${nameText}' 회비 기록을 삭제하시겠습니까?`)) {
             await deleteDoc(doc(db, "attendance", docId));
             window.showNotification('회비 기록이 삭제되었습니다.');
@@ -612,4 +649,16 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
     }, 1000);
 
     if(memoArea) memoArea.addEventListener('input', () => debouncedMemoSave(memoArea.value));
+
+    // [추가] 선수별 영구 비고 실시간 동기화
+    const isEditingHere = () => {
+        const el = document.activeElement;
+        return el && pageElement.contains(el) && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA');
+    };
+    onSnapshot(playerNotesDoc, (snap) => {
+        state.playerNotes = (snap.exists() && snap.data().notes) ? snap.data().notes : {};
+        if (!isEditingHere() && !pageElement.classList.contains('hidden')) {
+            renderForDate();
+        }
+    });
 }
