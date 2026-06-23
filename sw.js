@@ -1,5 +1,5 @@
 // sw.js
-const CACHE_NAME = 'bareaplay-cache-v40';
+const CACHE_NAME = 'bareaplay-cache-v41';
 const urlsToCache = [
     '/', '/index.html', '/css/style.css',
     '/js/app.js?v=3',

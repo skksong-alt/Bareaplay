@@ -36,13 +36,12 @@ function computeFee(name, isGrass) {
     return isGrass ? 70 : 50;
 }
 
-// [추가] 노쇼(통보 없이 불참) 상태 표식 — 회비/패널티 계산에는 영향 없음, 누적 통계용
+// [추가] 노쇼(통보 없이 불참) 상태 표식 — 회비/패널티 계산엔 영향 없음, 누적 통계용
 const NOSHOW = 'N';
-
-// [추가] 특정 선수의 누적 노쇼 횟수 (전체 기간 기준)
+// [추가] 특정 선수의 누적 노쇼 횟수 (전체 기간)
 function noShowCount(name) {
     const key = normName(name);
-    return state.attendanceLog.filter(l => normName(l.name) === key && l.paymentStatus === NOSHOW).length;
+    return (state.attendanceLog || []).filter(l => normName(l.name) === key && l.paymentStatus === NOSHOW).length;
 }
 
 function getStatusColor(status) {
@@ -85,9 +84,9 @@ function renderFullPlayerChecklist() {
         const isChecked = checkStatusSet.has(normName(name));
         const div = document.createElement('div');
         div.className = 'flex items-center';
-        const nc = noShowCount(name);
-        const noShowBadge = nc > 0 ? ` <span class="ml-1 text-xs font-semibold text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded" title="누적 노쇼 횟수">노쇼 ${nc}</span>` : '';
-        div.innerHTML = `<input id="check-${name}" type="checkbox" value="${name}" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 admin-control" ${isChecked ? 'checked' : ''} ${!state.isAdmin ? 'disabled' : ''}><label for="check-${name}" class="ml-2 text-sm font-medium text-gray-900">${name}</label>${noShowBadge}`;
+        const __nc = noShowCount(name);
+        const __badge = __nc > 0 ? ` <span class="ml-1 text-xs font-semibold text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded" title="누적 노쇼 횟수">노쇼 ${__nc}</span>` : '';
+        div.innerHTML = `<input id="check-${name}" type="checkbox" value="${name}" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 admin-control" ${isChecked ? 'checked' : ''} ${!state.isAdmin ? 'disabled' : ''}><label for="check-${name}" class="ml-2 text-sm font-medium text-gray-900">${name}</label>${__badge}`;
         checklistContainer.appendChild(div);
     });
 }
@@ -123,13 +122,13 @@ function renderAttendanceLogTable(logs) {
         const docId = log.id;
         const row = document.createElement('tr');
         row.className = 'bg-white border-b';
-        const nc = noShowCount(log.name);
-        const noShowBadge = nc > 0 ? ` <span class="text-xs font-semibold text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded" title="누적 노쇼 횟수">노쇼 ${nc}</span>` : '';
+        const __nc = noShowCount(log.name);
+        const __badge = __nc > 0 ? ` <span class="text-xs font-semibold text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded" title="누적 노쇼 횟수">노쇼 ${__nc}</span>` : '';
         // [추가] 이름 옆 ✕ 버튼으로 이 한 건만 삭제
         row.innerHTML = `
             <td data-label="#" class="py-2 px-4 font-medium text-gray-700">${index + 1}</td> <td data-label="날짜" class="py-2 px-4">${log.date}</td>
-            <td data-label="이름" class="py-2 px-4 font-medium text-gray-900">${log.name}${noShowBadge}<button data-id="${docId}" data-name="${window.esc(log.name)}" class="delete-log-btn ml-2 text-red-500 hover:text-red-700 font-bold admin-control" title="이 기록 삭제" ${!state.isAdmin ? 'disabled' : ''}>✕</button></td>
-            <td data-label="납부 상태"><select data-id="${docId}" class="log-status-select p-1 border rounded-md ${getStatusColor(log.paymentStatus)} admin-control" ${!state.isAdmin ? 'disabled': ''}><option value="" ${!log.paymentStatus ? 'selected' : ''}></option><option value="●" ${log.paymentStatus === '●' ? 'selected' : ''}>● 완납</option><option value="△" ${log.paymentStatus === '△' ? 'selected' : ''}>△ 일부</option><option value="✕" ${log.paymentStatus === '✕' ? 'selected' : ''}>✕ 미납</option><option value="${NOSHOW}" ${log.paymentStatus === NOSHOW ? 'selected' : ''}>N 노쇼</option></select></td>
+            <td data-label="이름" class="py-2 px-4 font-medium text-gray-900">${log.name}${__badge}<button data-id="${docId}" class="delete-log-btn ml-2 text-red-500 hover:text-red-700 font-bold admin-control" title="이 기록 삭제" ${!state.isAdmin ? 'disabled' : ''}>✕</button></td>
+            <td data-label="납부 상태"><select data-id="${docId}" class="log-status-select p-1 border rounded-md ${getStatusColor(log.paymentStatus)} admin-control" ${!state.isAdmin ? 'disabled': ''}><option value="" ${!log.paymentStatus ? 'selected' : ''}></option><option value="●" ${log.paymentStatus === '●' ? 'selected' : ''}>● 완납</option><option value="△" ${log.paymentStatus === '△' ? 'selected' : ''}>△ 일부</option><option value="✕" ${log.paymentStatus === '✕' ? 'selected' : ''}>✕ 미납</option><option value="N" ${log.paymentStatus === NOSHOW ? 'selected' : ''}>N 노쇼</option></select></td>
             <td data-label="납부액"><input type="number" data-id="${docId}" class="log-amount-input w-24 p-1 border rounded-md admin-control" placeholder="납부액" value="${log.paymentAmount || ''}" ${!state.isAdmin ? 'disabled': ''}></td>
             <td data-label="비고"><input type="text" data-id="${docId}" data-name="${window.esc(log.name)}" class="log-note-input w-full p-1 border rounded-md admin-control" placeholder="비고 입력..." value="${window.esc((state.playerNotes && state.playerNotes[normName(log.name)]) || '')}" ${!state.isAdmin ? 'disabled': ''}></td>
         `;
@@ -617,6 +616,13 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
         if (target.classList.contains('log-status-select')) {
             updatedField = { paymentStatus: target.value };
             e.target.className = `log-status-select p-1 border rounded-md ${getStatusColor(e.target.value)} admin-control`;
+            // [추가] 미납(✕) 또는 노쇼(N) 선택 시 납부액을 자동으로 0 처리 (완납/일부는 건드리지 않음)
+            if (target.value === '✕' || target.value === NOSHOW) {
+                updatedField.paymentAmount = 0;
+                const __row = target.closest('tr');
+                const __amt = __row && __row.querySelector('.log-amount-input');
+                if (__amt) __amt.value = 0;
+            }
         }
         else if (target.classList.contains('log-amount-input')) updatedField = { paymentAmount: target.value };
         else if (target.classList.contains('log-note-input')) {
@@ -636,7 +642,7 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
         const docId = btn.dataset.id;
         if (!docId) return;
         const row = btn.closest('tr');
-        const nameText = btn.dataset.name || (row ? row.querySelector('td[data-label="이름"]').textContent.replace('✕', '').trim() : '');
+        const nameText = row ? row.querySelector('td[data-label="이름"]').textContent.replace('✕', '').trim() : '';
         if (confirm(`'${nameText}' 회비 기록을 삭제하시겠습니까?`)) {
             await deleteDoc(doc(db, "attendance", docId));
             window.showNotification('회비 기록이 삭제되었습니다.');
