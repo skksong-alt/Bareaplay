@@ -18,6 +18,35 @@ function feeTypeLabel(feeType) {
     return '일반(50/70)';
 }
 
+// [추가] 현재 선수정보를 '업로드 양식과 동일한' 엑셀로 다운로드
+function downloadPlayersExcel() {
+    if (typeof XLSX === 'undefined') {
+        window.showNotification('엑셀 모듈을 불러오지 못했습니다.', 'error');
+        return;
+    }
+    const feeTypeKo = (t) => (t === 'admin' ? '운영진' : (t === 'student' ? '학생' : '일반'));
+    const names = Object.keys(state.playerDB).sort((a, b) => a.localeCompare(b, 'ko-KR'));
+    const rows = names.map(name => {
+        const p = state.playerDB[name] || {};
+        return {
+            '이름': p.name || name,
+            '주포지션': (p.pos1 || []).join(', '),
+            '주포지션숙련도': p.s1 || 0,
+            '부포지션': (p.pos2 || []).join(', '),
+            '부포지션숙련도': p.s2 || 0,
+            '회비유형': feeTypeKo(p.feeType)
+        };
+    });
+    const header = ['이름', '주포지션', '주포지션숙련도', '부포지션', '부포지션숙련도', '회비유형'];
+    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [], { header });
+    ws['!cols'] = [{ wch: 12 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '선수정보');
+    const today = (window.getLocalDate ? window.getLocalDate() : new Date().toISOString().split('T')[0]);
+    XLSX.writeFile(wb, `BareaPlay_선수정보_${today}.xlsx`);
+    window.showNotification(`${rows.length}명의 선수정보를 다운로드했습니다.`);
+}
+
 function resetForm() {
     form.reset();
     playerIdInput.value = '';
@@ -134,8 +163,10 @@ export function init(dependencies) {
                 </div>
                 
                 <div class="bg-white p-6 rounded-2xl shadow-lg">
-                    <h3 class="text-xl font-bold mb-4">선수 정보 일괄 업데이트</h3>
-                    <p class="text-gray-600 mb-4">정해진 엑셀 양식의 파일을 업로드하면 모든 선수 정보가 갱신됩니다.</p>
+                    <h3 class="text-xl font-bold mb-4">선수 정보 엑셀 관리</h3>
+                    <p class="text-gray-600 mb-3 text-sm">현재 선수 정보를 엑셀로 <b>내려받아</b> 수정한 뒤, 그대로 다시 <b>업로드</b>하면 전체가 갱신됩니다. (다운로드 파일이 곧 업로드 양식입니다)</p>
+                    <button id="excel-download-btn" type="button" class="w-full mb-4 text-white bg-emerald-600 hover:bg-emerald-700 font-bold rounded-lg text-sm px-5 py-2.5 text-center">⬇️ 현재 선수정보 엑셀 다운로드</button>
+                    <label class="block mb-2 text-sm font-medium text-gray-700">엑셀 업로드(일괄 갱신)</label>
                     <input type="file" id="excel-uploader" accept=".xlsx, .xls" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100"/>
                 </div>
             </div>
@@ -150,6 +181,9 @@ export function init(dependencies) {
     form.addEventListener('submit', handleFormSubmit);
     tableBody.addEventListener('click', handleTableClick);
     cancelBtn.addEventListener('click', resetForm);
+
+    const downloadBtn = document.getElementById('excel-download-btn');
+    if (downloadBtn) downloadBtn.addEventListener('click', downloadPlayersExcel);
 }
 
 export function renderPlayerTable() {
@@ -174,7 +208,7 @@ export function renderPlayerTable() {
         const attendanceRate = ((attendanceCount / totalMeetings) * 100).toFixed(1);
         const row = document.createElement('tr');
         row.className = 'bg-white border-b';
-        row.innerHTML = `<td class="py-4 px-6 font-medium text-gray-900 whitespace-nowrap">${p.name}</td><td class="py-4 px-6 text-gray-700">${(p.pos1 || []).join(', ')} (${p.s1 || 0})</td><td class="py-4 px-6 text-gray-700">${(p.pos2 || []).join(', ')} (${p.s2 || 0})</td><td class="py-4 px-6 text-gray-700">${feeTypeLabel(p.feeType)}</td><td class="py-4 px-6 text-gray-700">${attendanceRate}% (${attendanceCount}/${totalMeetings})</td><td class="py-4 px-6"><button class="edit-btn font-medium text-blue-600 hover:underline mr-3" data-name="${p.name}">수정</button><button class="delete-btn font-medium text-red-600 hover:underline" data-name="${p.name}">삭제</button></td>`;
+        row.innerHTML = `<td data-label="이름" class="py-4 px-6 font-medium text-gray-900 whitespace-nowrap">${p.name}</td><td data-label="주포지션" class="py-4 px-6 text-gray-700">${(p.pos1 || []).join(', ')} (${p.s1 || 0})</td><td data-label="부포지션" class="py-4 px-6 text-gray-700">${(p.pos2 || []).join(', ')} (${p.s2 || 0})</td><td data-label="회비유형" class="py-4 px-6 text-gray-700">${feeTypeLabel(p.feeType)}</td><td data-label="출석률" class="py-4 px-6 text-gray-700">${attendanceRate}% (${attendanceCount}/${totalMeetings})</td><td data-label="관리" class="py-4 px-6"><button class="edit-btn font-medium text-blue-600 hover:underline mr-3" data-name="${p.name}">수정</button><button class="delete-btn font-medium text-red-600 hover:underline" data-name="${p.name}">삭제</button></td>`;
         tableBody.appendChild(row);
     });
 }

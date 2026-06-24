@@ -3,7 +3,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebas
 import { getFirestore, collection, doc, onSnapshot, getDocs, getDoc, setDoc, deleteDoc, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
 import { state, setAdmin } from './store.js?v=2';
-import * as playerMgmt from './modules/playerManagement.js?v=2';
+import * as playerMgmt from './modules/playerManagement.js?v=3';
 import * as balancer from './modules/teamBalancer.js?v=4';
 import * as lineup from './modules/lineupGenerator.js?v=2';
 import * as accounting from './modules/accounting.js?v=3';
@@ -276,6 +276,15 @@ function initExcelUploader() {
             const worksheet = workbook.Sheets[sheetName];
             const json = XLSX.utils.sheet_to_json(worksheet);
 
+            // 회비유형 셀(있을 때만) → 코드로 변환. 없으면 기존 값 유지.
+            const parseFeeType = (v, prevName) => {
+                const s = (v || '').toString().trim().toLowerCase();
+                if (['admin', '운영진', '운영진(0)'].includes(s)) return 'admin';
+                if (['student', '학생', '학생(25/35)'].includes(s)) return 'student';
+                if (['normal', '일반', '일반(50/70)'].includes(s)) return 'normal';
+                // 셀이 비어 있으면 기존 선수의 회비유형을 보존(왕복 시 손실 방지)
+                return (state.playerDB[prevName] && state.playerDB[prevName].feeType) || 'normal';
+            };
             const newPlayerDB = {};
             json.forEach(player => {
                 const name = player.이름;
@@ -285,7 +294,8 @@ function initExcelUploader() {
                     pos1: (player.주포지션 || "").toString().split(',').map(p => p.trim()).filter(Boolean),
                     s1:   player.주포지션숙련도 || 65,
                     pos2: (player.부포지션 || "").toString().split(',').map(p => p.trim()).filter(Boolean),
-                    s2:   player.부포지션숙련도 || 0
+                    s2:   player.부포지션숙련도 || 0,
+                    feeType: parseFeeType(player.회비유형, name)
                 };
             });
             savePlayerDB(newPlayerDB, true);
@@ -704,13 +714,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             state.attendanceLog = snapshots[0].docs.map(doc => ({ id: doc.id, ...doc.data() }));
             state.expenseLog = snapshots[1].docs.map(doc => ({ id: doc.id, ...doc.data() }));
             state.locations = snapshots[2].docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            if (Object.keys(state.playerDB).length === 0) {
-                console.log("로컬 선수 데이터가 없어 Firebase에서 가져옵니다.");
-                const playerSnapshot = await getDocs(collection(db, "players"));
-                const firebaseDB = {};
-                playerSnapshot.forEach(doc => { firebaseDB[doc.id] = doc.data(); });
-                savePlayerDB(firebaseDB, false);
-            }
+            // [실시간 동기화] 선수 DB를 Firestore와 실시간 연결한다.
+            // → PC에서 추가/수정/삭제한 선수가 폰 앱에 자동 반영되고, 그 반대도 자동 반영된다.
+            //   (기존: localStorage에 캐시가 있으면 Firebase를 다시 안 읽어 신규 선수가 영영 안 보이던 버그 수정)
+            onSnapshot(collection(db, "players"), (snapshot) => {
+                const freshDB = {};
+                snapshot.forEach(d => { freshDB[d.id] = d.data(); });
+                state.playerDB = freshDB;
+                try { localStorage.setItem('playerDB', JSON.stringify(freshDB)); } catch (e) {}
+                if (playerMgmt) playerMgmt.renderPlayerTable();
+            }, (err) => console.error('선수 DB 실시간 구독 오류:', err));
             // [수정] 회계 화면에서 무언가 입력 중일 때는 표를 다시 그리지 않음 (입력 끊김 방지)
             const isEditingAccounting = () => {
                 const el = document.activeElement;

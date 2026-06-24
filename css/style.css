@@ -85,96 +85,78 @@ body {
     a { color: #000; text-decoration: none; }
 }
 
+
+/* =========================================================
+   휴대폰 전용 UI 최적화 (<=768px) — 앱 전체 적용
+   목표: 여백 낭비 제거 · 한 화면에 더 많이 · 글자/도형 축소
+   ========================================================= */
 @media (max-width: 768px) {
-    /* =========================================================
-       [모바일 UI 전면 최적화] 폰에서 한 화면에 더 많이, 더 촘촘하게.
-       PC 레이아웃은 그대로 두고 768px 이하에서만 적용됨.
-       ========================================================= */
-
-    /* 바깥 여백 최소화 → 카드가 화면 폭을 거의 다 사용 */
+    /* ── 전역 여백/타이포 압축 ── */
+    body { font-size: 14px; }
     .container { padding: 0.5rem !important; }
+    header { margin-bottom: 1rem !important; }
+    header h1 { font-size: 1.7rem !important; }
+    header p { font-size: 0.85rem !important; margin-top: 0.25rem !important; }
 
-    /* 헤더(타이틀) 축소 — 큰 제목이 세로 공간을 잡아먹지 않게 */
-    header h1 { font-size: 1.6rem !important; }
-    header p  { font-size: 0.9rem !important; margin-top: 0.25rem !important; }
-    header.mb-8 { margin-bottom: 1rem !important; }
-    .realtime-link-button { padding: 6px 12px; font-size: 0.8rem; }
+    /* 흰 카드: 안쪽 여백·모서리·그림자 축소 */
+    .bg-white.p-6, .bg-white.md\:p-8, [class*="p-6"].bg-white { padding: 0.85rem !important; }
+    .rounded-2xl { border-radius: 0.75rem !important; }
+    .shadow-lg { box-shadow: 0 1px 4px rgba(0,0,0,0.08) !important; }
+    .gap-8 { gap: 0.85rem !important; }
+    .space-y-8 > * + * { margin-top: 0.85rem !important; }
+    .mb-8 { margin-bottom: 0.85rem !important; }
 
-    /* 탭 바: 더 촘촘하게(작은 글씨/여백) + 아래 여백 축소 */
-    .tab-button { padding: 0.55rem 0.7rem; font-size: 0.9rem; }
-    nav.flex.overflow-x-auto { -webkit-overflow-scrolling: touch; }
-    .mb-8 { margin-bottom: 1rem !important; }
+    /* 큰 제목 축소 */
+    .text-2xl { font-size: 1.2rem !important; }
+    .text-xl  { font-size: 1.05rem !important; }
+    .text-4xl, .text-5xl { font-size: 1.9rem !important; }
 
-    /* 카드 공통: 안쪽 여백·모서리·그림자 축소 (main 안의 흰 카드 전체) */
-    main .rounded-2xl, main .rounded-xl { border-radius: 0.75rem !important; }
-    main .bg-white.p-6 { padding: 0.9rem !important; }
-    main .shadow-lg { box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important; }
+    /* ── 탭 바: 폰에선 좌측+가로스크롤, 글자 축소 ── */
+    nav.flex.md\:justify-center { justify-content: flex-start; }
+    .tab-button { padding: 0.6rem 0.7rem !important; font-size: 0.9rem !important; }
 
-    /* 큰 섹션 제목(text-2xl) 축소 */
-    main h2.text-2xl { font-size: 1.25rem !important; }
-    main h2.text-3xl { font-size: 1.4rem !important; }
-
-    /* 그리드/세로 간격 압축 — 세로로 길게 늘어지는 느낌 완화 */
-    main .gap-8 { gap: 0.85rem !important; }
-    main .space-y-8 > * + * { margin-top: 0.85rem !important; }
-
-    /* 총 잔액 등 초대형 숫자 축소 */
-    #total-balance { font-size: 1.9rem !important; }
-
-    /* ---------- 팀 배정기 ---------- */
-    /* 입력 textarea 높이 축소(명단 12행은 폰에서 과함) + 16px로 아이폰 자동확대 방지 */
-    #attendees { min-height: 9rem; font-size: 16px; }
-    #aces { font-size: 16px; }
-    #page-balancer textarea, #page-balancer select, #page-balancer input { font-size: 16px; }
-    /* 결과 영역 최소 높이 축소(빈 공간 줄이기) */
-    #result-container-balancer { min-height: auto !important; }
-    /* 팀 결과 카드: 글씨/여백 압축 */
-    #result-container-balancer .text-2xl { font-size: 1.1rem !important; }
-    #result-container-balancer .player-tag { padding: 0.35rem 0.5rem !important; margin-bottom: 0.35rem !important; }
-
-    /* ---------- 출석 & 회계 ---------- */
-    #page-accounting .bg-white.p-6 { padding: 0.85rem !important; }
-
-    /* 표 헤더 숨기고 카드형으로 (공통) */
+    /* 공통 표: 헤더 숨기고 카드형으로 (data-label 사용) */
     .w-full thead { display: none; }
 
-    /* 카드형 행: [이름|날짜] / [상태|납부액] / [비고] 3줄 구성 */
-    #accounting-log-body tr, #expense-log-body tr {
+    /* === 표→카드 변환: 회비/지출/선수목록 공통 === */
+    #accounting-log-body, #expense-log-body, #player-table-body,
+    #income-log-section table, #expense-log-section table,
+    #page-players table { display: block; width: 100%; }
+    #income-log-section .overflow-x-auto,
+    #expense-log-section .overflow-x-auto,
+    #page-players .overflow-x-auto { overflow-x: visible; }
+
+    #accounting-log-body tr, #expense-log-body tr, #player-table-body tr {
         display: grid;
         grid-template-columns: 1fr 1fr;
         align-items: center;
         width: 100% !important;
         box-sizing: border-box;
         gap: 0.3rem 0.5rem;
-        margin-bottom: 0.4rem;
+        margin-bottom: 0.45rem;
         padding: 0.5rem 0.6rem;
         border: 1px solid #e5e7eb;
         border-radius: 0.5rem;
         background-color: #ffffff;
     }
-    #accounting-log-body td, #expense-log-body td {
+    #accounting-log-body td, #expense-log-body td, #player-table-body td {
         display: block;
-        padding: 0;
+        padding: 0 !important;
         border-bottom: none;
     }
     #accounting-log-body td::before, #expense-log-body td::before { display: none; }
 
-    /* 회비 로그 1행: 이름(좌) + 날짜(우) */
+    /* 회비 로그: [이름 | 날짜] / [상태 | 납부액] / [비고] */
     #accounting-log-body td[data-label="#"] { display: none; }
     #accounting-log-body td[data-label="이름"] { grid-column: 1 / 2; font-size: 0.95rem; font-weight: 700; }
     #accounting-log-body td[data-label="날짜"] { grid-column: 2 / 3; text-align: right; font-size: 0.72rem; color: #9ca3af; }
-
-    /* [핵심] '선택한 날짜' 보기에서는 상단 제목에 이미 날짜가 있으므로 카드마다 중복 날짜 숨김
-       → 이름이 한 줄을 다 쓰게 되어 더 깔끔하고, 한 화면에 더 많이 보임 */
-    #income-log-section.mode-day #accounting-log-body td[data-label="날짜"] { display: none; }
-    #income-log-section.mode-day #accounting-log-body td[data-label="이름"] { grid-column: 1 / 3; }
-
-    /* 2행: 납부 상태 + 납부액 */
     #accounting-log-body td[data-label="납부 상태"] { grid-column: 1 / 2; }
     #accounting-log-body td[data-label="납부액"] { grid-column: 2 / 3; }
-
-    /* 3행: 비고 (전체 폭) */
     #accounting-log-body td[data-label="비고"] { grid-column: 1 / 3; }
+
+    /* [핵심] '선택한 날짜' 모드에선 카드마다 반복되는 날짜를 숨기고 이름이 한 줄을 다 쓰게 */
+    #income-log-section.mode-day #accounting-log-body td[data-label="날짜"] { display: none; }
+    #income-log-section.mode-day #accounting-log-body td[data-label="이름"] { grid-column: 1 / 3; }
 
     /* 지출 로그 */
     #expense-log-body td[data-label="항목"] { grid-column: 1 / 3; font-size: 0.95rem; font-weight: 700; }
@@ -182,7 +164,17 @@ body {
     #expense-log-body td[data-label="날짜"] { grid-column: 2 / 3; text-align: right; font-size: 0.72rem; color: #9ca3af; }
     #expense-log-body td[data-label="관리"] { grid-column: 1 / 3; text-align: right; }
 
-    /* 입력칸: 폭 100% 사용(고정폭 무시), 16px로 아이폰 자동확대 방지, 높이 압축 */
+    /* 선수 목록: [이름 | 출석률] / [주포지션 | 부포지션] / [회비유형 | 관리] */
+    #player-table-body td[data-label="이름"]   { grid-column: 1 / 2; font-size: 0.98rem; font-weight: 700; color:#111827; }
+    #player-table-body td[data-label="출석률"] { grid-column: 2 / 3; text-align: right; font-size: 0.78rem; color:#6b7280; }
+    #player-table-body td[data-label="주포지션"] { grid-column: 1 / 2; font-size: 0.82rem; color:#374151; }
+    #player-table-body td[data-label="부포지션"] { grid-column: 2 / 3; font-size: 0.82rem; color:#6b7280; text-align:right; }
+    #player-table-body td[data-label="회비유형"] { grid-column: 1 / 2; font-size: 0.78rem; color:#6b7280; }
+    #player-table-body td[data-label="관리"]   { grid-column: 2 / 3; text-align: right; }
+    #player-table-body td[data-label="주포지션"]::before { content:"주: "; color:#9ca3af; }
+    #player-table-body td[data-label="부포지션"]::before { content:"부: "; color:#9ca3af; }
+
+    /* 입력칸: 칸 폭 100%, 16px(아이폰 자동확대 방지) */
     #accounting-log-body td input, #accounting-log-body td select,
     #expense-log-body td input {
         width: 100% !important;
@@ -195,17 +187,24 @@ body {
         border: 1px solid #D1D5DB;
         background-color: #F9FAFB;
     }
+    input, select, textarea { font-size: 16px !important; }
     #accounting-log-foot tr, #expense-log-foot tr { font-size: 0.95rem; }
 
-    /* 참석자 체크리스트: 높이 약간 축소 */
-    #attendance-checklist { max-height: 13rem; }
+    /* ── 팀 배정 결과: 폰에선 1열, 카드 압축 ── */
+    #result-container-balancer { grid-template-columns: 1fr !important; min-height: auto !important; gap: 0.6rem !important; }
+    .player-tag { padding: 0.35rem 0.5rem !important; font-size: 0.85rem !important; }
 
-    /* 월별 요약 차트가 너무 높지 않게 */
-    #accountingChart { max-height: 220px; }
+    /* ── 총잔액 등 초대형 숫자 축소 ── */
+    #total-balance { font-size: 1.9rem !important; }
 
-    /* ---------- 라인업 생성기 ---------- */
-    /* 컨트롤 영역 폰트/여백 압축 */
-    #page-lineup select, #page-lineup input { font-size: 16px; }
+    /* ── 차트 높이 제한(세로로 너무 길어지는 것 방지) ── */
+    #accountingChart { max-height: 240px !important; }
+
+    /* ── 투표 현황: 폰에선 1열 ── */
+    #vote-status-panel .grid { grid-template-columns: 1fr !important; }
+
+    /* ── 출석 체크리스트 칸 높이 압축 ── */
+    #attendance-checklist { max-height: 12rem !important; }
 
     /* 모바일 탭 교체: 선택된 선수 강조 */
     .player-marker.selected-for-swap .player-icon {
