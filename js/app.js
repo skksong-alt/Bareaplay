@@ -7,7 +7,7 @@ import * as playerMgmt from './modules/playerManagement.js?v=3';
 import * as balancer from './modules/teamBalancer.js?v=5';
 import * as lineup from './modules/lineupGenerator.js?v=3';
 import * as accounting from './modules/accounting.js?v=3';
-import * as shareMgmt from './modules/shareManagement.js?v=2';
+import * as shareMgmt from './modules/shareManagement.js?v=3';
 import * as voteMgmt from './modules/voteManagement.js?v=4';
 import * as lineupStats from './modules/lineupStats.js?v=1';
 
@@ -714,7 +714,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const shareId = doc.data().shareId;
                 const linkText = doc.data().linkText || "오늘 모임 결과 확인하기";
                 const link = document.createElement('a');
-                link.href = `${window.location.origin}${window.location.pathname}?shareId=${shareId}`;
+                link.href = `${window.location.origin}/share.html?shareId=${shareId}`;
                 link.target = "_blank";
                 link.className = 'realtime-link-button';
                 link.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clip-rule="evenodd" /></svg>${esc(linkText)}`;

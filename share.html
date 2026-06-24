@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barea 금일 팀배정 및 라인업</title>
+    <!-- 카톡/SNS 링크 미리보기 (공유 보드 전용). 크롤러는 JS를 실행하지 않으므로 정적 태그로 고정합니다. -->
+    <meta name="description" content="두바이 한인축구팀 Barea — 금일 팀배정 및 라인업 결과">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="BareaPlay">
+    <meta property="og:title" content="⚽ Barea 금일 팀배정 및 라인업">
+    <meta property="og:description" content="두바이 한인축구팀 Barea — 오늘의 팀 배정과 쿼터별 라인업을 확인하세요.">
+    <meta property="og:image" content="/assets/icon-512.png">
+    <meta name="twitter:card" content="summary">
+    <!-- 실제 사용자는 메인 앱의 공유 보드로 즉시 이동 (크롤러는 위 OG만 읽고 JS는 실행하지 않음) -->
+    <script>
+      (function () {
+        var qs = window.location.search || '';
+        try { window.location.replace('/' + qs); }
+        catch (e) { window.location.href = '/' + qs; }
+      })();
+    </script>
+    <style>
+      body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif;background:#f3f4f6;color:#374151;display:flex;align-items:center;justify-content:center;height:100vh;}
+      .box{text-align:center;padding:24px;}
+      .spinner{width:36px;height:36px;border:4px solid #c7d2fe;border-top-color:#4f46e5;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 14px;}
+      @keyframes spin{to{transform:rotate(360deg)}}
+      a{color:#4f46e5;}
+    </style>
+</head>
+<body>
+    <div class="box">
+        <div class="spinner"></div>
+        <p>Barea 결과 페이지로 이동 중…</p>
+        <p><a id="manual" href="/">자동 이동되지 않으면 여기를 누르세요</a></p>
+    </div>
+    <script>
+      // 수동 이동 링크에도 shareId 보존
+      var a = document.getElementById('manual');
+      if (a) a.href = '/' + (window.location.search || '');
+    </script>
+</body>
+</html>

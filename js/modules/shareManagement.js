@@ -142,7 +142,7 @@ async function generateShareableLink() {
             meetingTime: shareData.meetingInfo.time
         });
 
-        const shareUrl = `${window.location.origin}${window.location.pathname}?shareId=${shareDocRef.id}`;
+        const shareUrl = `${window.location.origin}/share.html?shareId=${shareDocRef.id}`;
         
         const shareLinkContainer = document.getElementById('share-link-container');
         const shareLinkAnchor = document.getElementById('share-link-anchor');
