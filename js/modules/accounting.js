@@ -5,6 +5,9 @@ let attendanceDate, checklistContainer, recordBtn, logBody, logFoot, memoArea, a
 let incomeTabBtn, expenseTabBtn, incomeLogSection, expenseLogSection, expenseForm, expenseLogBody, expenseLogFoot;
 let totalBalanceEl, filterStartDateEl, filterEndDateEl, filterPeriodSelectEl, excelDownloadBtn;
 let checkAllBtn, uncheckAllBtn;
+// [추가] 현장 수금 체크 모드 상태/엘리먼트
+let collectMode = false, collectHidePaid = false;
+let collectModeBtn, collectBar, collectHideBtn;
 let grassToggle, recordDateJump, deleteRangeBtn;
 let chartInstance = null;
 let memoDoc;
@@ -113,21 +116,48 @@ function renderAttendanceLogTable(logs) {
 
     if (sortedLogs.length === 0) {
         logBody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-gray-500">해당 기간의 출석 로그가 없습니다.</td></tr>`;
+        updateCollectBar(0, 0, 0, 0);
         return;
     }
 
     let totalAmount = 0;
+    // [추가] 수금 현황 집계
+    let cPaid = 0, cPartial = 0, cNoshow = 0, cCollected = 0;
     sortedLogs.forEach((log, index) => {
         totalAmount += Number(log.paymentAmount || 0);
+        const st = log.paymentStatus;
+        if (st === '●') cPaid++;
+        else if (st === '△') cPartial++;
+        else if (st === NOSHOW) cNoshow++;
+        if (st === '●' || st === '△') cCollected += Number(log.paymentAmount || 0);
+
+        // [추가] 수금모드 '안 낸 사람만 보기': 완납/일부/노쇼는 숨김
+        if (collectMode && collectHidePaid && (st === '●' || st === '△' || st === NOSHOW)) return;
+
         const docId = log.id;
         const row = document.createElement('tr');
-        row.className = 'bg-white border-b';
+        // [추가] 수금모드용 상태 클래스 + 행에 data-id (탭 토글용)
+        let stateClass = 'cstate-none';
+        if (st === '●') stateClass = 'cstate-paid';
+        else if (st === '△') stateClass = 'cstate-partial';
+        else if (st === NOSHOW) stateClass = 'cstate-noshow';
+        else if (st === '✕') stateClass = 'cstate-unpaid';
+        row.className = 'bg-white border-b ' + stateClass;
+        row.dataset.id = docId;
         const __nc = noShowCount(log.name);
         const __badge = __nc > 0 ? ` <span class="text-xs font-semibold text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded" title="누적 노쇼 횟수">노쇼 ${__nc}</span>` : '';
+        // [추가] 수금모드: 이름 옆에 현재 상태 칩(탭 안내)
+        let cPill = '';
+        if (collectMode) {
+            if (st === '●') cPill = '<span class="collect-pill paid">완납</span>';
+            else if (st === '△') cPill = '<span class="collect-pill partial">일부</span>';
+            else if (st === NOSHOW) cPill = '<span class="collect-pill noshow">노쇼</span>';
+            else cPill = '<span class="collect-pill unpaid">미수금</span>';
+        }
         // [추가] 이름 옆 ✕ 버튼으로 이 한 건만 삭제
         row.innerHTML = `
             <td data-label="#" class="py-2 px-4 font-medium text-gray-700">${index + 1}</td> <td data-label="날짜" class="py-2 px-4">${log.date}</td>
-            <td data-label="이름" class="py-2 px-4 font-medium text-gray-900">${log.name}${__badge}<button data-id="${docId}" class="delete-log-btn ml-2 text-red-500 hover:text-red-700 font-bold admin-control" title="이 기록 삭제" ${!state.isAdmin ? 'disabled' : ''}>✕</button></td>
+            <td data-label="이름" class="py-2 px-4 font-medium text-gray-900">${log.name}${cPill}${__badge}<button data-id="${docId}" class="delete-log-btn ml-2 text-red-500 hover:text-red-700 font-bold admin-control" title="이 기록 삭제" ${!state.isAdmin ? 'disabled' : ''}>✕</button></td>
             <td data-label="납부 상태"><select data-id="${docId}" class="log-status-select p-1 border rounded-md ${getStatusColor(log.paymentStatus)} admin-control" ${!state.isAdmin ? 'disabled': ''}><option value="" ${!log.paymentStatus ? 'selected' : ''}></option><option value="●" ${log.paymentStatus === '●' ? 'selected' : ''}>● 완납</option><option value="△" ${log.paymentStatus === '△' ? 'selected' : ''}>△ 일부</option><option value="✕" ${log.paymentStatus === '✕' ? 'selected' : ''}>✕ 미납</option><option value="N" ${log.paymentStatus === NOSHOW ? 'selected' : ''}>N 노쇼</option></select></td>
             <td data-label="납부액"><input type="number" data-id="${docId}" class="log-amount-input w-24 p-1 border rounded-md admin-control" placeholder="납부액" value="${log.paymentAmount || ''}" ${!state.isAdmin ? 'disabled': ''}></td>
             <td data-label="비고"><input type="text" data-id="${docId}" data-name="${window.esc(log.name)}" class="log-note-input w-full p-1 border rounded-md admin-control" placeholder="비고 입력..." value="${window.esc((state.playerNotes && state.playerNotes[normName(log.name)]) || '')}" ${!state.isAdmin ? 'disabled': ''}></td>
@@ -135,6 +165,43 @@ function renderAttendanceLogTable(logs) {
         logBody.appendChild(row);
     });
     logFoot.innerHTML = `<tr><td colspan="4" class="py-2 px-4 text-right">조회 기간 합계</td><td class="py-2 px-4 font-bold">${totalAmount.toLocaleString()}</td><td class="py-2 px-4"></td></tr>`;
+
+    // [추가] 수금 진행바 갱신 (노쇼 제외 대상 기준)
+    const eligible = sortedLogs.length - cNoshow;
+    const done = cPaid + cPartial;
+    updateCollectBar(done, eligible, cCollected, eligible - done);
+}
+
+// [추가] 수금 진행바 텍스트/게이지 갱신
+function updateCollectBar(done, eligible, collected, remain) {
+    if (!collectBar) return;
+    const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    setTxt('collect-done', done);
+    setTxt('collect-total', eligible);
+    setTxt('collect-amount', Number(collected || 0).toLocaleString());
+    setTxt('collect-remain', remain < 0 ? 0 : remain);
+    const fill = document.getElementById('collect-progress-fill');
+    if (fill) fill.style.width = (eligible > 0 ? Math.round(done / eligible * 100) : 0) + '%';
+}
+
+// [추가] 행 탭 → 완납 토글 (취소 시 미수금). 일부/금액은 이후 드롭다운·입력으로 세부수정 가능
+function applyCollectToggle(docId) {
+    if (!state.isAdmin) return;
+    const log = (state.attendanceLog || []).find(l => l.id === docId);
+    if (!log) return;
+    let field;
+    if (log.paymentStatus === '●') {
+        log.paymentStatus = '';
+        log.paymentAmount = 0;
+        field = { paymentStatus: '', paymentAmount: 0 };
+    } else {
+        const fee = computeFee(log.name, !!log.grass);
+        log.paymentStatus = '●';
+        log.paymentAmount = fee;
+        field = { paymentStatus: '●', paymentAmount: fee };
+    }
+    renderForDate();
+    if (window._collectSave) window._collectSave(docId, field);
 }
 
 function renderExpenseLog(logs) {
@@ -397,7 +464,7 @@ export function init(dependencies) {
 
     const pageElement = document.getElementById('page-accounting');
     pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 space-y-8"><div class="bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">출석 기록 관리</h2><button id="admin-login-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1 px-3 rounded-lg">관리자 로그인</button></div><div class="mb-3"><label for="attendance-date" class="block text-md font-semibold text-gray-700 mb-2">날짜 선택</label><input type="date" id="attendance-date" class="w-full p-2 border rounded-lg"></div><div class="mb-3"><select id="record-date-jump" class="w-full p-2 border rounded-lg bg-white text-sm text-gray-700"><option value="">📌 기록 있는 날 바로가기</option></select></div><div class="mb-4"><label class="flex items-center gap-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg cursor-pointer admin-control"><input type="checkbox" id="grass-toggle" class="w-4 h-4 text-emerald-600 rounded"><span class="text-sm font-semibold text-emerald-800">🌱 천연잔디 날 (일반 70 / 학생 35)</span></label><p class="text-xs text-gray-400 mt-1">체크 후 저장하면 이 날의 회비가 천연잔디 금액으로 자동 입력됩니다.</p></div><div class="mb-4"><div class="flex justify-between items-center mb-2"><label class="block text-md font-semibold text-gray-700">참석자 선택</label><div class="space-x-2"><button id="check-all-btn" class="text-xs text-indigo-600 hover:underline admin-control" disabled>모두 선택</button><button id="uncheck-all-btn" class="text-xs text-gray-500 hover:underline admin-control" disabled>모두 해제</button></div></div><div id="attendance-checklist" class="max-h-60 overflow-y-auto border rounded-lg p-3 space-y-2"></div><div class="flex space-x-2 mt-2"><input type="text" id="manual-attendee-name" class="flex-grow bg-gray-50 border border-gray-300 text-sm rounded-lg p-2 admin-control" placeholder="수동 추가..."><button type="button" id="manual-attendee-add-btn" class="text-white bg-indigo-600 hover:bg-indigo-700 font-medium rounded-lg text-sm px-4 py-2 admin-control">추가</button></div></div><button id="record-attendance-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition-transform transform hover:scale-105 shadow-lg admin-control" disabled>선택한 날짜 출석 저장</button></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">💰 총 잔액</h2><p id="total-balance" class="text-4xl font-bold text-indigo-600">0 Dhs</p></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">📊 월별 요약</h2><div class="w-full"><canvas id="accountingChart"></canvas></div></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">Remark / 특정 메모</h2><textarea id="memo-area" class="w-full p-3 border rounded-lg admin-control bg-gray-50" rows="5" placeholder="미납자 정보, 주요 공지 등..." disabled></textarea><p class="text-xs text-gray-500 mt-2">메모는 자동으로 저장됩니다.</p>
-    </div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="border-b border-gray-200 mb-4"><nav class="flex -mb-px space-x-6" aria-label="Tabs"><button id="income-tab-btn" class="accounting-tab active text-indigo-600 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💰 회비 (수입)</button><button id="expense-tab-btn" class="accounting-tab text-gray-500 hover:text-gray-700 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💸 지출</button></nav></div><div id="income-log-section"><div class="mb-4"><div class="flex flex-wrap justify-between items-center gap-2 mb-2"><h2 class="text-2xl font-bold">회비 로그 <span id="log-range-label" class="text-base font-normal text-gray-500"></span></h2><div class="flex gap-2"><button id="excel-download-btn" class="text-sm text-white bg-green-600 hover:bg-green-700 font-bold py-1.5 px-3 rounded-lg">엑셀</button><button id="delete-range-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1.5 px-3 rounded-lg admin-control" disabled>이 범위 삭제</button></div></div><div class="flex flex-wrap items-center gap-2"><div class="inline-flex rounded-lg border border-gray-300 overflow-hidden text-sm"><button id="view-day-btn" class="view-mode-btn px-3 py-1.5 font-medium">선택한 날짜</button><button id="view-all-btn" class="view-mode-btn px-3 py-1.5 font-medium border-l border-gray-300">전체</button><button id="view-range-btn" class="view-mode-btn px-3 py-1.5 font-medium border-l border-gray-300">기간 지정</button></div><div id="range-picker" class="hidden flex items-center gap-1"><input type="date" id="filter-start-date" class="p-1.5 border rounded-md text-sm bg-white"><span class="text-gray-400">~</span><input type="date" id="filter-end-date" class="p-1.5 border rounded-md text-sm bg-white"><select id="filter-period-select" class="p-1.5 border rounded-md bg-white text-sm"><option value="custom">직접 지정</option><option value="1m">최근 1개월</option><option value="3m">최근 3개월</option><option value="6m">최근 6개월</option><option value="all">전체</option></select></div></div></div><div class="overflow-x-auto max-h-[80vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">#</th> <th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">이름</th><th scope="col" class="py-3 px-4">납부 상태</th><th scope="col" class="py-3 px-4">납부액</th><th scope="col" class="py-3 px-4">비고</th></tr></thead><tbody id="accounting-log-body"></tbody><tfoot id="accounting-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div><div id="expense-log-section" class="hidden"><h2 class="text-2xl font-bold mb-4">지출 로그</h2><form id="expense-form" class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6 items-end"><div class="sm:col-span-2"><label for="expense-item" class="block text-sm font-medium">항목</label><input type="text" id="expense-item" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><div><label for="expense-amount" class="block text-sm font-medium">금액</label><input type="number" id="expense-amount" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><button type="submit" class="w-full bg-red-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600 admin-control" disabled>지출 추가</button></form><div class="overflow-x-auto max-h-[70vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">항목</th><th scope="col" class="py-3 px-4">금액</th><th scope="col" class="py-3 px-4">관리</th></tr></thead><tbody id="expense-log-body"></tbody><tfoot id="expense-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div></div></div>`;
+    </div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="border-b border-gray-200 mb-4"><nav class="flex -mb-px space-x-6" aria-label="Tabs"><button id="income-tab-btn" class="accounting-tab active text-indigo-600 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💰 회비 (수입)</button><button id="expense-tab-btn" class="accounting-tab text-gray-500 hover:text-gray-700 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💸 지출</button></nav></div><div id="income-log-section"><div class="mb-4"><div class="flex flex-wrap justify-between items-center gap-2 mb-2"><h2 class="text-2xl font-bold">회비 로그 <span id="log-range-label" class="text-base font-normal text-gray-500"></span></h2><div class="flex gap-2"><button id="collect-mode-btn" class="text-sm text-white bg-indigo-600 hover:bg-indigo-700 font-bold py-1.5 px-3 rounded-lg admin-control" disabled>수금 체크</button><button id="excel-download-btn" class="text-sm text-white bg-green-600 hover:bg-green-700 font-bold py-1.5 px-3 rounded-lg">엑셀</button><button id="delete-range-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1.5 px-3 rounded-lg admin-control" disabled>이 범위 삭제</button></div></div><div class="flex flex-wrap items-center gap-2"><div class="inline-flex rounded-lg border border-gray-300 overflow-hidden text-sm"><button id="view-day-btn" class="view-mode-btn px-3 py-1.5 font-medium">선택한 날짜</button><button id="view-all-btn" class="view-mode-btn px-3 py-1.5 font-medium border-l border-gray-300">전체</button><button id="view-range-btn" class="view-mode-btn px-3 py-1.5 font-medium border-l border-gray-300">기간 지정</button></div><div id="range-picker" class="hidden flex items-center gap-1"><input type="date" id="filter-start-date" class="p-1.5 border rounded-md text-sm bg-white"><span class="text-gray-400">~</span><input type="date" id="filter-end-date" class="p-1.5 border rounded-md text-sm bg-white"><select id="filter-period-select" class="p-1.5 border rounded-md bg-white text-sm"><option value="custom">직접 지정</option><option value="1m">최근 1개월</option><option value="3m">최근 3개월</option><option value="6m">최근 6개월</option><option value="all">전체</option></select></div></div></div><div id="collect-bar" class="hidden mb-3 p-3 rounded-lg border border-indigo-200 bg-indigo-50"><div class="flex flex-wrap items-center justify-between gap-2"><div class="text-sm font-semibold text-indigo-900">걷음 <span id="collect-done">0</span> / <span id="collect-total">0</span>명 · 걷은 금액 <span id="collect-amount">0</span> Dhs · 미수금 <span id="collect-remain">0</span>명</div><button id="collect-hide-btn" class="text-xs font-semibold text-indigo-700 bg-white border border-indigo-300 rounded px-2 py-1">안 낸 사람만 보기</button></div><div class="mt-2 h-2 w-full bg-indigo-100 rounded overflow-hidden"><div id="collect-progress-fill" class="h-full bg-indigo-600 rounded" style="width:0%"></div></div><p class="mt-1.5 text-xs text-indigo-700">표에서 이름 줄을 <b>탭하면 완납</b>(자동 금액)으로 기록됩니다. 다시 탭하면 취소. 일부만 받았으면 상태를 <b>△ 일부</b>로 두고 비고에 상세를 적으세요.</p></div><div class="overflow-x-auto max-h-[80vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">#</th> <th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">이름</th><th scope="col" class="py-3 px-4">납부 상태</th><th scope="col" class="py-3 px-4">납부액</th><th scope="col" class="py-3 px-4">비고</th></tr></thead><tbody id="accounting-log-body"></tbody><tfoot id="accounting-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div><div id="expense-log-section" class="hidden"><h2 class="text-2xl font-bold mb-4">지출 로그</h2><form id="expense-form" class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6 items-end"><div class="sm:col-span-2"><label for="expense-item" class="block text-sm font-medium">항목</label><input type="text" id="expense-item" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><div><label for="expense-amount" class="block text-sm font-medium">금액</label><input type="number" id="expense-amount" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><button type="submit" class="w-full bg-red-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600 admin-control" disabled>지출 추가</button></form><div class="overflow-x-auto max-h-[70vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">항목</th><th scope="col" class="py-3 px-4">금액</th><th scope="col" class="py-3 px-4">관리</th></tr></thead><tbody id="expense-log-body"></tbody><tfoot id="expense-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div></div></div>`;
 
     attendanceDate = document.getElementById('attendance-date');
     checklistContainer = document.getElementById('attendance-checklist');
@@ -426,6 +493,9 @@ export function init(dependencies) {
     grassToggle = document.getElementById('grass-toggle');
     recordDateJump = document.getElementById('record-date-jump');
     deleteRangeBtn = document.getElementById('delete-range-btn');
+    collectModeBtn = document.getElementById('collect-mode-btn');
+    collectBar = document.getElementById('collect-bar');
+    collectHideBtn = document.getElementById('collect-hide-btn');
 
     const today = localDateStr();
     if(attendanceDate) attendanceDate.value = today;
@@ -592,6 +662,42 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
     const debouncedUpdate = window.debounce(async (docId, updatedField) => {
         await setDoc(doc(db, "attendance", docId), updatedField, { merge: true });
     }, 500);
+    // [추가] 수금모드 탭 토글이 호출하는 즉시 저장 핸들 (탭 반응성을 위해 짧은 디바운스)
+    window._collectSave = window.debounce(async (docId, updatedField) => {
+        await setDoc(doc(db, "attendance", docId), updatedField, { merge: true });
+    }, 250);
+
+    // [추가] 수금 체크 모드 토글
+    if (collectModeBtn) collectModeBtn.addEventListener('click', () => {
+        collectMode = !collectMode;
+        collectModeBtn.textContent = collectMode ? '수금 체크 ✓' : '수금 체크';
+        collectModeBtn.classList.toggle('bg-indigo-600', !collectMode);
+        collectModeBtn.classList.toggle('hover:bg-indigo-700', !collectMode);
+        collectModeBtn.classList.toggle('bg-amber-500', collectMode);
+        collectModeBtn.classList.toggle('hover:bg-amber-600', collectMode);
+        if (collectBar) collectBar.classList.toggle('hidden', !collectMode);
+        if (incomeLogSection) incomeLogSection.classList.toggle('collect-mode', collectMode);
+        if (!collectMode) {
+            collectHidePaid = false;
+            if (collectHideBtn) { collectHideBtn.classList.remove('bg-indigo-600', 'text-white'); }
+        }
+        renderForDate();
+    });
+    // [추가] 안 낸 사람만 보기
+    if (collectHideBtn) collectHideBtn.addEventListener('click', () => {
+        collectHidePaid = !collectHidePaid;
+        collectHideBtn.classList.toggle('bg-indigo-600', collectHidePaid);
+        collectHideBtn.classList.toggle('text-white', collectHidePaid);
+        renderForDate();
+    });
+    // [추가] 수금모드에서 이름 줄 탭 → 완납 토글 (입력/버튼 클릭은 제외)
+    if (logBody) logBody.addEventListener('click', (e) => {
+        if (!collectMode) return;
+        if (e.target.closest('input, select, button, a')) return;
+        const row = e.target.closest('tr[data-id]');
+        if (!row) return;
+        applyCollectToggle(row.dataset.id);
+    });
 
     // [추가] 선수별 영구 비고 저장 (내용이 비면 키 삭제 → 다음부터 안 보임)
     const debouncedNoteSave = window.debounce(async (name, text) => {

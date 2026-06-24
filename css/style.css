@@ -213,3 +213,22 @@ body {
         transform: scale(1.15);
     }
 }
+
+
+/* === 현장 수금 체크 모드 === */
+.collect-mode tbody tr { cursor: pointer; transition: background-color .12s; }
+.collect-mode tbody tr td[data-label="이름"] { font-size: 1.05rem; }
+.collect-mode tbody tr.cstate-paid { background-color: #ecfdf5 !important; }
+.collect-mode tbody tr.cstate-partial { background-color: #fffbeb !important; }
+.collect-mode tbody tr.cstate-noshow { background-color: #fff7ed !important; }
+.collect-mode tbody tr.cstate-unpaid,
+.collect-mode tbody tr.cstate-none { background-color: #ffffff !important; }
+.collect-mode tbody tr:active { filter: brightness(0.96); }
+.collect-pill {
+    display: inline-block; margin-left: .4rem; padding: .05rem .4rem;
+    font-size: .7rem; font-weight: 700; border-radius: 5px; vertical-align: middle;
+}
+.collect-pill.paid { background:#10b981; color:#fff; }
+.collect-pill.partial { background:#f59e0b; color:#fff; }
+.collect-pill.noshow { background:#fb923c; color:#fff; }
+.collect-pill.unpaid { background:#e5e7eb; color:#4b5563; }
