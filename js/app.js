@@ -4,11 +4,11 @@ import { getFirestore, collection, doc, onSnapshot, getDocs, getDoc, setDoc, del
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
 import { state, setAdmin } from './store.js?v=2';
 import * as playerMgmt from './modules/playerManagement.js?v=3';
-import * as balancer from './modules/teamBalancer.js?v=4';
-import * as lineup from './modules/lineupGenerator.js?v=2';
+import * as balancer from './modules/teamBalancer.js?v=5';
+import * as lineup from './modules/lineupGenerator.js?v=3';
 import * as accounting from './modules/accounting.js?v=3';
 import * as shareMgmt from './modules/shareManagement.js?v=2';
-import * as voteMgmt from './modules/voteManagement.js?v=3';
+import * as voteMgmt from './modules/voteManagement.js?v=4';
 import * as lineupStats from './modules/lineupStats.js?v=1';
 
 const firebaseConfig = {
@@ -128,7 +128,7 @@ const saveDailyMeetingData = window.debounce(async () => {
     };
 
     try {
-        await setDoc(doc(db, "dailyMeetings", today), dataToSave, { merge: true });
+        await setDoc(doc(db, "dailyMeetings", today), dataToSave); // [수정] merge 제거 → 빠진 team_* 키가 잔존하지 않도록 전체 덮어쓰기 (회계/출석은 attendance·expenses 등 별도 컬렉션이라 영향 없음)
         console.log(`${today} 모임 데이터가 저장되었습니다.`);
     } catch (error) {
         console.error("일일 모임 데이터 저장 실패:", error);

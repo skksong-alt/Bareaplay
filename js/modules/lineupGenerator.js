@@ -429,7 +429,15 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                         // 1순위: 키퍼 보장 미충족(주/부 GK) 중 투표 아래부터 → 부GK ≥1회 보장
                         const need = elig.filter(m => gkGuarColumn.includes(m) && gkCount[m] === 0);
                         const pool = need.length > 0 ? need : elig;
-                        pool.sort((a, b) => rankOf(b) - rankOf(a)); // 아래(늦은 투표)부터
+                        // [제안A] 키퍼를 적게 맡은 사람 우선 → 같으면 GK 보유자 우선 → 같으면 늦은 투표 순
+                        pool.sort((a, b) => {
+                            const ca = gkCount[a] || 0, cb = gkCount[b] || 0;
+                            if (ca !== cb) return ca - cb;                 // 키퍼 횟수 적은 사람 먼저
+                            const ga = gkGuarColumn.includes(a) ? 1 : 0;
+                            const gb = gkGuarColumn.includes(b) ? 1 : 0;
+                            if (ga !== gb) return gb - ga;                 // GK 보유자 먼저
+                            return rankOf(b) - rankOf(a);                  // 아래(늦은 투표)부터
+                        });
                         assignedGk = pool[0];
                     }
                     if (assignedGk) {
@@ -507,11 +515,17 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                 gkGuarColumn.forEach(m => { if ((gkCount[m] || 0) === 0 && onFieldCount[m] > 0) gkGuaranteeShort++; });
             }
 
+            // [제안A] 한 사람이 키퍼를 1회 초과로 맡은 횟수(초과분 합계) → 중복 키퍼 강하게 억제
+            let gkOverShort = 0;
+            if (!hasDedicatedGk) {
+                Object.keys(gkCount).forEach(m => { const c = gkCount[m] || 0; if (c > 1) gkOverShort += (c - 1); });
+            }
+
             // 쿼터별 팀 전력 편차(표시용; 휴식 로테이션이 고정이라 시도와 무관하게 일정)
             const qScores = lineups.map(l => Object.values(l).flat().filter(Boolean).reduce((sum, name) => sum + (localPlayerDB[name]?.s1 || 65), 0));
             const balance = qScores.length > 1 ? Math.max(...qScores) - Math.min(...qScores) : 0;
 
-            const totalCost = guaranteeShort * 1000 + gkGuaranteeShort * 800 + qualityCost + preferShort * 15;
+            const totalCost = guaranteeShort * 1000 + gkGuaranteeShort * 800 + gkOverShort * 600 + qualityCost + preferShort * 15;
 
             if (totalCost < bestCost) {
                 bestCost = totalCost;

@@ -59,8 +59,29 @@ export function init(dependencies) {
             <button id="vote-create-btn" class="w-full bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-emerald-700">🆕 새 모임 투표 시작</button>
         </div>
         <div id="vote-status-panel" class="mt-6"></div>
+        <div class="mt-8 border-t pt-4">
+            <button id="past-votes-toggle" type="button" class="w-full flex items-center justify-between text-left font-bold text-gray-700 hover:text-gray-900">
+                <span>📜 지난 투표 기록</span>
+                <span id="past-votes-caret" class="text-gray-400">▼</span>
+            </button>
+            <div id="past-votes-panel" class="mt-3 hidden space-y-2"></div>
+        </div>
     `;
     sharePage.appendChild(box);
+
+    // [추가] 지난 투표 기록 토글 + 로드
+    const __pastToggle = document.getElementById('past-votes-toggle');
+    if (__pastToggle) {
+        __pastToggle.addEventListener('click', () => {
+            const p = document.getElementById('past-votes-panel');
+            const c = document.getElementById('past-votes-caret');
+            if (!p) return;
+            const willShow = p.classList.contains('hidden');
+            p.classList.toggle('hidden');
+            if (c) c.textContent = willShow ? '▲' : '▼';
+            if (willShow) renderPastVotes();
+        });
+    }
 
     const today = new Date();
     const off = today.getTimezoneOffset() * 60000;
@@ -264,6 +285,70 @@ function sendToBalancer() {
    공개 투표 페이지 (로그인 없이 ?voteId=... 로 진입)
    ========================================================= */
 // [고정 링크] ?vote=current 진입 시: 현재 활성 투표(settings/activeVote)를 찾아 자동으로 렌더
+// [추가] 지난 투표 기록 목록 렌더 (votes 컬렉션에서 종료(closed)된 투표를 날짜 내림차순으로)
+async function renderPastVotes() {
+    const panel = document.getElementById('past-votes-panel');
+    if (!panel) return;
+    panel.innerHTML = '<p class="text-sm text-gray-400">불러오는 중...</p>';
+    try {
+        const snap = await getDocs(collection(db, "votes"));
+        let list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // 현재 진행 중(활성) 투표는 제외, 종료된 것만
+        list = list.filter(v => v.id !== activeVoteId && v.closed === true);
+        // 날짜(date) → 없으면 생성시각 기준 내림차순
+        const keyOf = (v) => (v.date ? Date.parse(v.date + 'T00:00:00') : tsSeconds(v.createdAt) * 1000) || 0;
+        list.sort((a, b) => keyOf(b) - keyOf(a));
+        if (list.length === 0) {
+            panel.innerHTML = '<p class="text-sm text-gray-400">보관된 지난 투표가 없습니다.</p>';
+            return;
+        }
+        panel.innerHTML = list.map(v => {
+            const label = esc(v.title || v.date || '(제목 없음)');
+            const sub = esc([v.date, v.time, v.location].filter(Boolean).join(' · '));
+            return `<div class="border rounded-lg">
+                <button type="button" data-vote="${esc(v.id)}" class="past-vote-item w-full text-left px-3 py-2 hover:bg-gray-50 flex justify-between items-center">
+                    <span class="font-semibold text-gray-700">${label}</span>
+                    <span class="text-xs text-gray-400">${sub} ▾</span>
+                </button>
+                <div id="past-detail-${esc(v.id)}" class="hidden px-3 pb-3"></div>
+            </div>`;
+        }).join('');
+        panel.querySelectorAll('.past-vote-item').forEach(btn => {
+            btn.addEventListener('click', () => togglePastVoteDetail(btn.getAttribute('data-vote')));
+        });
+    } catch (e) {
+        console.error('지난 투표 로드 실패:', e);
+        panel.innerHTML = '<p class="text-sm text-red-500">불러오기에 실패했습니다.</p>';
+    }
+}
+
+// [추가] 지난 투표 1건의 참석/미정/불참 명단 표시 (votes/{id}/responses)
+async function togglePastVoteDetail(voteId) {
+    const box = document.getElementById('past-detail-' + voteId);
+    if (!box) return;
+    if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    box.innerHTML = '<p class="text-sm text-gray-400">불러오는 중...</p>';
+    try {
+        const snap = await getDocs(collection(db, "votes", voteId, "responses"));
+        const rs = snap.docs.map(d => d.data());
+        const group = (st) => rs.filter(r => r.status === st).map(r => esc(r.name || '-'));
+        const attend = group('attend'), maybe = group('maybe'), absent = group('absent');
+        const col = (title, names, cls) => `<div>
+            <p class="text-xs font-bold ${cls}">${title} (${names.length})</p>
+            <p class="text-sm text-gray-600 mt-1">${names.length ? names.join(', ') : '-'}</p>
+        </div>`;
+        box.innerHTML = `<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-1 bg-gray-50 rounded-lg p-3">
+            ${col('✅ 참석', attend, 'text-emerald-600')}
+            ${col('🤔 미정', maybe, 'text-amber-600')}
+            ${col('❌ 불참', absent, 'text-yellow-700')}
+        </div>`;
+    } catch (e) {
+        console.error('지난 투표 상세 실패:', e);
+        box.innerHTML = '<p class="text-sm text-red-500">상세를 불러오지 못했습니다.</p>';
+    }
+}
+
 export async function renderCurrentVotePage() {
     db = window.__db || db;
     if (!db) { document.body.innerHTML = `<p style="text-align:center;margin-top:40px">초기화 오류. 새로고침 해주세요.</p>`; return; }

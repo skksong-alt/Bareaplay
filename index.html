@@ -21,6 +21,18 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="favicon.ico" type="image/x-icon">
     <meta name="theme-color" content="#ffffff"> 
+    <!-- [수정] 투표/공유 링크 진입 시 메인 화면 깜빡임 방지: 페인트 전에 메인 숨김 -->
+    <style id="vote-guard-style">html.vote-mode #main-app{display:none !important;}</style>
+    <script>
+      (function(){
+        try{
+          var p = new URLSearchParams(location.search);
+          if (p.has('vote') || p.has('voteId') || p.has('shareId')) {
+            document.documentElement.classList.add('vote-mode');
+          }
+        }catch(e){}
+      })();
+    </script>
 </head>
 <body class="bg-gray-100 text-gray-800">
     <div id="loading-overlay" class="overlay">
@@ -60,7 +72,7 @@
         </div>
     </div>
 
-    <div class="container mx-auto p-4 md:p-8 max-w-screen-xl">
+    <div id="main-app" class="container mx-auto p-4 md:p-8 max-w-screen-xl">
         <header class="text-center mb-8 relative">
             <h1 class="text-4xl md:text-5xl font-bold text-gray-900">BareaPlay⚽</h1>
             <p class="mt-2 text-lg text-gray-600">두바이 한인축구팀 Barea</p>
@@ -94,7 +106,7 @@
     
     <div id="print-area" class="hidden"></div>
 
-    <script type="module" src="js/app.js?v=6"></script>
+    <script type="module" src="js/app.js?v=7"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {

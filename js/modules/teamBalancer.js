@@ -59,6 +59,16 @@ function allPosGroup(posArr) {
     return Array.from(out);
 }
 
+// [수정] NEW 여부를 저장 데이터가 아닌 '현재 playerDB' 기준으로 매번 판정
+function isInPlayerDB(rawName) {
+    if (!rawName) return false;
+    const clean = String(rawName).replace(' (신규)', '');   // 옛 데이터에 박힌 (신규)도 제거 후 비교
+    const db = state.playerDB || {};
+    if (db[clean]) return true;
+    const key = normalizeName(clean);
+    return Object.keys(db).some(k => normalizeName(k) === key);
+}
+
 export function renderResults(teams) {
     if(!resultContainer) return;
     resultContainer.innerHTML = ''; // 화면 초기화
@@ -103,7 +113,7 @@ export function renderResults(teams) {
             
             // 신규 표시 로직
             const displayName = player.name.replace(' (신규)', '');
-            const isNew = player.name.includes(' (신규)');
+            const isNew = !isInPlayerDB(player.name); // [수정] 현재 playerDB에 없을 때만 NEW
             const newBadge = isNew ? `<span class="ml-1 text-[10px] bg-yellow-400 text-black px-1 rounded">NEW</span>` : '';
             const aceBadge = player._ace ? '<span class="mr-1" title="에이스">⭐</span>' : '';
 
@@ -336,7 +346,7 @@ function executeTeamAssignmentGA() {
     // 5. 신규 선수 배정
     unknownPlayers.forEach(nm => {
         let minIndex = bestOverallTeams.reduce((minIdx, team, i, arr) => team.length < arr[minIdx].length ? i : minIdx, 0);
-        bestOverallTeams[minIndex].push({ name: `${nm} (신규)`, s1: 65, pos1: [] });
+        bestOverallTeams[minIndex].push({ name: nm, s1: 65, pos1: [] }); // [수정] 이름에 (신규)를 박지 않음 → NEW 여부는 렌더 시 playerDB로 판정
     });
 
     renderResults(bestOverallTeams);
