@@ -42,19 +42,21 @@ export function init(dependencies) {
     box.innerHTML = `
         <h2 class="text-2xl font-bold mb-4">🗳️ 참석 투표 (관리자용)</h2>
         <div class="space-y-3 max-w-lg mx-auto">
-            <p class="text-sm text-gray-500">카톡방에 링크만 보내면, 회원들이 로그인 없이 참석/불참을 누를 수 있습니다. 신규/게스트는 이름을 직접 입력합니다.</p>
+            <div id="vote-link-container" class="p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
+                <p class="text-sm font-bold text-indigo-800 mb-1">📌 회원 공유용 고정 링크</p>
+                <p class="text-xs text-gray-500 mb-2">이 주소는 <b>매주 바뀌지 않습니다.</b> 단톡방 공지에 한 번만 등록해두면, 아래에서 새 모임을 시작할 때마다 자동으로 이번 주 투표로 연결됩니다.</p>
+                <a id="vote-link-anchor" href="#" target="_blank" class="text-blue-600 break-all hover:underline text-sm"></a>
+                <button id="vote-copy-btn" class="mt-2 w-full bg-blue-500 text-white text-sm font-bold py-2 rounded-lg hover:bg-blue-600">고정 링크 복사</button>
+            </div>
+            <hr class="my-2">
+            <p class="text-sm text-gray-500">아래 정보를 입력하고 <b>새 모임 투표 시작</b>을 누르면, 위 고정 링크가 이번 주 투표를 가리킵니다. (지난 투표는 자동으로 보관됩니다)</p>
             <div><label class="block text-sm font-medium">제목(선택)</label><input type="text" id="vote-title" class="mt-1 w-full p-2 border rounded-lg" placeholder="예: 11월 12일 수요일 풋살"></div>
             <div class="grid grid-cols-2 gap-2">
                 <div><label class="block text-sm font-medium">날짜</label><input type="date" id="vote-date" class="mt-1 w-full p-2 border rounded-lg"></div>
                 <div><label class="block text-sm font-medium">시간</label><input type="time" id="vote-time" class="mt-1 w-full p-2 border rounded-lg" value="20:00"></div>
             </div>
             <div><label class="block text-sm font-medium">장소(선택)</label><input type="text" id="vote-location" class="mt-1 w-full p-2 border rounded-lg" placeholder="예: 두바이 스포츠시티"></div>
-            <button id="vote-create-btn" class="w-full bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-emerald-700">새 투표 만들기</button>
-            <div id="vote-link-container" class="hidden p-4 bg-emerald-50 rounded-lg">
-                <p class="text-sm font-semibold mb-2">투표 링크 (복사해서 카톡방에 공유):</p>
-                <a id="vote-link-anchor" href="#" target="_blank" class="text-blue-600 break-all hover:underline text-sm"></a>
-                <button id="vote-copy-btn" class="mt-2 w-full bg-blue-500 text-white text-sm font-bold py-2 rounded-lg hover:bg-blue-600">링크 복사</button>
-            </div>
+            <button id="vote-create-btn" class="w-full bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-emerald-700">🆕 새 모임 투표 시작</button>
         </div>
         <div id="vote-status-panel" class="mt-6"></div>
     `;
@@ -65,6 +67,9 @@ export function init(dependencies) {
     document.getElementById('vote-date').value = new Date(today.getTime() - off).toISOString().split('T')[0];
 
     document.getElementById('vote-create-btn').addEventListener('click', createVote);
+
+    // 고정 링크는 항상 동일하므로 즉시 표시 (활성 투표 유무와 무관)
+    showVoteLink();
 
     // 마지막으로 활성화된 투표를 자동으로 불러오기 (기기 간 공유)
     onSnapshot(doc(db, "settings", "activeVote"), (snap) => {
@@ -82,15 +87,29 @@ async function createVote() {
     const location = document.getElementById('vote-location').value.trim();
     if (!date) { window.showNotification('날짜를 선택해주세요.', 'error'); return; }
 
+    // [A방식] 진행 중인 투표가 있으면 새로 시작할지 확인 → 지난 투표는 삭제하지 않고 '보관(closed)' 처리
+    let prevVoteId = null;
+    try {
+        const cur = await getDoc(doc(db, "settings", "activeVote"));
+        if (cur.exists() && cur.data().voteId) prevVoteId = cur.data().voteId;
+    } catch (e) { console.error(e); }
+    if (prevVoteId) {
+        if (!confirm('새 모임 투표를 시작하면, 현재 진행 중인 투표는 종료되어 지난 기록으로 보관됩니다.\n(고정 링크는 새 투표로 연결됩니다)\n\n계속할까요?')) return;
+    }
+
     try {
         const ref = await addDoc(collection(db, "votes"), {
             title, date, time, location,
             closed: false,
             createdAt: serverTimestamp()
         });
+        // 지난 투표 보관 처리(데이터는 그대로 남고, 종료 표시만)
+        if (prevVoteId) {
+            try { await setDoc(doc(db, "votes", prevVoteId), { closed: true, closedAt: serverTimestamp() }, { merge: true }); } catch (e) { console.error('이전 투표 보관 실패:', e); }
+        }
         await setDoc(doc(db, "settings", "activeVote"), { voteId: ref.id });
-        window.showNotification('투표가 생성되었습니다!');
-        showVoteLink(ref.id);
+        window.showNotification('새 모임 투표가 시작되었습니다! 고정 링크가 이번 주 투표로 연결됩니다.');
+        showVoteLink();
         loadAdminVote(ref.id);
     } catch (e) {
         console.error(e);
@@ -98,29 +117,31 @@ async function createVote() {
     }
 }
 
-function voteUrl(voteId) {
-    return `${window.location.origin}${window.location.pathname}?voteId=${voteId}`;
+function voteUrl() {
+    // [고정 링크] 항상 동일한 주소(?vote=current). 이 링크가 "현재 진행 중인 투표"를 자동으로 가리킨다.
+    // → 매주 새 투표를 만들어도 회원에게 공유하는 링크는 바뀌지 않는다.
+    return `${window.location.origin}${window.location.pathname}?vote=current`;
 }
 
-function showVoteLink(voteId) {
+function showVoteLink() {
     const c = document.getElementById('vote-link-container');
     const a = document.getElementById('vote-link-anchor');
     if (!c || !a) return;
-    a.href = voteUrl(voteId);
-    a.textContent = voteUrl(voteId);
+    a.href = voteUrl();
+    a.textContent = voteUrl();
     c.classList.remove('hidden');
     const copyBtn = document.getElementById('vote-copy-btn');
     copyBtn.onclick = () => {
-        navigator.clipboard.writeText(voteUrl(voteId))
-            .then(() => window.showNotification('링크가 복사되었습니다.'))
+        navigator.clipboard.writeText(voteUrl())
+            .then(() => window.showNotification('고정 링크가 복사되었습니다.'))
             .catch(() => window.showNotification('복사 실패. 링크를 길게 눌러 복사하세요.', 'error'));
     };
 }
 
 function loadAdminVote(voteId) {
-    if (activeVoteId === voteId && respUnsub) { showVoteLink(voteId); return; }
+    if (activeVoteId === voteId && respUnsub) { showVoteLink(); return; }
     activeVoteId = voteId;
-    showVoteLink(voteId);
+    showVoteLink();
     if (respUnsub) respUnsub();
     respUnsub = onSnapshot(collection(db, "votes", voteId, "responses"), (snap) => {
         adminResponses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -242,6 +263,23 @@ function sendToBalancer() {
 /* =========================================================
    공개 투표 페이지 (로그인 없이 ?voteId=... 로 진입)
    ========================================================= */
+// [고정 링크] ?vote=current 진입 시: 현재 활성 투표(settings/activeVote)를 찾아 자동으로 렌더
+export async function renderCurrentVotePage() {
+    db = window.__db || db;
+    if (!db) { document.body.innerHTML = `<p style="text-align:center;margin-top:40px">초기화 오류. 새로고침 해주세요.</p>`; return; }
+    let voteId = null;
+    try {
+        const s = await getDoc(doc(db, "settings", "activeVote"));
+        if (s.exists() && s.data().voteId) voteId = s.data().voteId;
+    } catch (e) { console.error(e); }
+    if (!voteId) {
+        document.body.className = 'bg-gray-100';
+        document.body.innerHTML = `<div style="max-width:480px;margin:60px auto;text-align:center;font-family:'Noto Sans KR',sans-serif"><h1 style="font-size:1.4rem;color:#111827">⚽ Barea 참석 투표</h1><p style="color:#6b7280;margin-top:10px">아직 진행 중인 투표가 없습니다.<br>운영진이 새 모임 투표를 시작하면 이 화면에 표시됩니다.</p></div>`;
+        return;
+    }
+    return renderVotePage(voteId);
+}
+
 export async function renderVotePage(voteId) {
     db = window.__db || db;
     if (!db) { document.body.innerHTML = `<p style="text-align:center;margin-top:40px">초기화 오류. 새로고침 해주세요.</p>`; return; }

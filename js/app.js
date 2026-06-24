@@ -8,7 +8,7 @@ import * as balancer from './modules/teamBalancer.js?v=4';
 import * as lineup from './modules/lineupGenerator.js?v=2';
 import * as accounting from './modules/accounting.js?v=3';
 import * as shareMgmt from './modules/shareManagement.js?v=2';
-import * as voteMgmt from './modules/voteManagement.js?v=2';
+import * as voteMgmt from './modules/voteManagement.js?v=3';
 import * as lineupStats from './modules/lineupStats.js?v=1';
 
 const firebaseConfig = {
@@ -561,6 +561,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         const __p = new URLSearchParams(window.location.search);
         const __voteId = __p.get('voteId');
         const __shareId = __p.get('shareId');
+        const __voteCurrent = __p.get('vote'); // 고정 링크 ?vote=current
+        if (__voteCurrent) {
+            window.__db = db;
+            if (loadingOverlay) loadingOverlay.style.display = 'none';
+            await voteMgmt.renderCurrentVotePage();
+            return;
+        }
         if (__voteId) {
             window.__db = db;
             if (loadingOverlay) loadingOverlay.style.display = 'none';
@@ -602,6 +609,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     const urlParams = new URLSearchParams(window.location.search);
     const shareId = urlParams.get('shareId');
     const voteId = urlParams.get('voteId');
+    const voteCurrent = urlParams.get('vote'); // 고정 링크 ?vote=current
+
+    if (voteCurrent) {
+        loadingOverlay.style.display = 'none';
+        await voteMgmt.renderCurrentVotePage();
+        return;
+    }
 
     if (voteId) {
         loadingOverlay.style.display = 'none';
