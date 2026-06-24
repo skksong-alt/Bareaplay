@@ -351,6 +351,9 @@ function updateViewModeUI() {
     });
     const picker = document.getElementById('range-picker');
     if (picker) picker.classList.toggle('hidden', viewMode !== 'range');
+    // [모바일] '선택한 날짜' 모드에서는 상단 제목에 이미 날짜가 있으므로, 카드마다 중복되는 날짜를 숨긴다.
+    const incomeSection = document.getElementById('income-log-section');
+    if (incomeSection) incomeSection.classList.toggle('mode-day', viewMode === 'day');
     const label = document.getElementById('log-range-label');
     if (label) {
         const [s, e] = effectiveRange();

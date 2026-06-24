@@ -4,11 +4,11 @@ import { getFirestore, collection, doc, onSnapshot, getDocs, getDoc, setDoc, del
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
 import { state, setAdmin } from './store.js?v=2';
 import * as playerMgmt from './modules/playerManagement.js?v=2';
-import * as balancer from './modules/teamBalancer.js?v=3';
+import * as balancer from './modules/teamBalancer.js?v=4';
 import * as lineup from './modules/lineupGenerator.js?v=2';
-import * as accounting from './modules/accounting.js?v=2';
+import * as accounting from './modules/accounting.js?v=3';
 import * as shareMgmt from './modules/shareManagement.js?v=2';
-import * as voteMgmt from './modules/voteManagement.js?v=1';
+import * as voteMgmt from './modules/voteManagement.js?v=2';
 import * as lineupStats from './modules/lineupStats.js?v=1';
 
 const firebaseConfig = {

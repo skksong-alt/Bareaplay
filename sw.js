@@ -1,15 +1,15 @@
 // sw.js
-const CACHE_NAME = 'bareaplay-cache-v44';
+const CACHE_NAME = 'bareaplay-cache-v45';
 const urlsToCache = [
     '/', '/index.html', '/css/style.css',
-    '/js/app.js?v=4',
+    '/js/app.js?v=5',
     '/js/store.js?v=2',
     '/js/modules/playerManagement.js?v=2',
-    '/js/modules/teamBalancer.js?v=3',
+    '/js/modules/teamBalancer.js?v=4',
     '/js/modules/lineupGenerator.js?v=2',
-    '/js/modules/accounting.js?v=2',
+    '/js/modules/accounting.js?v=3',
     '/js/modules/shareManagement.js?v=2',
-    '/js/modules/voteManagement.js?v=1',
+    '/js/modules/voteManagement.js?v=2',
     '/js/modules/lineupStats.js?v=1',
     '/manifest.json', '/favicon.ico', '/assets/icon-512.png'
 ];

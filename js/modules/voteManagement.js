@@ -136,6 +136,8 @@ function renderAdminStatus() {
         .sort((a, b) => tsSeconds(a.attendingSince) - tsSeconds(b.attendingSince));
     const absent = adminResponses.filter(r => r.status === 'absent')
         .sort((a, b) => tsSeconds(a.updatedAt) - tsSeconds(b.updatedAt));
+    const maybe = adminResponses.filter(r => r.status === 'maybe')
+        .sort((a, b) => tsSeconds(a.updatedAt) - tsSeconds(b.updatedAt));
 
     const attendRows = attend.map((r, i) => `
         <li class="flex items-center justify-between py-1.5 border-b">
@@ -156,15 +158,26 @@ function renderAdminStatus() {
             </span>
         </li>`).join('');
 
+    const maybeRows = maybe.map(r => `
+        <li class="flex items-center justify-between py-1.5 border-b text-amber-700">
+            <span>${esc(r.name)}${r.guest ? ' <span class="text-xs text-amber-600">(게스트)</span>' : ''}</span>
+            <span class="space-x-2">
+                <button data-id="${esc(r.id)}" class="vote-to-attend text-xs text-green-600 hover:underline">참석</button>
+                <button data-id="${esc(r.id)}" class="vote-to-absent text-xs text-yellow-600 hover:underline">불참</button>
+                <button data-id="${esc(r.id)}" class="vote-del text-xs text-red-500 hover:underline">삭제</button>
+            </span>
+        </li>`).join('');
+
     panel.innerHTML = `
         <div class="border-t pt-4">
             <div class="flex items-center justify-between mb-3">
-                <h3 class="text-xl font-bold">투표 현황 <span class="text-green-600">참석 ${attend.length}</span> / <span class="text-gray-400">불참 ${absent.length}</span></h3>
+                <h3 class="text-xl font-bold">투표 현황 <span class="text-green-600">참석 ${attend.length}</span> / <span class="text-amber-600">미정 ${maybe.length}</span> / <span class="text-gray-400">불참 ${absent.length}</span></h3>
                 <button id="vote-to-balancer" class="bg-indigo-600 text-white text-sm font-bold py-2 px-4 rounded-lg hover:bg-indigo-700">이 투표로 팀 짜기 →</button>
             </div>
             <p class="text-xs text-gray-400 mb-2">※ 참석자는 투표가 늦은 사람일수록 아래쪽에 있으며, 팀 배정 후 아래(늦은 투표)부터 휴식·키퍼를 맡습니다.</p>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div><p class="font-semibold text-green-700 mb-1">✅ 참석 (투표순)</p><ul class="text-sm">${attendRows || '<li class="text-gray-400 py-2">아직 없음</li>'}</ul></div>
+                <div><p class="font-semibold text-amber-700 mb-1">🤔 미정</p><ul class="text-sm">${maybeRows || '<li class="text-gray-400 py-2">아직 없음</li>'}</ul></div>
                 <div><p class="font-semibold text-gray-600 mb-1">❌ 불참</p><ul class="text-sm">${absentRows || '<li class="text-gray-400 py-2">아직 없음</li>'}</ul></div>
             </div>
             <div class="mt-4 flex space-x-2">
