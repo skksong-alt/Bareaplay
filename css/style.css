@@ -124,7 +124,7 @@ body {
     #page-players table { display: block; width: 100%; }
     #income-log-section .overflow-x-auto,
     #expense-log-section .overflow-x-auto,
-    #page-players .overflow-x-auto { overflow-x: visible; }
+    #page-players .overflow-x-auto { overflow-x: visible; max-height: none !important; overflow-y: visible !important; }
 
     #accounting-log-body tr, #expense-log-body tr, #player-table-body tr {
         display: grid;
