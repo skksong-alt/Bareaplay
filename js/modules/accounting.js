@@ -82,7 +82,23 @@ function renderFullPlayerChecklist() {
     let checkStatusSet;
 
     if (state.currentAttendees && state.currentAttendees.length > 0) {
+        // ① 이 기기에서 방금 팀배정을 한 경우 (메모리에 명단 있음)
         playerNames = [...state.currentAttendees].sort((a, b) => a.localeCompare(b, 'ko-KR'));
+        checkStatusSet = new Set(playerNames.map(normName));
+    } else if (loggedAttendees.length > 0) {
+        // ② 이미 이 날짜로 저장된 출석 기록이 있는 경우 (그 기록을 그대로 표시)
+        playerNames = [...loggedAttendees].sort((a, b) => a.localeCompare(b, 'ko-KR'));
+        checkStatusSet = loggedAttendeesSet;
+    } else if (
+        selectedDate && selectedDate === state.meetingDate &&
+        Array.isArray(state.initialAttendeeOrder) && state.initialAttendeeOrder.length > 0
+    ) {
+        // ③ [Q1] 다른 기기(현장 휴대폰)에서도 팀배정 명단이 출석 후보로 자동 표시되도록,
+        //        Firestore로 동기화된 initialAttendeeOrder(= 팀배정에 입력한 명단)를 사용.
+        //        선택 날짜가 그 명단이 속한 '모임 날짜'와 같을 때만 적용(과거 날짜에 오늘 명단이 새지 않도록).
+        //        전원 체크된 상태로 띄워 → '선택한 날짜 출석 저장'만 누르면 바로 기록됨.
+        playerNames = [...new Set(state.initialAttendeeOrder.map(normName).filter(Boolean))]
+                            .sort((a, b) => a.localeCompare(b, 'ko-KR'));
         checkStatusSet = new Set(playerNames.map(normName));
     } else {
         playerNames = [...loggedAttendees].sort((a, b) => a.localeCompare(b, 'ko-KR'));

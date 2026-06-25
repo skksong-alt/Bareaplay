@@ -4,7 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Barea 팀배정 및 라인업</title>
-    <!-- 카톡/SNS 링크 미리보기 (공유 보드 전용). 크롤러는 JS를 실행하지 않으므로 정적 태그로 고정합니다. -->
+    <!-- 카톡/SNS 링크 미리보기 (공유 보드 전용). 크롤러는 JS를 실행하지 않으므로 정적 OG 태그로 고정합니다.
+         [중요] 이 페이지는 더 이상 루트('/')로 redirect 하지 않습니다.
+         예전에는 즉시 '/?shareId=...' 로 보내 버려서, 단톡방에 그 루트 주소가 공유되면
+         index.html 의 OG('Barea 참석 투표')가 읽혀 제목이 잘못 떴습니다.
+         이제 이 페이지에서 직접 공유 보드를 그리므로 주소가 /share.html?shareId=... 로 유지되고,
+         카톡은 아래 og:title('Barea 팀배정 및 라인업')을 읽습니다. -->
     <meta name="description" content="두바이 한인축구팀 Barea — 팀배정 및 라인업 결과">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="BareaPlay">
@@ -12,32 +17,30 @@
     <meta property="og:description" content="두바이 한인축구팀 Barea — 오늘의 팀 배정과 쿼터별 라인업을 확인하세요.">
     <meta property="og:image" content="/assets/icon-512.png">
     <meta name="twitter:card" content="summary">
-    <!-- 실제 사용자는 메인 앱의 공유 보드로 즉시 이동 (크롤러는 위 OG만 읽고 JS는 실행하지 않음) -->
-    <script>
-      (function () {
-        var qs = window.location.search || '';
-        try { window.location.replace('/' + qs); }
-        catch (e) { window.location.href = '/' + qs; }
-      })();
-    </script>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
+    <meta name="theme-color" content="#ffffff">
     <style>
-      body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif;background:#f3f4f6;color:#374151;display:flex;align-items:center;justify-content:center;height:100vh;}
-      .box{text-align:center;padding:24px;}
+      html,body{margin:0;background:#f3f4f6;}
+      #loading-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#f3f4f6;z-index:50;}
       .spinner{width:36px;height:36px;border:4px solid #c7d2fe;border-top-color:#4f46e5;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 14px;}
       @keyframes spin{to{transform:rotate(360deg)}}
-      a{color:#4f46e5;}
     </style>
 </head>
-<body>
-    <div class="box">
-        <div class="spinner"></div>
-        <p>Barea 결과 페이지로 이동 중…</p>
-        <p><a id="manual" href="/">자동 이동되지 않으면 여기를 누르세요</a></p>
+<body class="bg-gray-100 text-gray-800">
+    <div id="loading-overlay">
+        <div style="text-align:center">
+            <div class="spinner"></div>
+            <p style="color:#374151">Barea 결과 페이지를 불러오는 중…</p>
+        </div>
     </div>
-    <script>
-      // 수동 이동 링크에도 shareId 보존
-      var a = document.getElementById('manual');
-      if (a) a.href = '/' + (window.location.search || '');
-    </script>
+
+    <!-- 공유 보드는 메인 앱 로직(app.js)이 URL 의 ?shareId 를 읽어 이 페이지에 직접 렌더링합니다.
+         app.js 는 ?shareId 가 있으면 공유 보드만 그리고 곧바로 return 하므로(로그인·실시간 동기화 미실행)
+         가볍게 동작합니다. -->
+    <script type="module" src="js/app.js"></script>
 </body>
 </html>
