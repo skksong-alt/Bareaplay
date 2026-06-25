@@ -39,7 +39,7 @@ function computeFee(name, isGrass) {
     return isGrass ? 70 : 50;
 }
 
-// [추가] 선수의 회비 유형(admin/student/normal) 조회 — NFC 정규화로 안전 검색
+// [추가] 선수의 회비 유형 조회 (운영진=무료 판별용)
 function feeTypeOf(name) {
     const key = normName(name);
     let p = state.playerDB[name] || state.playerDB[key];
@@ -132,16 +132,21 @@ function renderAttendanceLogTable(logs) {
     }
 
     let totalAmount = 0;
-    // [추가] 수금 현황 집계 (운영진=회비0은 수금 대상에서 제외 → 미수금 숫자에 안 잡힘)
-    let cNoshow = 0, cCollected = 0, cDone = 0, cEligible = 0;
+    // [추가] 수금 현황 집계
+    let cPaid = 0, cPartial = 0, cNoshow = 0, cCollected = 0;
+    // [추가] 운영진(무료) 제외한 '실제 수금 대상' 집계 → 진행바가 운영진 때문에 부풀지 않게
+    let payEligible = 0, payDone = 0;
     sortedLogs.forEach((log, index) => {
         totalAmount += Number(log.paymentAmount || 0);
         const st = log.paymentStatus;
-        const exempt = feeTypeOf(log.name) === 'admin';   // 운영진(회비 0)은 진행바 계산 제외
-        if (st === NOSHOW) cNoshow++;
-        else if (!exempt) {
-            cEligible++;
-            if (st === '●' || st === '△') { cDone++; cCollected += Number(log.paymentAmount || 0); }
+        if (st === '●') cPaid++;
+        else if (st === '△') cPartial++;
+        else if (st === NOSHOW) cNoshow++;
+        if (st === '●' || st === '△') cCollected += Number(log.paymentAmount || 0);
+        // 노쇼·운영진(무료)은 수금 대상에서 제외
+        if (st !== NOSHOW && feeTypeOf(log.name) !== 'admin') {
+            payEligible++;
+            if (st === '●' || st === '△') payDone++;
         }
 
         // [추가] 수금모드 '안 낸 사람만 보기': 완납/일부/노쇼는 숨김
@@ -173,14 +178,14 @@ function renderAttendanceLogTable(logs) {
             <td data-label="이름" class="py-2 px-4 font-medium text-gray-900">${log.name}${cPill}${__badge}<button data-id="${docId}" class="delete-log-btn ml-2 text-red-500 hover:text-red-700 font-bold admin-control" title="이 기록 삭제" ${!state.isAdmin ? 'disabled' : ''}>✕</button></td>
             <td data-label="납부 상태"><select data-id="${docId}" class="log-status-select p-1 border rounded-md ${getStatusColor(log.paymentStatus)} admin-control" ${!state.isAdmin ? 'disabled': ''}><option value="" ${!log.paymentStatus ? 'selected' : ''}></option><option value="●" ${log.paymentStatus === '●' ? 'selected' : ''}>● 완납</option><option value="△" ${log.paymentStatus === '△' ? 'selected' : ''}>△ 일부</option><option value="✕" ${log.paymentStatus === '✕' ? 'selected' : ''}>✕ 미납</option><option value="N" ${log.paymentStatus === NOSHOW ? 'selected' : ''}>N 노쇼</option></select></td>
             <td data-label="납부액"><input type="number" data-id="${docId}" class="log-amount-input w-24 p-1 border rounded-md admin-control" placeholder="납부액" value="${log.paymentAmount || ''}" ${!state.isAdmin ? 'disabled': ''}></td>
-            <td data-label="비고"><input type="text" data-id="${docId}" data-name="${window.esc(log.name)}" class="log-note-input w-full p-1 border rounded-md admin-control" placeholder="비고 입력..." value="${window.esc((state.playerNotes && state.playerNotes[normName(log.name)]) || '')}" ${!state.isAdmin ? 'disabled': ''}></td>
+            <td data-label="비고"><input type="text" data-id="${docId}" data-name="${window.esc(log.name)}" class="log-note-input w-full p-1 border rounded-md admin-control" placeholder="비고 입력..." value="${window.esc((log.note && String(log.note).trim()) ? log.note : ((state.playerNotes && state.playerNotes[normName(log.name)]) || ''))}" ${!state.isAdmin ? 'disabled': ''}></td>
         `;
         logBody.appendChild(row);
     });
     logFoot.innerHTML = `<tr><td colspan="4" class="py-2 px-4 text-right">조회 기간 합계</td><td class="py-2 px-4 font-bold">${totalAmount.toLocaleString()}</td><td class="py-2 px-4"></td></tr>`;
 
-    // [추가] 수금 진행바 갱신 (노쇼·운영진(회비0) 제외 대상 기준)
-    updateCollectBar(cDone, cEligible, cCollected, cEligible - cDone);
+    // [추가] 수금 진행바 갱신 (노쇼·운영진 제외한 실제 수금 대상 기준)
+    updateCollectBar(payDone, payEligible, cCollected, payEligible - payDone);
 }
 
 // [추가] 수금 진행바 텍스트/게이지 갱신
@@ -389,7 +394,7 @@ function downloadExcel(incomeLogs, expenseLogs, startDate, endDate) {
     // 시트4: 상세 - 회비
     const incomeData = incomeLogs
         .slice().sort((a, b) => (a.date || '').localeCompare(b.date || '') || a.name.localeCompare(b.name, 'ko-KR'))
-        .map(log => ({ '날짜': log.date, '이름': log.name, '납부 상태': log.paymentStatus, '납부액': Number(log.paymentAmount || 0), '비고': (state.playerNotes && state.playerNotes[normName(log.name)]) || log.note || '' }));
+        .map(log => ({ '날짜': log.date, '이름': log.name, '납부 상태': log.paymentStatus, '납부액': Number(log.paymentAmount || 0), '비고': (log.note && String(log.note).trim()) ? log.note : ((state.playerNotes && state.playerNotes[normName(log.name)]) || '') }));
     const incomeSheet = XLSX.utils.json_to_sheet(incomeData.length ? incomeData : [{ '날짜': '데이터 없음' }]);
     XLSX.utils.book_append_sheet(wb, incomeSheet, "상세-회비");
 
@@ -649,12 +654,10 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
         currentlyCheckedNames.forEach(name => {
             if (!existingByName[name]) {
                 const docId = `${date}_${name}`;
-                // [추가] 운영진(회비 0)은 기본 '미납(✕)'으로 불러온다. 그 외에는 자동 금액 + 완납(●)
-                const isAdminFee = feeTypeOf(name) === 'admin';
-                const fee = computeFee(name, isGrass);
-                const newLog = isAdminFee
-                    ? { date, name, paymentStatus: '✕', paymentAmount: 0, note: '', grass: isGrass }
-                    : { date, name, paymentStatus: '●', paymentAmount: fee, note: '', grass: isGrass };
+                // [Q3] 기본값: 운영진 포함 전원 '미납(✕)·0원'으로 불러오기 → 현장에서 수금 체크 탭으로 완납 처리
+                //      (직전까지 쓰던 선수별 carry-forward 비고는 그대로 이어받아 표시)
+                const carryNote = (state.playerNotes && state.playerNotes[normName(name)]) || '';
+                const newLog = { date, name, paymentStatus: '✕', paymentAmount: 0, note: carryNote, grass: isGrass };
                 promises.push(setDoc(doc(db, "attendance", docId), newLog));
             }
         });
@@ -749,7 +752,10 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
         }
         else if (target.classList.contains('log-amount-input')) updatedField = { paymentAmount: target.value };
         else if (target.classList.contains('log-note-input')) {
-            // [변경] 비고는 날짜별이 아니라 '선수별 영구 메모'로 저장 → 다른 경기날에도 자동 표시
+            // [Q4] 비고를 '날짜별 기록(과거 보존)' + '선수별 carry-forward(다음에 자동표시)' 두 곳에 동시 저장.
+            //      → 이번 날짜에서 지워도 그 날짜 문서의 note만 비고, 과거 날짜의 note는 그대로 보존됨.
+            //        동시에 carry-forward 메모도 갱신되어, 비우면 다음 모임부터는 자동표시가 멈춤.
+            if (docId) debouncedUpdate(docId, { note: target.value });
             debouncedNoteSave(target.dataset.name || '', target.value);
             return;
         }

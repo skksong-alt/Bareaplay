@@ -233,33 +233,50 @@ body {
 .collect-pill.noshow { background:#fb923c; color:#fff; }
 .collect-pill.unpaid { background:#e5e7eb; color:#4b5563; }
 
-
-/* === [추가] 모바일 현장 수금 모드: 한 화면에 10명+ 보이도록 초압축 === */
+/* === [Q2] 모바일 '수금 체크' 초압축 레이아웃 ===
+   한 사람을 2줄짜리 작은 카드로 → 한 화면에 10명 이상 표시.
+   레이아웃:  [이름 +상태칩]            [납부액]
+             [비고............]        [상태▼]
+   이름 줄을 탭하면 완납 토글, 납부액/비고/상태는 그대로 직접 수정 가능. */
 @media (max-width: 768px) {
-    /* 수금모드일 때 회비 카드(행)를 2줄로 초압축 */
     #income-log-section.collect-mode #accounting-log-body tr {
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
-        gap: 0.15rem 0.4rem;
+        display: grid;
+        grid-template-columns: 1fr 86px;
+        align-items: center;
+        gap: 0.18rem 0.4rem;
         margin-bottom: 0.3rem;
         padding: 0.3rem 0.45rem;
     }
-    /* 날짜·#는 숨김 (이름이 한 줄을 차지) */
+    /* # / 날짜는 수금 중엔 숨겨 공간 확보 */
+    #income-log-section.collect-mode #accounting-log-body td[data-label="#"],
     #income-log-section.collect-mode #accounting-log-body td[data-label="날짜"] { display: none; }
+
+    /* 1행: 이름(좌, 넓게) | 납부액(우, 좁게) */
     #income-log-section.collect-mode #accounting-log-body td[data-label="이름"] {
-        grid-column: 1 / 2; font-size: 0.9rem; line-height: 1.2;
+        grid-area: 1 / 1 / 2 / 2;
+        font-size: 0.92rem; font-weight: 700; line-height: 1.2;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
-    /* 1행: 이름 | 상태 select(작게, 자동폭) */
-    #income-log-section.collect-mode #accounting-log-body td[data-label="납부 상태"] { grid-column: 2 / 3; }
-    #income-log-section.collect-mode #accounting-log-body td[data-label="납부 상태"] select {
-        width: 100% !important; padding: 0.25rem 0.3rem; font-size: 15px;
+    #income-log-section.collect-mode #accounting-log-body td[data-label="납부액"] {
+        grid-area: 1 / 2 / 2 / 3;
     }
-    /* 2행: 납부액(좁게) | 비고(넓게) */
-    #income-log-section.collect-mode #accounting-log-body td[data-label="납부액"] { grid-column: 1 / 2; }
-    #income-log-section.collect-mode #accounting-log-body td[data-label="비고"] { grid-column: 2 / 3; }
-    #income-log-section.collect-mode #accounting-log-body td[data-label="납부액"] input,
-    #income-log-section.collect-mode #accounting-log-body td[data-label="비고"] input {
-        padding: 0.25rem 0.4rem;
+    /* 2행: 비고(좌, 넓게) | 상태 select(우, 좁게) */
+    #income-log-section.collect-mode #accounting-log-body td[data-label="비고"] {
+        grid-area: 2 / 1 / 3 / 2;
     }
-    /* 삭제(✕)·노쇼 배지는 이름 줄에서 그대로 노출되며, 탭 토글은 입력칸 외 영역에서 동작 */
-    #income-log-section.collect-mode #accounting-log-body td[data-label="이름"] .delete-log-btn { font-size: 0.85rem; }
+    #income-log-section.collect-mode #accounting-log-body td[data-label="납부 상태"] {
+        grid-area: 2 / 2 / 3 / 3;
+    }
+    /* 입력칸 높이 최소화(글자는 16px 유지 → 아이폰 자동확대 방지) */
+    #income-log-section.collect-mode #accounting-log-body td input,
+    #income-log-section.collect-mode #accounting-log-body td select {
+        width: 100% !important; box-sizing: border-box;
+        padding: 0.18rem 0.35rem !important;
+        font-size: 16px; line-height: 1.15;
+        border-radius: 0.3rem;
+    }
+    /* 삭제 ✕ 버튼은 수금 중엔 숨겨 오탭 방지(해제하면 다시 보임) */
+    #income-log-section.collect-mode #accounting-log-body .delete-log-btn { display: none; }
+    /* 상태 칩 약간 축소 */
+    #income-log-section.collect-mode .collect-pill { font-size: .62rem; padding: .02rem .3rem; margin-left: .3rem; }
 }
