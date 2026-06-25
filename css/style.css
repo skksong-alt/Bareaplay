@@ -232,3 +232,34 @@ body {
 .collect-pill.partial { background:#f59e0b; color:#fff; }
 .collect-pill.noshow { background:#fb923c; color:#fff; }
 .collect-pill.unpaid { background:#e5e7eb; color:#4b5563; }
+
+
+/* === [추가] 모바일 현장 수금 모드: 한 화면에 10명+ 보이도록 초압축 === */
+@media (max-width: 768px) {
+    /* 수금모드일 때 회비 카드(행)를 2줄로 초압축 */
+    #income-log-section.collect-mode #accounting-log-body tr {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+        gap: 0.15rem 0.4rem;
+        margin-bottom: 0.3rem;
+        padding: 0.3rem 0.45rem;
+    }
+    /* 날짜·#는 숨김 (이름이 한 줄을 차지) */
+    #income-log-section.collect-mode #accounting-log-body td[data-label="날짜"] { display: none; }
+    #income-log-section.collect-mode #accounting-log-body td[data-label="이름"] {
+        grid-column: 1 / 2; font-size: 0.9rem; line-height: 1.2;
+    }
+    /* 1행: 이름 | 상태 select(작게, 자동폭) */
+    #income-log-section.collect-mode #accounting-log-body td[data-label="납부 상태"] { grid-column: 2 / 3; }
+    #income-log-section.collect-mode #accounting-log-body td[data-label="납부 상태"] select {
+        width: 100% !important; padding: 0.25rem 0.3rem; font-size: 15px;
+    }
+    /* 2행: 납부액(좁게) | 비고(넓게) */
+    #income-log-section.collect-mode #accounting-log-body td[data-label="납부액"] { grid-column: 1 / 2; }
+    #income-log-section.collect-mode #accounting-log-body td[data-label="비고"] { grid-column: 2 / 3; }
+    #income-log-section.collect-mode #accounting-log-body td[data-label="납부액"] input,
+    #income-log-section.collect-mode #accounting-log-body td[data-label="비고"] input {
+        padding: 0.25rem 0.4rem;
+    }
+    /* 삭제(✕)·노쇼 배지는 이름 줄에서 그대로 노출되며, 탭 토글은 입력칸 외 영역에서 동작 */
+    #income-log-section.collect-mode #accounting-log-body td[data-label="이름"] .delete-log-btn { font-size: 0.85rem; }
+}

@@ -165,7 +165,7 @@ export function init(dependencies) {
                 <div class="bg-white p-6 rounded-2xl shadow-lg">
                     <h3 class="text-xl font-bold mb-4">선수 정보 엑셀 관리</h3>
                     <p class="text-gray-600 mb-3 text-sm">현재 선수 정보를 엑셀로 <b>내려받아</b> 수정한 뒤, 그대로 다시 <b>업로드</b>하면 전체가 갱신됩니다. (다운로드 파일이 곧 업로드 양식입니다)</p>
-                    <button id="excel-download-btn" type="button" class="w-full mb-4 text-white bg-emerald-600 hover:bg-emerald-700 font-bold rounded-lg text-sm px-5 py-2.5 text-center">⬇️ 현재 선수정보 엑셀 다운로드</button>
+                    <button id="players-excel-download-btn" type="button" class="w-full mb-4 text-white bg-emerald-600 hover:bg-emerald-700 font-bold rounded-lg text-sm px-5 py-2.5 text-center">⬇️ 현재 선수정보 엑셀 다운로드</button>
                     <label class="block mb-2 text-sm font-medium text-gray-700">엑셀 업로드(일괄 갱신)</label>
                     <input type="file" id="excel-uploader" accept=".xlsx, .xls" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100"/>
                 </div>
@@ -182,7 +182,7 @@ export function init(dependencies) {
     tableBody.addEventListener('click', handleTableClick);
     cancelBtn.addEventListener('click', resetForm);
 
-    const downloadBtn = document.getElementById('excel-download-btn');
+    const downloadBtn = document.getElementById('players-excel-download-btn');
     if (downloadBtn) downloadBtn.addEventListener('click', downloadPlayersExcel);
 }
 

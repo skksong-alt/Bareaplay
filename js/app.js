@@ -3,12 +3,12 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebas
 import { getFirestore, collection, doc, onSnapshot, getDocs, getDoc, setDoc, deleteDoc, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
 import { state, setAdmin } from './store.js?v=2';
-import * as playerMgmt from './modules/playerManagement.js?v=3';
+import * as playerMgmt from './modules/playerManagement.js?v=4';
 import * as balancer from './modules/teamBalancer.js?v=5';
-import * as lineup from './modules/lineupGenerator.js?v=3';
-import * as accounting from './modules/accounting.js?v=4';
-import * as shareMgmt from './modules/shareManagement.js?v=3';
-import * as voteMgmt from './modules/voteManagement.js?v=4';
+import * as lineup from './modules/lineupGenerator.js?v=4';
+import * as accounting from './modules/accounting.js?v=5';
+import * as shareMgmt from './modules/shareManagement.js?v=4';
+import * as voteMgmt from './modules/voteManagement.js?v=5';
 import * as lineupStats from './modules/lineupStats.js?v=1';
 
 const firebaseConfig = {
@@ -457,7 +457,13 @@ window.refreshData = async function(collectionName) {
 function renderSharePageView(shareData) {
     const POS_MAP = { '4-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 75}, {pos: 'CB', x: 65, y: 80}, {pos: 'CB', x: 35, y: 80}, {pos: 'LB', x: 15, y: 75}, {pos: 'RW', x: 85, y: 45}, {pos: 'CM', x: 65, y: 55}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 15, y: 45}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-3-3': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 88, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 12, y: 78}, {pos: 'CM', x: 50, y: 65}, {pos: 'MF', x: 70, y: 50}, {pos: 'MF', x: 30, y: 50}, {pos: 'RW', x: 80, y: 25}, {pos: 'FW', x: 50, y: 18}, {pos: 'LW', x: 20, y: 25} ], '3-5-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 75, y: 80}, {pos: 'CB', x: 50, y: 85}, {pos: 'CB', x: 25, y: 80}, {pos: 'RW', x: 90, y: 50}, {pos: 'CM', x: 65, y: 55}, {pos: 'MF', x: 50, y: 65}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 10, y: 50}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-2-3-1': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 15, y: 78}, {pos: 'MF', x: 60, y: 65}, {pos: 'MF', x: 40, y: 65}, {pos: 'RW', x: 80, y: 40}, {pos: 'MF', x: 50, y: 45}, {pos: 'LW', x: 20, y: 40}, {pos: 'FW', x: 50, y: 18} ], '3-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 80, y: 80}, {pos: 'CB', x: 50, y: 82}, {pos: 'CB', x: 20, y: 80}, {pos: 'RW', x: 85, y: 50}, {pos: 'CM', x: 60, y: 60}, {pos: 'CM', x: 40, y: 60}, {pos: 'LW', x: 15, y: 50}, {pos: 'FW', x: 65, y: 25}, {pos: 'FW', x: 35, y: 25} ], '3-4-1': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 80, y: 80}, {pos: 'CB', x: 50, y: 82}, {pos: 'CB', x: 20, y: 80}, {pos: 'RW', x: 85, y: 50}, {pos: 'CM', x: 60, y: 60}, {pos: 'CM', x: 40, y: 60}, {pos: 'LW', x: 15, y: 50}, {pos: 'FW', x: 50, y: 20} ] };
     const { meetingInfo = {}, teams: teamsObject = {}, lineups = {}, attendance = null } = shareData || {};
-    const teams = Object.values(teamsObject || {});
+    // [수정] 명단과 라인업을 '같은 키(teamN)'로 짝지어 렌더 → 팀1↔팀2 명단이 서로 뒤바뀌던 현상 방지
+    const teamKeys = Object.keys(teamsObject || {}).sort((a, b) => {
+        const na = parseInt(String(a).replace(/[^0-9]/g, ''), 10) || 0;
+        const nb = parseInt(String(b).replace(/[^0-9]/g, ''), 10) || 0;
+        return na - nb;
+    });
+    const teams = teamKeys.map(k => teamsObject[k]);
     const colors = ["#0D9488", "#0288D1", "#7B1FA2", "#43A047", "#F4511E"];
 
     let timeStr = '';
@@ -511,13 +517,14 @@ function renderSharePageView(shareData) {
 
     const teamHtml = teams.map((team, i) => `<div style="background:${colors[i % 5]};color:#fff;border-radius:12px;padding:12px"><div style="font-weight:800;border-bottom:1px solid rgba(255,255,255,.3);padding-bottom:6px;margin-bottom:6px">팀 ${i + 1}</div>${[...team].sort((a, b) => a.name.localeCompare(b.name, 'ko-KR')).map(pp => `<div style="background:rgba(255,255,255,.18);border-radius:6px;padding:5px 8px;margin-bottom:4px">${esc(String(pp.name).replace(' (신규)', ''))}</div>`).join('')}</div>`).join('');
 
-    const lineupHtml = teams.map((team, teamIdx) => {
-        const lu = lineups[`team${teamIdx + 1}`] || lineups[teamIdx];
+    const lineupHtml = teamKeys.map((teamKey, teamIdx) => {
+        const lu = lineups[teamKey] || lineups[`team${teamIdx + 1}`] || lineups[teamIdx];
         let q = '';
         for (let i = 0; i < 6; i++) q += pitchHTML(lu, i);
         return `<div style="margin-bottom:18px"><h3 style="font-weight:800;text-align:center;margin-bottom:8px">팀 ${teamIdx + 1}</h3><div class="bp-qgrid">${q}</div></div>`;
     }).join('');
 
+    document.title = 'Barea 팀배정 및 라인업';
     document.body.className = 'bg-gray-100';
     document.body.innerHTML = `
     <style>

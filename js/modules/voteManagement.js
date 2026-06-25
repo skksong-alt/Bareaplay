@@ -358,6 +358,7 @@ export async function renderCurrentVotePage() {
         if (s.exists() && s.data().voteId) voteId = s.data().voteId;
     } catch (e) { console.error(e); }
     if (!voteId) {
+        document.title = 'Barea 참석 투표';
         document.body.className = 'bg-gray-100';
         document.body.innerHTML = `<div style="max-width:480px;margin:60px auto;text-align:center;font-family:'Noto Sans KR',sans-serif"><h1 style="font-size:1.4rem;color:#111827">⚽ Barea 참석 투표</h1><p style="color:#6b7280;margin-top:10px">아직 진행 중인 투표가 없습니다.<br>운영진이 새 모임 투표를 시작하면 이 화면에 표시됩니다.</p></div>`;
         return;
@@ -383,6 +384,7 @@ export async function renderVotePage(voteId) {
     const info = [vote.date, vote.time, vote.location].filter(Boolean).join(' · ');
     const headerTitle = vote.title || `${vote.date || ''} 참석 투표`;
 
+    document.title = 'Barea 참석 투표';
     document.body.className = 'bg-gray-100';
     document.body.innerHTML = `
     <div style="max-width:520px;margin:0 auto;padding:16px;font-family:'Noto Sans KR',sans-serif">

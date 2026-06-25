@@ -166,7 +166,14 @@ async function generateShareableLink() {
 }
 
 export function generatePrintView(shareData) {
-    const teams = Object.values(shareData.teams || {});
+    // [수정] 명단과 라인업을 '같은 키(teamN)'로 짝지어 출력 → 팀1↔팀2 뒤바뀜 방지
+    const __teamsObj = shareData.teams || {};
+    const __teamKeys = Object.keys(__teamsObj).sort((a, b) => {
+        const na = parseInt(String(a).replace(/[^0-9]/g, ''), 10) || 0;
+        const nb = parseInt(String(b).replace(/[^0-9]/g, ''), 10) || 0;
+        return na - nb;
+    });
+    const teams = __teamKeys.map(k => __teamsObj[k]);
     const { meetingInfo, lineups } = shareData;
     const colors = ["#0D9488","#0288D1","#7B1FA2","#43A047","#F4511E"];
 
@@ -303,7 +310,7 @@ export function generatePrintView(shareData) {
     fullHtml += `</div></div><div class="print-footer">© 2025 BareaPlay. Created by 송감독.</div></div>`;
     
     teams.forEach((team, teamIdx) => {
-        const lineup = lineups[`team${teamIdx + 1}`];
+        const lineup = lineups[__teamKeys[teamIdx]] || lineups[`team${teamIdx + 1}`];
         const teamColor = colors[teamIdx % 5];
         
         fullHtml += `<div class="page-break"></div><div class="print-container">`;

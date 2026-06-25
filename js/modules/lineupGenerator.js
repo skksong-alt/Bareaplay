@@ -354,32 +354,23 @@ function executeLineupGeneration(members, formations, isSilent = false) {
         const PREF_TARGET = 3;   // 가능하면 여기까지 시켜주려 시도
 
         for (let tr = 0; tr < TRIAL; tr++) {
-            // SuperGK는 휴식 로테이션에서 제외 (휴식은 명단 아래부터 고정)
-            let membersForRest = sortedMembers.filter(m => !superGks.includes(m));
-            let restOrderQueue = [...membersForRest].reverse();
-            let fullRestQueue = [];
-            let totalRestSlots = 0;
-            formations.forEach(f => {
-                const numOnField = posCellMap[f]?.length || 11;
-                totalRestSlots += Math.max(0, members.length - numOnField);
-            });
-            while (fullRestQueue.length < totalRestSlots) { fullRestQueue.push(...restOrderQueue); }
-            fullRestQueue = fullRestQueue.slice(0, totalRestSlots);
-
+            // [개편] 휴식·심판을 '누적 횟수' 기반으로 공정 배분 (이전 큐/포인터 방식은 직전 키퍼 스킵 때문에
+            //         로테이션 정렬이 어긋나 일부가 2번 연속 쉬고 일부는 한 번도 못 쉬는 문제가 있었음 → 해결)
+            //  - 전담 키퍼(superGk)는 휴식 로테이션에서 제외 (항상 골문)
+            //  - 휴식: 누적 휴식 수가 적은 사람 우선, 동률이면 늦은 투표(명단 아래)부터 → 전원이 ±1 이내로 공평
             const lineups = [];
             const resters = [];
             const referees = [];
-            let refereeUsage = {};
-            members.forEach(m => refereeUsage[m] = 0);
 
-            let restQueuePointer = 0;
             const pos1Usage = {};
             const pos2Usage = {};
             const onFieldCount = {};
-            const gkCount = {};                 // [추가] 각자 키퍼 맡은 횟수
-            members.forEach(m => { pos1Usage[m] = 0; pos2Usage[m] = 0; onFieldCount[m] = 0; gkCount[m] = 0; });
-            let gkLast = null;                  // [추가] 직전 쿼터 키퍼(전담 제외)
-            let restRefLast = new Set();        // [추가] 직전 쿼터 휴식/심판자 집합
+            const gkCount = {};                 // 각자 키퍼 맡은 횟수
+            const restCount = {};               // [추가] 각자 휴식한 횟수 (공정 배분용)
+            const refCount = {};                // [추가] 각자 심판 본 횟수 (공정 배분용)
+            members.forEach(m => { pos1Usage[m] = 0; pos2Usage[m] = 0; onFieldCount[m] = 0; gkCount[m] = 0; restCount[m] = 0; refCount[m] = 0; });
+            let gkLast = null;                  // 직전 쿼터 키퍼(전담 제외)
+            let restRefLast = new Set();        // 직전 쿼터 휴식/심판자 집합
 
             let qualityCost = 0; // 포지션 적합도 비용 (낮을수록 좋음)
 
@@ -388,25 +379,27 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                 const slots = posCellMap[formation]?.map(c => c.pos) || [];
                 const numToRest = members.length - slots.length;
 
-                // ---- 휴식 선정: 큐(투표 아래부터 순환)에서, 단 직전 키퍼(전담 제외)는 이번 휴식 제외 ----
-                const quarterResters = [];
-                const qLen = fullRestQueue.length || 1;
-                let scan = 0;
-                while (quarterResters.length < numToRest && scan < qLen * 3) {
-                    const cand = fullRestQueue[(restQueuePointer + scan) % qLen];
-                    scan++;
-                    if (cand === gkLast) continue;           // 키퍼 직후 휴식 금지(전담 제외 → gkLast는 비전담만 세팅됨)
-                    if (quarterResters.includes(cand)) continue;
-                    quarterResters.push(cand);
+                // ---- 휴식 선정: 누적 휴식 수가 적은 사람 우선, 동률이면 늦은 투표(아래)부터. 직전 키퍼(전담 제외)는 이번 휴식 제외 ----
+                let restElig = sortedMembers.filter(m => !superGks.includes(m) && m !== gkLast);
+                restElig.sort((a, b) => (restCount[a] - restCount[b]) || (rankOf(b) - rankOf(a)));
+                let quarterResters = restElig.slice(0, numToRest);
+                if (quarterResters.length < numToRest) {
+                    // 전담/직전 키퍼 제외로 인원이 모자라면 불가피하게 보충 (그래도 누적 적은 사람 우선)
+                    const extra = sortedMembers
+                        .filter(m => !superGks.includes(m) && !quarterResters.includes(m))
+                        .sort((a, b) => (restCount[a] - restCount[b]) || (rankOf(b) - rankOf(a)));
+                    quarterResters = quarterResters.concat(extra.slice(0, numToRest - quarterResters.length));
                 }
-                restQueuePointer = (restQueuePointer + numToRest) % qLen; // 회전(로테이션) 유지
+                quarterResters.forEach(m => restCount[m]++);
                 resters.push(quarterResters);
 
-                // ---- 심판 배정: 휴식자 중 직전 키퍼 제외, 투표 아래(늦은)부터 ----
+                // ---- 심판 배정: 휴식자 중 심판을 적게 본 사람 우선, 동률이면 늦은 투표(아래)부터 ----
                 let assignedRef = null;
-                const refCands = quarterResters.filter(m => m !== gkLast).sort((a, b) => rankOf(b) - rankOf(a));
-                if (refCands.length > 0) assignedRef = refCands[0];
-                else if (quarterResters.length > 0) assignedRef = quarterResters[0];
+                if (quarterResters.length > 0) {
+                    const refCands = [...quarterResters].sort((a, b) => (refCount[a] - refCount[b]) || (rankOf(b) - rankOf(a)));
+                    assignedRef = refCands[0];
+                    refCount[assignedRef]++;
+                }
                 referees.push(assignedRef);
 
                 let onField = sortedMembers.filter(m => !quarterResters.includes(m));
