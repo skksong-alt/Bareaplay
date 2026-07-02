@@ -1,7 +1,12 @@
 // js/modules/teamBalancer.js
 import { state } from '../store.js?v=2'; // [중요] ?v=2를 붙여서 app.js와 주소를 통일함
+import { collection, getDocs } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js"; // [추가] 최근 같은팀 조합 조회용
 
+let db; // [추가] Firestore 핸들 (최근 조합 반복 방지용)
 let generateButton, attendeesTextarea, teamCountSelect, resultContainer, loadingSpinner, placeholder, loadAllPlayersBtn, acesTextarea, dateInput;
+let pinTogetherTextarea, pinApartTextarea, avoidRepeatCheckbox; // [추가] 함께/분리 지정 + 반복 방지
+let currentPinTogether = [], currentPinApart = [];              // [추가] 이번 배정에 적용할 제약 (이름 그룹 배열)
+let recentPairCounts = {};                                      // [추가] 최근 4주 '같은 팀이었던 쌍' 횟수
 let sliders = {};
 let sliderVals = {};
 
@@ -40,6 +45,8 @@ function handleTeamDrop(e, toTeamIndex) {
             toTeam.push(player);
             renderResults(state.teams);
             if(window.saveDailyMeetingData) window.saveDailyMeetingData();
+            // [학습] 운영진의 수동 팀 이동을 조용히 기록 (성향 분석용)
+            if (window.logAdjustment) window.logAdjustment({ kind: 'team-move', name: playerName, from: fromTeamIndex, to: toTeamIndex });
             window.showNotification(`${playerName} 선수가 팀 ${fromTeamIndex + 1}에서 팀 ${toTeamIndex + 1}로 이동했습니다.`);
         }
     } catch (err) {
@@ -150,7 +157,67 @@ function calculateScore(teamArr, W) {
         const arr = posStats.map(c => c[pg]);
         if (arr.length > 1) { posDiffSum += (Math.max(...arr) - Math.min(...arr)); }
     });
-    return (avgMaxMin * W.SKILL * 5) + (posDiffSum * W.POS) + (sizeMaxMin * W.SIZE * 5);
+    // [추가] 🧲 함께/분리 지정 위반 (사실상 필수 제약 → 매우 큰 페널티)
+    let pinPenalty = 0;
+    const teamOf = {};
+    teamArr.forEach((t, i) => t.forEach(p => { teamOf[normalizeName(String(p.name || '').replace(' (신규)', ''))] = i; }));
+    (currentPinTogether || []).forEach(g => {
+        const present = g.filter(n => teamOf[n] !== undefined);
+        for (let i = 0; i < present.length; i++) for (let j = i + 1; j < present.length; j++)
+            if (teamOf[present[i]] !== teamOf[present[j]]) pinPenalty++;
+    });
+    (currentPinApart || []).forEach(g => {
+        const present = g.filter(n => teamOf[n] !== undefined);
+        for (let i = 0; i < present.length; i++) for (let j = i + 1; j < present.length; j++)
+            if (teamOf[present[i]] === teamOf[present[j]]) pinPenalty++;
+    });
+
+    // [추가] 🔄 최근 4주 같은 팀이었던 쌍은 다시 같은 팀이 되지 않도록 가벼운 페널티
+    let repeatPenalty = 0;
+    if (recentPairCounts && Object.keys(recentPairCounts).length > 0) {
+        teamArr.forEach(t => {
+            const names = t.map(p => normalizeName(String(p.name || '').replace(' (신규)', '')));
+            for (let i = 0; i < names.length; i++) for (let j = i + 1; j < names.length; j++) {
+                const c = recentPairCounts[[names[i], names[j]].sort().join('|')];
+                if (c) repeatPenalty += c;
+            }
+        });
+    }
+
+    return (avgMaxMin * W.SKILL * 5) + (posDiffSum * W.POS) + (sizeMaxMin * W.SIZE * 5) + (pinPenalty * 100000) + (repeatPenalty * 12);
+}
+
+// [추가] 최근 28일간의 dailyMeetings에서 '같은 팀이었던 쌍'을 집계 (팀 생성 직전에 호출)
+async function loadRecentPairCounts() {
+    recentPairCounts = {};
+    if (!avoidRepeatCheckbox || !avoidRepeatCheckbox.checked || !db) return;
+    try {
+        const baseDate = (dateInput && dateInput.value) || (window.getLocalDate ? window.getLocalDate() : '');
+        if (!baseDate) return;
+        const snap = await getDocs(collection(db, "dailyMeetings"));
+        snap.forEach(d => {
+            const data = d.data();
+            const date = data.date || d.id;
+            if (!date || date >= baseDate) return; // 선택한 날짜 '이전' 기록만
+            const diffDays = (Date.parse(baseDate) - Date.parse(date)) / 86400000;
+            if (isNaN(diffDays) || diffDays > 28) return;
+            Object.values(data.teams || {}).forEach(team => {
+                const names = (team || []).map(p => normalizeName(String(p.name || '').replace(' (신규)', ''))).filter(Boolean);
+                for (let i = 0; i < names.length; i++) for (let j = i + 1; j < names.length; j++) {
+                    const key = [names[i], names[j]].sort().join('|');
+                    recentPairCounts[key] = (recentPairCounts[key] || 0) + 1;
+                }
+            });
+        });
+    } catch (e) { console.error('최근 같은팀 조합 로드 실패:', e); }
+}
+
+// [추가] textarea 한 줄("철수, 영희") → 정규화된 이름 그룹
+function parsePinLines(ta) {
+    if (!ta) return [];
+    return ta.value.split('\n')
+        .map(l => l.split(',').map(n => normalizeName(n)).filter(Boolean))
+        .filter(g => g.length >= 2);
 }
 
 function tournamentSelection(rankedPop, k = 5) {
@@ -232,6 +299,10 @@ function executeTeamAssignmentGA() {
     state.initialAttendeeOrder = [...attendNames];
     const teamCount = parseInt(teamCountSelect.value, 10);
     const W = { SKILL: Number(sliders.skill.value), POS: Number(sliders.pos.value), SIZE: Number(sliders.size.value) };
+
+    // [추가] 🧲 함께/분리 지정 파싱 (이번 배정의 점수 계산에 반영)
+    currentPinTogether = parsePinLines(pinTogetherTextarea);
+    currentPinApart = parsePinLines(pinApartTextarea);
     
     let knownPlayers = []; 
     let unknownPlayers = [];
@@ -370,9 +441,10 @@ function resetUI() {
 
 export function init(dependencies) {
     if (dependencies.state) Object.assign(state, dependencies.state);
+    db = dependencies.db; // [추가] 최근 조합 반복 방지용
     
     const pageElement = document.getElementById('page-balancer');
-    pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">입력 정보</h2><div class="mb-4"><label for="balancer-date" class="block text-md font-semibold text-gray-700 mb-2">📅 모임 날짜</label><input type="date" id="balancer-date" class="w-full p-3 border border-gray-300 rounded-lg bg-white"><p class="text-xs text-gray-400 mt-1">날짜를 바꾸면 그 날짜의 명단·팀배정·라인업을 불러옵니다. 저장된 내용이 없는 날(예: 다음주)은 빈 상태로 시작합니다.</p></div><div class="mb-4"><div class="flex justify-between items-center mb-2"><label for="attendees" class="block text-md font-semibold text-gray-700">참가자 명단</label><div class="flex items-center gap-3"><button id="reset-attendees-btn" class="text-sm text-red-500 hover:underline">명단 초기화</button><button id="load-all-players-btn" class="text-sm text-indigo-600 hover:underline">모든 선수 불러오기</button></div></div><textarea id="attendees" rows="12" class="w-full p-3 border border-gray-300 rounded-lg bg-gray-50" placeholder="선수 이름을 한 줄에 한 명씩 입력하세요."></textarea></div><div class="mb-4"><div class="flex justify-between items-center mb-2"><label for="aces" class="block text-md font-semibold text-gray-700">⭐ 에이스 지정 (선택)</label><button id="reset-aces-btn" class="text-sm text-red-500 hover:underline">비우기</button></div><textarea id="aces" rows="3" class="w-full p-3 border border-gray-300 rounded-lg bg-amber-50" placeholder="잘하는 핵심 선수를 한 줄에 한 명씩 입력하세요. 여기 적은 선수는 한 팀에 몰리지 않게, 설정한 팀 수에 맞춰 각 팀으로 고르게 나뉩니다."></textarea></div><div class="mb-6"><label for="teamCount" class="block text-md font-semibold text-gray-700 mb-2">생성할 팀 수</label><select id="teamCount" class="w-full p-3 border border-gray-300 rounded-lg bg-white"><option value="2" selected>2팀</option><option value="3">3팀</option><option value="4">4팀</option><option value="5">5팀</option></select></div><details class="mt-2 border border-gray-200 rounded-lg p-3 bg-gray-50"><summary class="text-md font-semibold text-gray-700 cursor-pointer select-none">⚙️ 밸런스 가중치 (고급 설정 · 평소엔 안 건드려도 됩니다)</summary><div class="space-y-4 mt-3"><div><label for="w_skill" class="flex justify-between items-center text-sm font-medium"><span>⚡ 능력치</span><span id="w_skill_val" class="font-bold text-indigo-600">100</span></label><input id="w_skill" type="range" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"></div><div><label for="w_pos" class="flex justify-between items-center text-sm font-medium"><span>🛡️ 포지션</span><span id="w_pos_val" class="font-bold text-indigo-600">100</span></label><input id="w_pos" type="range" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"></div><div><label for="w_size" class="flex justify-between items-center text-sm font-medium"><span>👥 인원수</span><span id="w_size_val" class="font-bold text-indigo-600">100</span></label><input id="w_size" type="range" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"></div></div></details><div class="mt-8"><button id="generateButton" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition-transform transform hover:scale-105 shadow-lg">팀 생성하기!</button></div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">팀 배정 결과</h2><div id="loading-balancer" class="hidden"><svg class="animate-spin h-6 w-6 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div></div><p class="text-sm text-gray-500 mb-4 -mt-2">💡 생성된 팀 간에 선수를 드래그하여 수동으로 조정할 수 있습니다.</p><div id="result-container-balancer" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 min-h-[60vh]"><div id="placeholder-balancer" class="col-span-full flex items-center justify-center text-gray-400"><p>팀 생성 버튼을 눌러주세요.</p></div></div></div></div>`;
+    pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">입력 정보</h2><div class="mb-4"><label for="balancer-date" class="block text-md font-semibold text-gray-700 mb-2">📅 모임 날짜</label><input type="date" id="balancer-date" class="w-full p-3 border border-gray-300 rounded-lg bg-white"><p class="text-xs text-gray-400 mt-1">날짜를 바꾸면 그 날짜의 명단·팀배정·라인업을 불러옵니다. 저장된 내용이 없는 날(예: 다음주)은 빈 상태로 시작합니다.</p></div><div class="mb-4"><div class="flex justify-between items-center mb-2"><label for="attendees" class="block text-md font-semibold text-gray-700">참가자 명단</label><div class="flex items-center gap-3"><button id="reset-attendees-btn" class="text-sm text-red-500 hover:underline">명단 초기화</button><button id="load-all-players-btn" class="text-sm text-indigo-600 hover:underline">모든 선수 불러오기</button></div></div><textarea id="attendees" rows="12" class="w-full p-3 border border-gray-300 rounded-lg bg-gray-50" placeholder="선수 이름을 한 줄에 한 명씩 입력하세요."></textarea></div><div class="mb-4"><div class="flex justify-between items-center mb-2"><label for="aces" class="block text-md font-semibold text-gray-700">⭐ 에이스 지정 (선택)</label><button id="reset-aces-btn" class="text-sm text-red-500 hover:underline">비우기</button></div><textarea id="aces" rows="3" class="w-full p-3 border border-gray-300 rounded-lg bg-amber-50" placeholder="잘하는 핵심 선수를 한 줄에 한 명씩 입력하세요. 여기 적은 선수는 한 팀에 몰리지 않게, 설정한 팀 수에 맞춰 각 팀으로 고르게 나뉩니다."></textarea></div><details class="mb-4 border border-gray-200 rounded-lg p-3 bg-gray-50"><summary class="text-md font-semibold text-gray-700 cursor-pointer select-none">🧲 함께/분리·반복 방지 (선택)</summary><div class="space-y-3 mt-3"><div><label for="pin-together" class="block text-sm font-medium mb-1">🤝 같은 팀으로 묶기 <span class="text-xs text-gray-400">(한 줄에 쉼표로)</span></label><textarea id="pin-together" rows="2" class="w-full p-2 border border-gray-300 rounded-lg bg-white text-sm" placeholder="예: 김철수, 김민수&#10;(형제·차량 동승 등)"></textarea></div><div><label for="pin-apart" class="block text-sm font-medium mb-1">🚧 다른 팀으로 나누기 <span class="text-xs text-gray-400">(한 줄에 쉼표로)</span></label><textarea id="pin-apart" rows="2" class="w-full p-2 border border-gray-300 rounded-lg bg-white text-sm" placeholder="예: 박영수, 이재현"></textarea></div><label class="flex items-center gap-2 text-sm font-medium text-gray-700"><input type="checkbox" id="avoid-repeat" checked class="w-4 h-4 rounded"> 🔄 최근 4주 같은 팀 조합 반복 최소화</label><p class="text-xs text-gray-400">에이스 자동 균등 배치와 충돌하면 함께/분리가 완벽히 지켜지지 않을 수 있습니다. 그 경우 드래그로 조정하세요.</p></div></details><div class="mb-6"><label for="teamCount" class="block text-md font-semibold text-gray-700 mb-2">생성할 팀 수</label><select id="teamCount" class="w-full p-3 border border-gray-300 rounded-lg bg-white"><option value="2" selected>2팀</option><option value="3">3팀</option><option value="4">4팀</option><option value="5">5팀</option></select></div><details class="mt-2 border border-gray-200 rounded-lg p-3 bg-gray-50"><summary class="text-md font-semibold text-gray-700 cursor-pointer select-none">⚙️ 밸런스 가중치 (고급 설정 · 평소엔 안 건드려도 됩니다)</summary><div class="space-y-4 mt-3"><div><label for="w_skill" class="flex justify-between items-center text-sm font-medium"><span>⚡ 능력치</span><span id="w_skill_val" class="font-bold text-indigo-600">100</span></label><input id="w_skill" type="range" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"></div><div><label for="w_pos" class="flex justify-between items-center text-sm font-medium"><span>🛡️ 포지션</span><span id="w_pos_val" class="font-bold text-indigo-600">100</span></label><input id="w_pos" type="range" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"></div><div><label for="w_size" class="flex justify-between items-center text-sm font-medium"><span>👥 인원수</span><span id="w_size_val" class="font-bold text-indigo-600">100</span></label><input id="w_size" type="range" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"></div></div></details><div class="mt-8"><button id="generateButton" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition-transform transform hover:scale-105 shadow-lg">팀 생성하기!</button></div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">팀 배정 결과</h2><div id="loading-balancer" class="hidden"><svg class="animate-spin h-6 w-6 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div></div><p class="text-sm text-gray-500 mb-4 -mt-2">💡 생성된 팀 간에 선수를 드래그하여 수동으로 조정할 수 있습니다.</p><div id="result-container-balancer" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 min-h-[60vh]"><div id="placeholder-balancer" class="col-span-full flex items-center justify-center text-gray-400"><p>팀 생성 버튼을 눌러주세요.</p></div></div></div></div>`;
     
     generateButton = document.getElementById('generateButton');
     attendeesTextarea = document.getElementById('attendees');
@@ -383,6 +455,9 @@ export function init(dependencies) {
     placeholder = document.getElementById('placeholder-balancer');
     loadAllPlayersBtn = document.getElementById('load-all-players-btn');
     dateInput = document.getElementById('balancer-date');
+    pinTogetherTextarea = document.getElementById('pin-together');
+    pinApartTextarea = document.getElementById('pin-apart');
+    avoidRepeatCheckbox = document.getElementById('avoid-repeat');
     sliders = { skill: document.getElementById('w_skill'), pos: document.getElementById('w_pos'), size: document.getElementById('w_size') };
     sliderVals = { skill: document.getElementById('w_skill_val'), pos: document.getElementById('w_pos_val'), size: document.getElementById('w_size_val') };
 
@@ -407,6 +482,15 @@ export function init(dependencies) {
         if (window.saveDailyMeetingData) window.saveDailyMeetingData();
     }, 600);
     if (acesTextarea) acesTextarea.addEventListener('input', persistAces);
+
+    // [추가] 함께/분리 지정도 날짜 문서에 함께 저장 (원본 줄 그대로 보관)
+    const persistPins = window.debounce(() => {
+        state.pinTogether = pinTogetherTextarea ? pinTogetherTextarea.value.split('\n').map(s => s.trim()).filter(Boolean) : [];
+        state.pinApart = pinApartTextarea ? pinApartTextarea.value.split('\n').map(s => s.trim()).filter(Boolean) : [];
+        if (window.saveDailyMeetingData) window.saveDailyMeetingData();
+    }, 600);
+    if (pinTogetherTextarea) pinTogetherTextarea.addEventListener('input', persistPins);
+    if (pinApartTextarea) pinApartTextarea.addEventListener('input', persistPins);
 
     // [A방식] 날짜 변경 → 그 날짜의 명단·팀배정·라인업을 불러온다 (없으면 빈 상태).
     if (dateInput) dateInput.addEventListener('change', () => {
@@ -447,7 +531,10 @@ export function init(dependencies) {
         generateButton.disabled = true;
         generateButton.textContent = '팀 생성 중...';
         if(resultContainer) resultContainer.innerHTML = ''; // 버튼 클릭 즉시 결과창 초기화
-        setTimeout(executeTeamAssignmentGA, 100);
+        setTimeout(async () => {
+            await loadRecentPairCounts(); // [추가] 최근 4주 같은팀 조합 집계 후 GA 실행
+            executeTeamAssignmentGA();
+        }, 100);
     });
     
     pageElement.addEventListener('click', (e) => {
@@ -473,4 +560,13 @@ export function setAces(names) {
     if (!acesTextarea || !Array.isArray(names)) return;
     if (document.activeElement === acesTextarea) return;
     acesTextarea.value = names.join('\n');
+}
+// [추가] 외부(날짜별 모임 데이터 로드)에서 함께/분리 지정을 textarea에 채움 (편집 중이면 건드리지 않음)
+export function setPins(together, apart) {
+    if (pinTogetherTextarea && Array.isArray(together) && document.activeElement !== pinTogetherTextarea) {
+        pinTogetherTextarea.value = together.join('\n');
+    }
+    if (pinApartTextarea && Array.isArray(apart) && document.activeElement !== pinApartTextarea) {
+        pinApartTextarea.value = apart.join('\n');
+    }
 }

@@ -6,6 +6,7 @@ let db, state;
 let activeVoteId = null;          // 관리자 화면에서 현재 보고 있는 투표
 let respUnsub = null;             // 응답 실시간 구독 해제 함수
 let adminResponses = [];          // 관리자 화면용 응답 캐시
+let adminVoteInfo = null;         // [추가] 현재 활성 투표의 문서 데이터(마감시각 표시용)
 
 function normName(s) {
     return (s == null ? '' : String(s)).normalize('NFC').trim();
@@ -24,6 +25,11 @@ function fmtTime(t) {
     const s = tsSeconds(t);
     if (!isFinite(s)) return '-';
     const d = new Date(s * 1000);
+    return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+// [추가] ms 타임스탬프 → MM/DD HH:MM (투표 마감 시각 표시용)
+function fmtMs(ms) {
+    const d = new Date(ms);
     return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
@@ -118,9 +124,17 @@ async function createVote() {
         if (!confirm('새 모임 투표를 시작하면, 현재 진행 중인 투표는 종료되어 지난 기록으로 보관됩니다.\n(고정 링크는 새 투표로 연결됩니다)\n\n계속할까요?')) return;
     }
 
+    // [추가] 투표 자동 마감: 운동 시작 시각 1시간 전에 자동으로 응답이 잠긴다.
+    let startAtMs = null, deadlineMs = null;
+    if (date && time) {
+        const t = Date.parse(`${date}T${time}:00`);
+        if (!isNaN(t)) { startAtMs = t; deadlineMs = t - 60 * 60 * 1000; }
+    }
+
     try {
         const ref = await addDoc(collection(db, "votes"), {
             title, date, time, location,
+            startAtMs, deadlineMs,      // [추가] 자동 마감 계산용 (구버전 투표에는 없어도 무방)
             closed: false,
             createdAt: serverTimestamp()
         });
@@ -163,6 +177,12 @@ function loadAdminVote(voteId) {
     if (activeVoteId === voteId && respUnsub) { showVoteLink(); return; }
     activeVoteId = voteId;
     showVoteLink();
+    // [추가] 투표 문서(마감시각 포함)도 불러와 관리자 화면에 표시
+    adminVoteInfo = null;
+    getDoc(doc(db, "votes", voteId)).then(s => {
+        adminVoteInfo = s.exists() ? s.data() : null;
+        renderAdminStatus();
+    }).catch(() => {});
     if (respUnsub) respUnsub();
     respUnsub = onSnapshot(collection(db, "votes", voteId, "responses"), (snap) => {
         adminResponses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -218,6 +238,7 @@ function renderAdminStatus() {
                 <h3 class="text-xl font-bold">투표 현황 <span class="text-green-600">참석 ${attend.length}</span> / <span class="text-amber-600">미정 ${maybe.length}</span> / <span class="text-gray-400">불참 ${absent.length}</span></h3>
                 <button id="vote-to-balancer" class="bg-indigo-600 text-white text-sm font-bold py-2 px-4 rounded-lg hover:bg-indigo-700">이 투표로 팀 짜기 →</button>
             </div>
+            ${adminVoteInfo && adminVoteInfo.deadlineMs ? `<p class="text-xs font-bold mb-1 ${Date.now() > adminVoteInfo.deadlineMs ? 'text-red-500' : 'text-emerald-600'}">⏰ 자동 마감: ${fmtMs(adminVoteInfo.deadlineMs)} — 경기 시작 1시간 전${Date.now() > adminVoteInfo.deadlineMs ? ' · 마감됨 (회원 응답 잠김, 관리자 수정은 가능)' : ''}</p>` : ''}
             <p class="text-xs text-gray-400 mb-2">※ 참석자는 투표가 늦은 사람일수록 아래쪽에 있으며, 팀 배정 후 아래(늦은 투표)부터 휴식·키퍼를 맡습니다. (미정은 팀 배정에 포함되지 않습니다)</p>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div><p class="font-semibold text-green-700 mb-1">✅ 참석 (투표순)</p><ul class="text-sm">${attendRows || '<li class="text-gray-400 py-2">아직 없음</li>'}</ul></div>
@@ -391,6 +412,7 @@ export async function renderVotePage(voteId) {
         <div style="text-align:center;margin:16px 0 8px">
             <h1 style="font-size:1.6rem;font-weight:800;color:#111827">⚽ ${esc(headerTitle)}</h1>
             <p style="color:#6b7280;margin-top:6px">${esc(info)}</p>
+            <p id="v-deadline" style="font-size:.85rem;font-weight:700;margin-top:6px;min-height:18px"></p>
         </div>
         <div style="background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08)">
             <label style="display:block;font-weight:700;margin-bottom:6px">이름</label>
@@ -420,7 +442,21 @@ export async function renderVotePage(voteId) {
     const nameInput = document.getElementById('v-name');
     const msg = document.getElementById('v-msg');
 
+    // [추가] 자동 마감 여부: 수동 종료(closed) 또는 마감시각(deadlineMs) 경과
+    const voteClosed = () => !!(vote.closed || (vote.deadlineMs && Date.now() > vote.deadlineMs));
+    function applyClosedUI() {
+        const dEl = document.getElementById('v-deadline');
+        const btns = ['v-attend', 'v-maybe', 'v-absent'].map(id => document.getElementById(id)).filter(Boolean);
+        if (voteClosed()) {
+            btns.forEach(b => { b.disabled = true; b.style.opacity = .45; b.style.cursor = 'not-allowed'; });
+            if (dEl) { dEl.style.color = '#ef4444'; dEl.textContent = '⏰ 투표가 마감되었습니다. 변경이 필요하면 운영진에게 알려주세요.'; }
+        } else if (vote.deadlineMs) {
+            if (dEl) { dEl.style.color = '#059669'; dEl.textContent = `⏰ 마감: ${fmtMs(vote.deadlineMs)} (경기 시작 1시간 전 자동 마감)`; }
+        }
+    }
+
     async function submitVote(status) {
+        if (voteClosed()) { msg.style.color = '#ef4444'; msg.textContent = '투표가 마감되었습니다. (경기 시작 1시간 전)'; applyClosedUI(); return; }
         const name = normName(nameInput.value);
         if (!name) { msg.style.color = '#ef4444'; msg.textContent = '이름을 먼저 입력하세요.'; return; }
         const isGuest = !playerSet.has(name);
@@ -446,6 +482,10 @@ export async function renderVotePage(voteId) {
     document.getElementById('v-attend').addEventListener('click', () => submitVote('attend'));
     document.getElementById('v-maybe').addEventListener('click', () => submitVote('maybe'));
     document.getElementById('v-absent').addEventListener('click', () => submitVote('absent'));
+
+    // [추가] 마감 상태 표시 + 30초마다 재확인(화면을 켜둔 채 마감시각이 지나도 자동 잠김)
+    applyClosedUI();
+    setInterval(applyClosedUI, 30000);
 
     onSnapshot(collection(db, "votes", voteId, "responses"), (snap) => {
         const all = snap.docs.map(d => d.data());

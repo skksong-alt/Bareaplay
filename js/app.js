@@ -3,13 +3,14 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebas
 import { getFirestore, collection, doc, onSnapshot, getDocs, getDoc, setDoc, deleteDoc, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
 import { state, setAdmin } from './store.js?v=2';
-import * as playerMgmt from './modules/playerManagement.js?v=4';
-import * as balancer from './modules/teamBalancer.js?v=5';
-import * as lineup from './modules/lineupGenerator.js?v=5';
+import * as playerMgmt from './modules/playerManagement.js?v=5';
+import * as balancer from './modules/teamBalancer.js?v=6';
+import * as lineup from './modules/lineupGenerator.js?v=6';
 import * as accounting from './modules/accounting.js?v=6';
-import * as shareMgmt from './modules/shareManagement.js?v=4';
-import * as voteMgmt from './modules/voteManagement.js?v=5';
+import * as shareMgmt from './modules/shareManagement.js?v=5';
+import * as voteMgmt from './modules/voteManagement.js?v=6';
 import * as lineupStats from './modules/lineupStats.js?v=1';
+import * as matchRecord from './modules/matchRecord.js?v=1'; // [신규] 경기기록 탭
 
 const firebaseConfig = {
     apiKey: "AIzaSyD_2tm5-hYbCeU8yi0QiWW9Oqm0O7oPBco",
@@ -129,6 +130,8 @@ const saveDailyMeetingData = window.debounce(async () => {
         teamLineupCache: transformedCache,
         initialAttendeeOrder: state.initialAttendeeOrder || [],
         aceNames: state.aceNames || [], // [A방식] 에이스 명단도 날짜별로 함께 저장
+        pinTogether: state.pinTogether || [], // [추가] 🧲 같은 팀 묶기 지정 (날짜별 저장)
+        pinApart: state.pinApart || [],       // [추가] 🚧 다른 팀 나누기 지정
         lastWriter: CLIENT_ID, // [수정] 누가 저장했는지 서명
         lastUpdatedAt: serverTimestamp()
 
@@ -143,12 +146,43 @@ const saveDailyMeetingData = window.debounce(async () => {
     }
 }, 1000);
 
+// [학습] 운영진의 수동 드래그 조정을 조용히 기록 (성향 제안의 재료) — 실패해도 앱 동작에 영향 없음
+window.logAdjustment = function(entry) {
+    if (!state.isAdmin) return;
+    try {
+        addDoc(collection(db, "adjustLogs"), {
+            ...entry,
+            date: selectedMeetingDate || window.getLocalDate(),
+            at: serverTimestamp()
+        }).catch(() => {});
+    } catch (e) { /* no-op */ }
+};
+
+// [학습] 최근 N일간의 조정 기록 조회 (라인업 생성기의 성향 제안 카드가 사용)
+window.fetchAdjustLogs = async function(days = 42) {
+    const snap = await getDocs(collection(db, "adjustLogs"));
+    const cutoff = Date.now() - days * 86400000;
+    return snap.docs.map(d => d.data()).filter(l => {
+        if (!l.date) return false;
+        const t = Date.parse(l.date + 'T00:00:00');
+        return !isNaN(t) && t >= cutoff;
+    });
+};
+
+// [학습] 성향 제안 [반영] 버튼이 선수 문서를 부분 수정할 때 사용 (merge → 다른 필드 보존)
+window.updatePlayerPref = async function(name, patch) {
+    await setDoc(doc(db, "players", name), patch, { merge: true });
+    window.showNotification(`${name} 선수 정보에 반영되었습니다.`);
+};
+
 // [A방식] 서버 문서 데이터를 화면/상태에 반영 (명단·에이스·팀배정·라인업 복원)
 function applyMeetingData(data) {
     if (data) {
         state.teams = Object.values(data.teams || {});
         state.initialAttendeeOrder = data.initialAttendeeOrder || [];
         state.aceNames = data.aceNames || [];
+        state.pinTogether = data.pinTogether || []; // [추가] 함께/분리 지정 복원
+        state.pinApart = data.pinApart || [];
 
         const originalCache = {};
         Object.keys(data.teamLineupCache || {}).forEach(teamIndex => {
@@ -186,11 +220,14 @@ function applyMeetingData(data) {
         state.teamLineupCache = {};
         state.initialAttendeeOrder = [];
         state.aceNames = [];
+        state.pinTogether = [];
+        state.pinApart = [];
     }
 
     // 명단·에이스 textarea 복원 (사용자가 그 칸을 편집 중이면 setAttendees/setAces 내부에서 건드리지 않음)
     if (balancer.setAttendees) balancer.setAttendees(state.initialAttendeeOrder);
     if (balancer.setAces) balancer.setAces(state.aceNames);
+    if (balancer.setPins) balancer.setPins(state.pinTogether, state.pinApart); // [추가]
     balancer.renderResults(state.teams);
     lineup.renderTeamSelectTabs(state.teams);
 
@@ -311,17 +348,32 @@ function initExcelUploader() {
                 // 셀이 비어 있으면 기존 선수의 회비유형을 보존(왕복 시 손실 방지)
                 return (state.playerDB[prevName] && state.playerDB[prevName].feeType) || 'normal';
             };
+            // [성향] 성향 셀 파서 — 셀이 아예 없으면(구버전 양식) 기존 값을 보존해 왕복 시 손실 방지
+            const VALID_POS = ['GK', 'LB', 'RB', 'CB', 'LW', 'RW', 'MF', 'CM', 'FW', 'DF'];
+            const parsePosCell = (v) => (v || '').toString().split(/[\/,]/).map(p => p.toUpperCase().trim()).filter(p => VALID_POS.includes(p));
+            const parseSide = (v) => {
+                const s = (v || '').toString().trim();
+                if (['L', '왼쪽', 'LEFT'].includes(s.toUpperCase()) || s === '왼쪽') return 'L';
+                if (['R', '오른쪽', 'RIGHT'].includes(s.toUpperCase()) || s === '오른쪽') return 'R';
+                return '';
+            };
             const newPlayerDB = {};
             json.forEach(player => {
                 const name = player.이름;
                 if (!name) return;
+                const prev = state.playerDB[name] || {};
                 newPlayerDB[name] = {
                     name: name,
                     pos1: (player.주포지션 || "").toString().split(',').map(p => p.trim()).filter(Boolean),
                     s1:   player.주포지션숙련도 || 65,
                     pos2: (player.부포지션 || "").toString().split(',').map(p => p.trim()).filter(Boolean),
                     s2:   player.부포지션숙련도 || 0,
-                    feeType: parseFeeType(player.회비유형, name)
+                    feeType: parseFeeType(player.회비유형, name),
+                    // [성향] 셀이 있으면 그 값, 없으면 기존 값 유지
+                    wishPos:   (player.희망포지션 !== undefined) ? parsePosCell(player.희망포지션) : (prev.wishPos || []),
+                    wishQuota: (player.희망보장 !== undefined) ? Math.max(0, Math.min(6, parseInt(player.희망보장) || 0)) : (prev.wishQuota || 0),
+                    side:      (player.선호측면 !== undefined) ? parseSide(player.선호측면) : (prev.side || ''),
+                    memo:      (player.메모 !== undefined) ? String(player.메모).trim() : (prev.memo || '')
                 };
             });
             savePlayerDB(newPlayerDB, true);
@@ -365,85 +417,115 @@ function renderManual() {
 
     const sLogin = sec('\uD83D\uDD11', '관리자 로그인 (먼저 알아두기)', `
         <ul class="list-disc pl-5 space-y-1.5 text-sm">
-            <li>이 앱은 <b>누구나 화면을 볼 수 있지만</b>, 팀 배정\u00B7라인업\u00B7출석\u00B7회비\u00B7선수 정보를 <b>수정하는 것은 운영진(관리자)만</b> 할 수 있습니다.</li>
+            <li>이 앱은 <b>누구나 화면을 볼 수 있지만</b>, 팀 배정\u00B7라인업\u00B7출석\u00B7회비\u00B7선수 정보\u00B7경기 기록을 <b>수정하는 것은 운영진(관리자)만</b> 할 수 있습니다.</li>
             <li>수정 기능을 누르면 <b>Google 로그인</b> 창이 뜹니다. 운영진 계정으로 로그인하면 모든 편집 기능이 열립니다.</li>
             <li>로그인하지 않은 사람은 버튼이 잠겨 있거나, 누르면 로그인 안내가 뜹니다. (구경은 자유, 수정은 운영진만)</li>
         </ul>
         ${tip('새 운영진을 추가하려면 맨 아래 <b>인수인계</b> 항목의 Firebase 설정이 필요합니다. 앱 안에서는 추가할 수 없습니다.')}`);
+
+    const sVote = sec('\uD83D\uDDF3\uFE0F', '참석 투표 \u2014 자동 마감', `
+        <ul class="list-disc pl-5 space-y-1.5 text-sm">
+            <li>모임배포 탭에서 <b>새 모임 투표 시작</b>을 누르면, 고정 링크(<code class="bg-gray-100 px-1 rounded">?vote=current</code>)가 이번 주 투표로 연결됩니다.</li>
+            <li><b>\u23F0 자동 마감</b>: 투표는 입력한 <b>운동 시작 시각 1시간 전</b>에 자동으로 잠깁니다. 회원 화면에 마감 시각이 표시되고, 마감 후에는 응답 버튼이 비활성화됩니다.</li>
+            <li>마감 후 변경이 필요하면 <b>관리자 화면에서는 계속 수정</b>할 수 있습니다. (참석\u2194미정\u2194불참 전환, 직접 추가\u00B7삭제)</li>
+            <li>예전에 만든 투표(마감 시각 정보가 없는 투표)는 예전처럼 계속 열려 있습니다.</li>
+        </ul>`);
 
     const sBalancer = sec('\u2696\uFE0F', '팀 배정기 \u2014 팀 나누기', `
         <p class="text-sm mb-2">참가자 이름을 넣고 버튼 한 번이면 실력\u00B7포지션\u00B7인원이 균형 잡힌 팀으로 자동으로 나눠집니다.</p>
         <ul class="list-disc pl-5 space-y-1.5 text-sm">
             <li><b>참가자 명단</b>: 한 줄에 한 명씩 이름을 적습니다. <b>모든 선수 불러오기</b> 버튼을 누르면 등록된 선수 전체가 한 번에 채워집니다.</li>
             <li><b>명단은 저장됩니다</b>: 새로고침하거나 앱을 껐다 켜도 입력한 명단이 그대로 남아 있습니다. <b>명단 초기화</b> 버튼을 눌러야만 비워집니다.</li>
-            <li><b>\u2B50 에이스 지정 (선택)</b>: 잘하는 핵심 선수를 여기에 적으면, 그 선수들이 <b>각 팀에 고르게 나뉩니다</b>. 예를 들어 에이스 6명을 적고 2팀으로 나누면 한 팀에 몰리지 않고 <b>3:3</b>으로 갈립니다. 홀수(5명)면 3:2로 나뉘고 남는 1명은 팀 평균 실력에 맞춰 배정됩니다. 배정 결과에 \u2B50 표시가 붙습니다.</li>
-            <li><b>밸런스 가중치</b>: 능력치\u00B7포지션\u00B7인원수 슬라이더로 "무엇을 더 중요하게 맞출지"를 조절합니다. 능력치를 높이면 실력 균형을, 포지션을 높이면 포지션 분포를 우선합니다.</li>
+            <li><b>\u2B50 에이스 지정 (선택)</b>: 잘하는 핵심 선수를 여기에 적으면, 그 선수들이 <b>각 팀에 고르게 나뉩니다</b>. 예를 들어 에이스 6명을 적고 2팀으로 나누면 3:3으로 갈립니다. 배정 결과에 \u2B50 표시가 붙습니다.</li>
+            <li><b>\uD83E\uDDF2 같은 팀으로 묶기 / \uD83D\uDEA7 다른 팀으로 나누기 (선택)</b>: 형제\u00B7차량 동승처럼 꼭 같은 팀이어야 하는 사람들, 또는 반드시 나눠야 하는 사람들을 <b>한 줄에 쉼표로</b> 적으면 배정 시 최우선으로 지켜집니다. 이 지정도 날짜별로 저장됩니다.</li>
+            <li><b>\uD83D\uDD04 최근 4주 같은 팀 조합 반복 최소화</b>: 체크(기본 켜짐)하면 지난 4주 동안 자주 같은 팀이었던 사람들이 이번 주에는 되도록 다른 팀이 되도록 자동으로 섞습니다. 매주 비슷한 조합이 나오는 것을 방지합니다.</li>
+            <li><b>밸런스 가중치</b>: 능력치\u00B7포지션\u00B7인원수 슬라이더로 "무엇을 더 중요하게 맞출지"를 조절합니다.</li>
             <li><b>수동 이동</b>: 자동 배정 후 마음에 안 들면 선수를 <b>드래그</b>해서 다른 팀으로 옮길 수 있습니다.</li>
         </ul>
-        ${warn('에이스는 <b>선수관리에 등록된 선수만</b> 인정됩니다. 명단에만 있고 등록 안 된 "신규" 선수는 에이스로 지정되지 않습니다.')}`);
+        ${warn('에이스는 <b>선수관리에 등록된 선수만</b> 인정됩니다. 또한 <b>에이스 자동 균등 배치</b>와 함께/분리 지정이 충돌하면 함께/분리가 완벽히 지켜지지 않을 수 있으니, 그 경우 드래그로 조정하세요.')}`);
 
     const sLineup = sec('\uD83D\uDCCB', '라인업 생성기 \u2014 쿼터별 포지션', `
         <p class="text-sm mb-2">팀을 나눈 뒤, 팀별로 <b>6쿼터 라인업</b>(누가 어느 쿼터에 어느 포지션을 보는지)을 자동으로 만들어 줍니다.</p>
         <ul class="list-disc pl-5 space-y-1.5 text-sm">
             <li>각 선수의 <b>주 포지션을 우선</b> 배치하고, 모두가 비슷하게 뛰도록 <b>휴식을 공평하게 돌려가며</b> 배정합니다.</li>
-            <li><b>휴식 형평성</b>: 누적 휴식이 <b>적은 사람부터</b> 쉬게 하고, 같은 조건이면 <b>투표를 늦게 한 사람(명단 아래쪽)</b>이 먼저 쉽니다. 그래서 전원이 거의 같은 횟수로 출전하고, <b>한 사람이 두 쿼터 연속으로 쉬는 일이 없습니다.</b></li>
-            <li><b>골키퍼(키퍼)</b>: 주\u00B7부 포지션이 모두 GK인 <b>전담 키퍼</b>가 있으면 그 선수가 골문을 봅니다. 전담 키퍼가 없으면 <b>키퍼를 적게 본 사람부터</b> 돌아가며 맡습니다.</li>
-            <li><b>키퍼\u00B7휴식 충돌 방지</b>: <b>바로 직전 쿼터에 쉰(또는 심판 본) 사람은 다음 쿼터 키퍼로 세우지 않고</b>, 반대로 <b>키퍼를 본 사람을 다음 쿼터에 바로 쉬게 하지도 않습니다.</b> 키퍼는 두 쿼터 연속으로 맡기지 않습니다.</li>
-            <li><b>심판</b>도 휴식과 함께 공평하게 자동으로 나눠집니다.</li>
-            <li><b>최소 9명</b>이 있어야 라인업을 만들 수 있습니다.</li>
-            <li><b>교체 방법</b>: PC는 선수를 <b>드래그</b>, 휴대폰은 <b>두 선수를 차례로 톡톡</b> 누르면 같은 쿼터 안에서 자리가 바뀝니다.</li>
+            <li><b>\uD83C\uDFAF 성향 자동 반영 (신규)</b>: 선수관리에 등록한 성향이 라인업에 자동으로 반영됩니다.
+                <ul class="list-disc pl-5 mt-1 space-y-1">
+                    <li><b>희망 포지션 보장</b> \u2014 예: 실제 주포지션은 CB인데 본인은 MF를 원하는 선수에게 "희망 MF\u00B72회"를 등록하면, 6쿼터 중 2쿼터는 MF, 나머지는 CB로 자동 배치됩니다. (친목 모임의 "다들 즐기고 가기"가 규칙이 됨)</li>
+                    <li><b>좌/우 선호</b> \u2014 "왼쪽 선호"로 등록된 윙\u00B7풀백은 비슷한 능력치의 다른 윙이 있어도 항상 왼쪽(LW\u00B7LB)에 배치됩니다.</li>
+                </ul></li>
+            <li><b>\uD83E\uDDE0 성향 제안 카드 (신규)</b>: 운영진이 라인업에서 선수를 드래그로 옮길 때마다 앱이 조용히 기억합니다. 같은 방향의 이동이 <b>서로 다른 날짜에 3회 이상</b> 반복되면, 라인업 생성 버튼 아래에 "\u25CB\u25CB님을 계속 수비로 옮기시네요. 주포지션에 CB를 추가할까요?" 같은 <b>제안 카드</b>가 뜹니다. <b>[반영]을 눌러야만 저장</b>되고, [무시]하면 다시 묻지 않습니다.</li>
+            <li><b>휴식 형평성</b>: 누적 휴식이 <b>적은 사람부터</b> 쉬게 하고, 같은 조건이면 <b>투표를 늦게 한 사람(명단 아래쪽)</b>이 먼저 쉽니다. 한 사람이 두 쿼터 연속으로 쉬는 일이 없습니다.</li>
+            <li><b>골키퍼(키퍼)</b>: 주\u00B7부 포지션이 모두 GK인 <b>전담 키퍼</b>가 있으면 그 선수가 골문을 봅니다. 없으면 <b>키퍼를 적게 본 사람부터</b> 돌아가며 맡습니다.</li>
+            <li><b>키퍼\u00B7휴식 충돌 방지</b>: 직전 쿼터에 쉰(또는 심판 본) 사람은 다음 쿼터 키퍼로 세우지 않고, 키퍼를 본 사람을 바로 쉬게 하지도 않습니다. 키퍼는 두 쿼터 연속으로 맡기지 않습니다.</li>
+            <li><b>심판</b>도 휴식과 함께 공평하게 자동으로 나눠집니다. <b>최소 9명</b>이 있어야 라인업을 만들 수 있습니다.</li>
+            <li><b>교체 방법</b>: PC는 선수를 <b>드래그</b>, 휴대폰은 <b>두 선수를 차례로 톡톡</b> 누르면 같은 쿼터 안에서 자리가 바뀝니다. (이 드래그가 곧 성향 학습 재료가 됩니다 \u2014 추가로 할 일 없음)</li>
         </ul>
         ${tip('자동 배정 결과의 <b>포지션 집계표</b>에서 각 선수가 공격\u00B7미들\u00B7수비\u00B7GK\u00B7휴식\u00B7출전을 몇 번 했는지 한눈에 확인할 수 있습니다. 특정인이 너무 많이 받은 포지션은 분홍색으로 표시되니 드래그로 조정하세요.')}`);
 
     const sAccounting = sec('\uD83D\uDCC8', '출석 & 회계 \u2014 참석/회비 관리', `
-        <p class="text-sm mb-2">경기 날짜별로 참석자를 체크하고 회비를 기록\u00B7정산하는 곳입니다. <b>휴대폰과 PC가 실시간으로 같은 데이터를 봅니다</b>(한쪽에서 고치면 즉시 반영).</p>
+        <p class="text-sm mb-2">경기 날짜별로 참석자를 체크하고 회비를 기록\u00B7정산하는 곳입니다. <b>휴대폰과 PC가 실시간으로 같은 데이터를 봅니다</b>(한쪽에서 고치면 즉시 반영). <b>이번 업그레이드에서 출석\u00B7회비 데이터와 기능은 전혀 바뀌지 않았습니다.</b></p>
         <ul class="list-disc pl-5 space-y-1.5 text-sm">
-            <li><b>날짜 선택</b>: 위쪽 날짜를 바꾸면 그 날짜의 출석\u00B7회비 기록이 나타납니다. 과거 날짜를 고르면 그날의 기록이 그대로 보입니다.</li>
-            <li><b>현장 휴대폰에서도 명단 자동 표시</b>: PC에서 팀배정을 해두면, 현장에서 <b>휴대폰으로 출석 &amp; 회계 탭을 열었을 때 그날 팀배정 명단이 참석자 후보로 자동으로 떠 있습니다(전원 체크 상태).</b> 그대로 <b>선택한 날짜 출석 저장</b>만 누르면 됩니다. (예전처럼 한 명씩 수동 추가할 필요 없음)</li>
-            <li><b>참석자 체크</b>: 명단에서 온 사람을 체크하고 저장하면 회비 표에 추가됩니다. 빠진 사람은 아래 <b>수동 추가</b>로 넣습니다.</li>
-            <li><b>불러올 때 기본은 전원 \u2715 미납</b>: 출석을 저장하면 <b>운영진을 포함해 전원이 \u2715 미납(0원)</b> 상태로 들어옵니다. 현장에서 돈을 받은 사람만 완납으로 바꾸면 되므로 누가 안 냈는지 한눈에 보입니다.</li>
-            <li><b>납부 상태</b>: <b>\u25CF 완납 / \u25B3 일부 / \u2715 미납 / N 노쇼</b> 중에서 고릅니다.</li>
-            <li><b>금액 자동 0</b>: 납부 상태를 <b>\u2715 미납</b> 또는 <b>N 노쇼</b>로 바꾸면 그 사람의 납부액이 <b>자동으로 0원</b>이 됩니다. (완납\u00B7일부는 입력한 금액 유지)</li>
-            <li><b>노쇼 기록</b>: \"온다고 해놓고 안 온\" 사람을 N 노쇼로 표시하면 불이익 없이 <b>기록만</b> 남습니다. 이름 옆에 <b>누적 노쇼 횟수</b>가 표시되고 엑셀에도 집계됩니다.</li>
-            <li><b>운영진(회비 0)은 수금 집계 제외</b>: 위쪽 <b>미수금 N명</b> 진행바는 실제로 돈을 내야 하는 사람만 셉니다. 운영진은 미수금으로 잡히지 않습니다.</li>
+            <li><b>날짜 선택</b>: 위쪽 날짜를 바꾸면 그 날짜의 출석\u00B7회비 기록이 나타납니다.</li>
+            <li><b>현장 휴대폰에서도 명단 자동 표시</b>: PC에서 팀배정을 해두면, 현장에서 휴대폰으로 이 탭을 열었을 때 그날 팀배정 명단이 참석자 후보로 자동으로 떠 있습니다(전원 체크 상태). 그대로 <b>선택한 날짜 출석 저장</b>만 누르면 됩니다.</li>
+            <li><b>불러올 때 기본은 전원 \u2715 미납</b>: 현장에서 돈을 받은 사람만 완납으로 바꾸면 됩니다.</li>
+            <li><b>납부 상태</b>: \u25CF 완납 / \u25B3 일부 / \u2715 미납 / N 노쇼. 미납\u00B7노쇼로 바꾸면 납부액이 자동 0원이 됩니다.</li>
+            <li><b>노쇼 기록</b>: 이름 옆에 누적 노쇼 횟수가 표시되고 엑셀에도 집계됩니다.</li>
+            <li><b>운영진(회비 0)은 수금 집계 제외</b>: 미수금 진행바는 실제로 돈을 내야 하는 사람만 셉니다.</li>
         </ul>
-        ${tip('<b>현장 수금은 \"수금 체크\" 모드로!</b> 수금 체크 버튼을 누르면 <b>휴대폰 화면에 한 명이 작은 두 줄짜리 칸</b>으로 압축되어 <b>한 화면에 10명 이상</b> 보입니다. <b>이름 줄을 톡 누르면 완납(자동 금액)</b>으로 바뀌고, 다시 누르면 취소됩니다. 금액\u00B7비고\u00B7상태는 그 자리에서 바로 고칠 수 있습니다. 일부만 받았으면 상태를 <b>\u25B3 일부</b>로 두고 비고에 적으세요.')}
-        ${tip('<b>비고(메모)는 \"다음에도 자동으로 떠 있지만\", 과거 기록은 그대로 보존됩니다.</b> 예: 6/23에 어떤 선수에게 \"지난 회비 누적으로 다음에 70 받기\"라고 적으면 \u2192 다음 모임에 그 메모가 자동으로 떠 있습니다 \u2192 그날 해결해서 <b>메모를 지우고 돈을 받으면</b>, 그 날짜부터는 더 이상 자동으로 뜨지 않습니다. <b>그래도 6/23 당시의 비고는 그대로 남아</b> 나중에 과거 내역\u00B7엑셀에서 확인됩니다. (날짜별로 따로 보관 + 다음 모임에 이어 보여주기, 둘 다 됨)')}
-        ${tip('<b>엑셀 내보내기</b>: 회비 표 위의 <b>엑셀</b> 버튼은 <b>회비\u00B7정산 내역</b>(날짜별\u00B7사람별 참석/납부/노쇼)만 받습니다. <b>선수 능력치\u00B7포지션</b>은 선수관리 탭의 엑셀 버튼에서 따로 받습니다. (두 버튼이 분리되어 서로 섞이지 않습니다)')}`);
+        ${tip('<b>현장 수금은 "수금 체크" 모드로!</b> 이름 줄을 톡 누르면 완납(자동 금액)으로 바뀌고, 다시 누르면 취소됩니다. 비고(메모)는 다음 모임에 자동으로 이어 보여지지만 과거 기록은 그대로 보존됩니다.')}
+        ${tip('<b>엑셀 내보내기</b>: 회비 표 위의 엑셀 버튼은 회비\u00B7정산 내역만 받습니다. 선수 능력치\u00B7포지션\u00B7성향은 선수관리 탭의 엑셀 버튼에서 따로 받습니다.')}`);
 
-    const sShare = sec('\uD83D\uDCE2', '모임배포 \u2014 투표 & 공유 링크', `
+    const sRecord = sec('\uD83C\uDFC6', '경기기록 (신규) \u2014 하루 30초 입력으로 시즌 데이터 만들기', `
+        <p class="text-sm mb-2">운영진의 필수 입력은 <b>쿼터가 끝날 때 스코어 숫자 2개</b>가 전부입니다. 팀 명단은 그날의 팀배정에서 자동으로 가져오므로, 이것만으로 개인별 승패\u00B7시즌 요약\u00B7능력치 보정이 전부 자동 계산됩니다.</p>
+        <ul class="list-disc pl-5 space-y-1.5 text-sm">
+            <li><b>\uD83D\uDCBE 쿼터 스코어</b>: 날짜를 고르고 쿼터별로 "팀1 2 : 1 팀2"처럼 숫자만 넣고 저장합니다. 일부 쿼터만 입력해도 되고, 3팀 로테이션이면 쿼터마다 맞대결 팀을 바꿔 고르면 됩니다. 저장된 스코어는 <b>공유 보드에도 자동 표시</b>됩니다.</li>
+            <li><b>\u26A1 능력치 자동 보정 (개인 Elo)</b>: 스코어를 바탕으로 이긴 팀원의 능력치(s1)를 소폭 올리고 진 팀원을 소폭 내립니다(쿼터당 최대 \u00B10.8). <b>매주 팀 조합이 바뀌기 때문에</b> 몇 주가 쌓이면 "누가 낀 팀이 유독 자주 이기는지"가 점수에 수렴합니다. 반드시 <b>미리보기 확인 \u2192 [반영]</b> 순서이며, 이미 반영한 날짜는 표시가 남아 중복 적용을 막아줍니다.</li>
+            <li><b>\uD83C\uDFC5 활약 투표 결과</b>: 회원들이 공유 보드에서 뽑은 "오늘 잘한 3명" 집계를 확인합니다. (아래 모임배포 항목 참고)</li>
+            <li><b>\uD83D\uDCC8 시즌 요약</b>: 저장된 모든 스코어\u00B7투표에서 개인별 <b>기록일수\u00B7쿼터 승-무-패\u00B7승률\u00B7활약점수</b>를 자동 집계합니다. 추가 입력은 없습니다.</li>
+        </ul>
+        ${warn('능력치 보정은 <b>선수관리에 등록된 선수만</b> 적용됩니다. 게스트(미등록)는 미리보기에 "반영 안 됨"으로 표시됩니다. 같은 날짜를 두 번 반영하면 중복 적용되니, "이미 반영되었습니다" 표시가 있으면 누르지 마세요.')}`);
+
+    const sShare = sec('\uD83D\uDCE2', '모임배포 \u2014 투표 & 공유 링크 & 활약 투표', `
         <p class="text-sm mb-2">이 탭에는 성격이 다른 <b>두 가지 링크</b>가 있습니다. 용도에 맞게 골라 단톡방에 올리세요.</p>
         <ul class="list-disc pl-5 space-y-1.5 text-sm">
-            <li><b>\u2460 참석 투표 링크</b>: 멤버들이 <b>참석/미정/불참</b>을 직접 누르는 링크입니다. 단톡방 미리보기에 <b>\"Barea 참석 투표\"</b>로 뜨는 것이 정상입니다. 투표 결과는 팀 배정기로 불러올 수 있습니다.</li>
-            <li><b>\u2461 공유 보드 링크 (팀배정\u00B7라인업 결과)</b>: <b>공유 링크 생성</b> 버튼으로 만든 링크입니다. 주소가 <code class="bg-gray-100 px-1 rounded">/share.html?shareId=...</code> 형태이며, 단톡방 미리보기에 <b>\"Barea 팀배정 및 라인업\"</b>으로 뜹니다. 받는 사람은 토글(접고 펴기)로 봅니다 \u2014 <b>팀 배정은 접힘, 라인업은 펼침</b>이 기본입니다.</li>
+            <li><b>\u2460 참석 투표 링크</b>: 멤버들이 참석/미정/불참을 직접 누르는 <b>고정 링크</b>입니다. 미리보기에 "Barea 참석 투표"로 뜹니다. <b>운동 시작 1시간 전에 자동 마감</b>됩니다.</li>
+            <li><b>\u2461 공유 보드 링크</b>: <b>공유 링크 생성</b> 버튼으로 만든 링크(<code class="bg-gray-100 px-1 rounded">/share.html?shareId=...</code>)입니다. 팀 배정\u00B7라인업 결과가 표시되고, 미리보기에 "Barea 팀배정 및 라인업"으로 뜹니다.</li>
+            <li><b>\uD83C\uDFC5 오늘의 활약 투표 (신규)</b>: 공유 보드 <b>맨 아래</b>에 있습니다. 경기가 끝나면 회원이 <b>본인 이름을 명단에서 선택</b>(한 번 고르면 기기에 기억됨)한 뒤 <b>오늘 잘한 3명을 순서대로</b> 탭합니다. 1순위 3점\u00B72순위 2점\u00B73순위 1점으로 집계되며, 자기 자신은 못 뽑고, 다시 제출하면 이전 표를 덮어써서 중복 투표가 안 됩니다. <b>결과는 익명 집계만 공개</b>됩니다. (로그인\u00B7개인정보 없음 \u2014 출석 투표와 같은 방식)</li>
+            <li><b>\uD83D\uDCCA 쿼터 스코어</b>: 운영진이 경기기록 탭에 스코어를 저장하면 공유 보드에도 자동으로 표시됩니다.</li>
         </ul>
-        ${warn('결과를 공유할 땐 반드시 <b>\"공유 링크 생성\" 버튼으로 만든 링크</b>를 올리세요. 주소창의 일반 주소(<code class=\"bg-amber-100 px-1 rounded\">bareaplay.vercel.app</code>)나 투표 링크(<code class=\"bg-amber-100 px-1 rounded\">?vote=current</code>)를 올리면 미리보기 제목이 \"참석 투표\"로 뜹니다.')}
-        ${tip('카카오톡은 링크 미리보기를 <b>며칠간 저장(캐시)</b>합니다. 예전에 올린 투표 링크의 미리보기가 계속 보이면, <b>카카오 OG 캐시 리셋 도구</b>(developers.kakao.com/tool/clear/og)에 그 링크를 한 번 넣어 갱신하면 새 제목이 적용됩니다.')}
-        ${tip('공유 보드에는 <b>참석 현황(투표 결과)이 표시되지 않습니다.</b> 투표를 안 한 사람을 나중에 팀배정에 직접 추가하면 투표 결과와 어긋날 수 있어, 팀배정\u00B7라인업 결과만 깔끔하게 보여줍니다.')}`);
+        ${warn('결과를 공유할 땐 반드시 <b>"공유 링크 생성" 버튼으로 만든 링크</b>를 올리세요. 일반 주소나 투표 링크를 올리면 미리보기 제목이 "참석 투표"로 뜹니다.')}
+        ${tip('카카오톡은 링크 미리보기를 며칠간 저장(캐시)합니다. 미리보기가 예전 것으로 보이면 <b>카카오 OG 캐시 리셋 도구</b>(developers.kakao.com/tool/clear/og)에 링크를 넣어 갱신하세요.')}`);
 
-    const sPlayers = sec('\uD83D\uDC64', '선수관리 \u2014 실력 & 포지션 등록', `
+    const sPlayers = sec('\uD83D\uDC64', '선수관리 \u2014 실력 & 포지션 & 성향 등록', `
         <ul class="list-disc pl-5 space-y-1.5 text-sm">
-            <li>각 선수의 <b>실력(능력치)</b>과 <b>주 포지션\u00B7부 포지션</b>을 등록\u00B7수정합니다.</li>
-            <li>이 정보가 정확할수록 <b>팀 배정과 라인업의 품질</b>이 좋아집니다. (능력치가 비어 있으면 균형을 맞추기 어렵습니다)</li>
-            <li><b>엑셀 양식</b>으로 여러 선수를 한 번에 일괄 등록\u00B7수정할 수 있습니다.</li>
+            <li>각 선수의 <b>실력(능력치)</b>과 <b>주 포지션\u00B7부 포지션</b>을 등록\u00B7수정합니다. 이 정보가 정확할수록 팀 배정과 라인업의 품질이 좋아집니다.</li>
+            <li><b>\uD83C\uDFAF 성향 필드 (신규)</b>:
+                <ul class="list-disc pl-5 mt-1 space-y-1">
+                    <li><b>본인 희망 포지션 + 보장 횟수</b> \u2014 "실제로는 CB가 맞는데 본인은 MF라고 생각하는" 선수에게: 주포지션은 CB로 두고, 희망 MF\u00B7보장 2회로 등록 \u2192 매주 드래그하던 것이 자동화됩니다.</li>
+                    <li><b>좌/우 선호</b> \u2014 무조건 왼쪽 윙에 서고 싶어하는 선수는 "왼쪽 선호"로 등록.</li>
+                    <li><b>운영진 메모</b> \u2014 "후반 체력 급락, 1~3쿼터 위주" 같은 기억 보조용. 라인업 로직에는 영향 없고 선수 목록에서 \uD83D\uDCDD 아이콘에 마우스를 올리면 보입니다.</li>
+                </ul></li>
+            <li><b>능력치는 이제 스스로 갱신됩니다</b>: 경기기록 탭에서 스코어를 반영하면 s1이 자동으로 미세 조정됩니다. 수동 수정도 언제든 가능합니다.</li>
+            <li><b>엑셀 양식</b>: 다운로드 파일에 성향 열(희망포지션\u00B7희망보장\u00B7선호측면\u00B7메모)이 추가되었습니다. <b>구버전 엑셀(성향 열 없음)을 올려도 기존 성향은 지워지지 않고 보존</b>됩니다.</li>
         </ul>`);
 
     el.innerHTML = `
     <div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg max-w-4xl mx-auto leading-relaxed text-gray-800">
         <h2 class="text-3xl font-bold mb-1">\uD83D\uDCD6 BareaPlay 사용설명서</h2>
-        <p class="text-gray-500 mb-6">처음 쓰시는 분도 이 문서만 천천히 따라 하면 팀배정부터 공유까지 모두 할 수 있습니다. (로그인 없이 누구나 열람 가능)</p>
+        <p class="text-gray-500 mb-6">처음 쓰시는 분도 이 문서만 천천히 따라 하면 팀배정부터 공유\u00B7경기기록까지 모두 할 수 있습니다. (로그인 없이 누구나 열람 가능)</p>
 
         <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-8">
             <h3 class="font-bold text-indigo-800 mb-2">\u26A1 한눈에 보는 전체 흐름</h3>
             <ol class="list-decimal pl-5 space-y-1 text-sm text-indigo-900">
-                <li><b>모임배포</b> 탭에서 투표 링크를 만들어 단톡방에 공유 \u2192 참석 응답을 받습니다.</li>
-                <li><b>출석 & 회계</b> 탭에서 그날 참석자와 회비를 정리합니다.</li>
-                <li><b>팀 배정기</b>에서 명단을 넣고 팀을 나눕니다.</li>
-                <li><b>라인업 생성기</b>에서 쿼터별 라인업을 만듭니다.</li>
+                <li><b>모임배포</b> 탭에서 투표 링크를 만들어 단톡방에 공유 \u2192 참석 응답을 받습니다. (경기 1시간 전 자동 마감)</li>
+                <li><b>팀 배정기</b>에서 명단을 넣고 팀을 나눕니다. (함께/분리 지정\u00B7최근 조합 반복 방지)</li>
+                <li><b>라인업 생성기</b>에서 쿼터별 라인업을 만듭니다. (선수 성향 자동 반영)</li>
                 <li><b>모임배포</b>에서 최종 공유 링크를 단톡방에 뿌립니다.</li>
+                <li>경기 중\u00B7후: <b>출석 & 회계</b>에서 회비 정리, <b>경기기록</b>에서 쿼터 스코어 입력(30초), 회원들은 공유 보드에서 <b>활약 투표</b>.</li>
+                <li>기록이 쌓이면: 능력치 자동 보정 \u2192 다음 주 팀배정이 더 정확해지는 선순환.</li>
             </ol>
         </div>
-        ${sLogin}${sBalancer}${sLineup}${sAccounting}${sShare}${sPlayers}
+        ${sLogin}${sVote}${sBalancer}${sLineup}${sAccounting}${sRecord}${sShare}${sPlayers}
         <div class="bg-amber-50 border border-amber-200 rounded-xl p-5 mt-10">
             <h3 class="text-xl font-bold mb-3 text-amber-900">\uD83D\uDEE0\uFE0F 인수인계 (기술 담당용)</h3>
             <p class="text-sm text-amber-900 mb-3">이 앱은 <b>GitHub</b>에 코드를 올리면 <b>Vercel</b>이 자동 배포하고, 데이터는 <b>Firebase</b>에 저장됩니다.</p>
@@ -452,10 +534,13 @@ function renderManual() {
                     <div class="bg-gray-800 text-gray-100 rounded-md p-3 mt-1 font-mono text-xs">git add .<br>git commit -m "수정 내용"<br>git push</div>
                     push하면 Vercel이 자동 배포합니다.</li>
                 <li><b>\u2757 저장 사고 주의</b>: 코드 에디터에서 여러 파일을 열어둔 채 "모두 저장"을 누르면, 새로 교체한 파일이 에디터에 열려 있던 옛날 내용으로 다시 덮어쓰일 수 있습니다. <b>파일 교체 후에는 에디터 탭을 모두 닫고 저장\u00B7push하세요.</b></li>
-                <li><b>캐시\u00B7버전 규칙</b>: 내용을 바꾼 파일은 불러오는 주소 끝 <code class="bg-amber-100 px-1 rounded">?v=숫자</code>를 한 단계 올리고, <code class="bg-amber-100 px-1 rounded">sw.js</code>의 <code class="bg-amber-100 px-1 rounded">CACHE_NAME</code> 숫자도 함께 올립니다.</li>
+                <li><b>캐시\u00B7버전 규칙</b>: 내용을 바꾼 파일은 불러오는 주소 끝 <code class="bg-amber-100 px-1 rounded">?v=숫자</code>를 한 단계 올리고, <code class="bg-amber-100 px-1 rounded">sw.js</code>의 <code class="bg-amber-100 px-1 rounded">CACHE_NAME</code> 숫자도 함께 올립니다. (이번 업그레이드: app v12, playerManagement v5, teamBalancer v6, lineupGenerator v6, shareManagement v5, voteManagement v6, matchRecord v1 신규, 캐시 v54)</li>
+                <li><b>\uD83D\uDCC1 파일 구성</b>: <code class="bg-amber-100 px-1 rounded">js/modules/matchRecord.js</code>가 새로 추가되었습니다(경기기록 탭). 새 파일을 레포의 <code class="bg-amber-100 px-1 rounded">js/modules/</code> 폴더에 넣어야 합니다.</li>
+                <li><b>\uD83D\uDDC4\uFE0F 새 Firestore 컬렉션</b>: <code class="bg-amber-100 px-1 rounded">matchRecords</code>(쿼터 스코어, 날짜별 1문서), <code class="bg-amber-100 px-1 rounded">ratings</code>(활약 투표, 날짜별 1문서\u00B7투표자 이름 키로 덮어쓰기), <code class="bg-amber-100 px-1 rounded">adjustLogs</code>(운영진 드래그 기록). <b>기존 출석(attendance)\u00B7회비(expenses)\u00B7일일모임(dailyMeetings) 데이터 구조는 그대로이며 삭제\u00B7변경되지 않습니다.</b> (dailyMeetings\u00B7players 문서에 새 필드만 추가됨)</li>
+                <li><b>\u2757 Firestore 보안 규칙 확인</b>: <code class="bg-amber-100 px-1 rounded">ratings</code>는 회원이 <b>로그인 없이</b> 쓰는 컬렉션입니다(투표 responses와 동일). 규칙이 컬렉션별 화이트리스트 방식이라면 Firebase Console \u2192 Firestore \u2192 규칙에서 <code class="bg-amber-100 px-1 rounded">ratings</code> 쓰기 허용을 추가해야 합니다. <code class="bg-amber-100 px-1 rounded">matchRecords</code>\u00B7<code class="bg-amber-100 px-1 rounded">adjustLogs</code>는 관리자(로그인)만 쓰고, 읽기는 공개가 필요합니다(공유 보드에서 스코어\u00B7집계 표시).</li>
                 <li><b>배포 후 확인법</b>: GitHub 레포 웹에서 그 파일을 열고 <code class="bg-amber-100 px-1 rounded">Ctrl+F</code>로 바꾼 내용을 검색해 실제 반영됐는지 확인하세요.</li>
                 <li><b>운영진(관리자) 추가</b>: Firebase Console \u2192 Firestore의 <code class="bg-amber-100 px-1 rounded">admins</code> 컬렉션에 새 운영진 계정 UID를 등록해야 관리자 권한이 생깁니다.</li>
-                <li><b>공유 보드 링크 미리보기</b>: <code class="bg-amber-100 px-1 rounded">share.html</code>은 이제 루트로 이동(redirect)하지 않고 그 페이지에서 직접 결과를 그립니다. 덕분에 주소가 <code class="bg-amber-100 px-1 rounded">/share.html?shareId=...</code>로 유지되어 카톡 미리보기가 \"Barea 팀배정 및 라인업\"으로 뜹니다. (루트 <code class="bg-amber-100 px-1 rounded">index.html</code>의 미리보기는 \"참석 투표\"로 고정되어 있습니다.)</li>
+                <li><b>공유 보드 링크 미리보기</b>: <code class="bg-amber-100 px-1 rounded">share.html</code>은 루트로 이동(redirect)하지 않고 그 페이지에서 직접 결과를 그립니다. 덕분에 카톡 미리보기가 "Barea 팀배정 및 라인업"으로 뜹니다.</li>
                 <li><b>날짜 기준</b>: 모든 날짜는 두바이 현지 시각으로 저장됩니다.</li>
             </ol>
         </div>
@@ -464,7 +549,7 @@ function renderManual() {
 }
 
 function switchTab(activeKey, force = false) {
-    if ((activeKey === 'players' || activeKey === 'share' || activeKey === 'balancer' || activeKey === 'lineup') && !state.isAdmin && !force) {
+    if ((activeKey === 'players' || activeKey === 'share' || activeKey === 'balancer' || activeKey === 'lineup' || activeKey === 'record') && !state.isAdmin && !force) {
         pendingTabSwitch = activeKey; 
         promptForAdminPassword();
         return; 
@@ -475,6 +560,9 @@ function switchTab(activeKey, force = false) {
     });
     if (activeKey === 'accounting') {
         accounting.renderForDate();
+    }
+    if (activeKey === 'record' && matchRecord.onShow) {
+        matchRecord.onShow(); // [신규] 경기기록 탭: 처음 열 때 오늘 날짜 데이터 로드
     }
     if (activeKey === 'players') { 
         initExcelUploader();
@@ -593,9 +681,163 @@ function renderSharePageView(shareData) {
         ${attendHtml}
         <details class="bp-card"><summary>⚖️ 팀 배정</summary><div class="bp-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">${teamHtml}</div></details>
         <details class="bp-card" open><summary>📋 라인업</summary><div class="bp-body">${lineupHtml}</div></details>
+        <div class="bp-card" id="bp-score-card" style="display:none"><h2 class="bp-h2">📊 쿼터 스코어</h2><div id="bp-score-body"></div></div>
+        <div class="bp-card"><h2 class="bp-h2">🏅 오늘의 활약 투표</h2><div id="bp-rate-body"></div></div>
         <footer style="text-align:center;padding:16px;color:#9ca3af;font-size:.8rem">© 2025 BareaPlay. Created by 송감독.</footer>
     </div>`;
     const __n = document.createElement('div'); __n.id = 'notification'; document.body.appendChild(__n);
+    setupShareBoardExtras(shareData); // [신규] 쿼터 스코어 표시 + 활약 투표(피어 평점)
+}
+
+/* =========================================================
+   [신규] 공유 보드 부가 기능 — 로그인 없이 참여하는 '오늘의 활약 투표'
+   신뢰 모델은 출석 투표와 동일: 그날 참가자 명단에서 본인 이름을 스스로 선택하고,
+   기기(localStorage)에 기억된다. 문서 키가 투표자 이름이라 다시 제출하면 덮어써져
+   중복 투표가 원천적으로 불가능하다. 결과는 익명 집계만 공개된다.
+   ========================================================= */
+function setupShareBoardExtras(shareData) {
+    try {
+        const meetingInfo = shareData.meetingInfo || {};
+        const dateStr = String(meetingInfo.time || '').split(' ')[0] || window.getLocalDate();
+
+        // 그날 참가자(팀 배정 명단 전체)
+        const names = [];
+        Object.values(shareData.teams || {}).forEach(team => (team || []).forEach(p => {
+            const n = String(p.name || '').replace(' (신규)', '').trim();
+            if (n && !names.includes(n)) names.push(n);
+        }));
+        names.sort((a, b) => a.localeCompare(b, 'ko-KR'));
+
+        // ── 쿼터 스코어: 운영진이 경기기록 탭에 저장한 스코어가 있으면 표시
+        getDoc(doc(db, "matchRecords", dateStr)).then(snap => {
+            if (!snap.exists()) return;
+            const qs = snap.data().quarters || {};
+            const rows = Object.keys(qs).sort().map(k => {
+                const q = qs[k];
+                const qNum = (parseInt(k.replace(/[^0-9]/g, ''), 10) + 1) || '';
+                return `<div style="display:flex;justify-content:center;gap:12px;padding:6px 0;border-bottom:1px solid #f3f4f6;font-weight:700"><span style="color:#9ca3af;width:52px">${qNum}쿼터</span><span>팀${(q.a ?? 0) + 1}</span><span style="color:#4f46e5">${q.sa} : ${q.sb}</span><span>팀${(q.b ?? 1) + 1}</span></div>`;
+            }).join('');
+            if (!rows) return;
+            const card = document.getElementById('bp-score-card');
+            const body = document.getElementById('bp-score-body');
+            if (card && body) { body.innerHTML = rows; card.style.display = ''; }
+        }).catch(() => {});
+
+        // ── 오늘의 활약 투표 (3명 지목: 1순위 3점 / 2순위 2점 / 3순위 1점)
+        const rateBody = document.getElementById('bp-rate-body');
+        if (!rateBody) return;
+        if (names.length === 0) {
+            rateBody.innerHTML = '<p style="color:#9ca3af;font-size:.85rem">팀 배정 명단이 없어 투표를 열 수 없습니다.</p>';
+            return;
+        }
+        let myName = localStorage.getItem('bp_myName') || '';
+        if (myName && !names.includes(myName)) myName = ''; // 오늘 참가자가 아니면 다시 선택
+        let picks = [];
+        let latestVotes = {};
+        let resultHtml = '';
+        const medal = (i) => ['🥇 3점', '🥈 2점', '🥉 1점'][i];
+
+        function renderResultArea() {
+            let el = document.getElementById('bp-rate-result');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'bp-rate-result';
+                el.style.marginTop = '14px';
+                rateBody.parentNode.appendChild(el);
+            }
+            el.innerHTML = resultHtml;
+        }
+
+        function render() {
+            if (!myName) {
+                rateBody.innerHTML = `
+                    <p style="font-size:.9rem;color:#374151;margin:0 0 10px">경기가 끝나면 <b>오늘 인상적이었던 3명</b>을 뽑아주세요. 먼저 <b>본인 이름</b>을 선택하세요. (이 기기에 기억됩니다)</p>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px">
+                        ${names.map(n => `<button class="bp-me-btn" data-n="${esc(n)}" style="padding:9px 4px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;font-size:.85rem">${esc(n)}</button>`).join('')}
+                    </div>`;
+                rateBody.querySelectorAll('.bp-me-btn').forEach(b => b.onclick = () => {
+                    const n = b.dataset.n;
+                    if (!confirm(`'${n}'님이 맞습니까?\n이 기기에 기억되며, 꼭 본인 이름으로만 투표해 주세요.`)) return;
+                    myName = n;
+                    localStorage.setItem('bp_myName', n);
+                    const prev = latestVotes[myName];
+                    picks = (prev && Array.isArray(prev.picks)) ? [...prev.picks] : [];
+                    render();
+                });
+                renderResultArea();
+                return;
+            }
+            const cands = names.filter(n => n !== myName); // 자기 자신은 후보에서 제외
+            rateBody.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                    <span style="font-size:.9rem"><b>${esc(myName)}</b>님, 오늘 잘한 <b>3명</b>을 순서대로 탭하세요.</span>
+                    <button id="bp-me-change" style="font-size:.75rem;color:#6b7280;background:none;border:none;text-decoration:underline;cursor:pointer">이름 변경</button>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px;margin-bottom:10px">
+                    ${cands.map(n => {
+                        const i = picks.indexOf(n);
+                        const on = i > -1;
+                        return `<button class="bp-pick-btn" data-n="${esc(n)}" style="padding:9px 4px;border:1.5px solid ${on ? '#4f46e5' : '#d1d5db'};border-radius:8px;background:${on ? '#eef2ff' : '#fff'};cursor:pointer;font-size:.85rem;font-weight:${on ? '800' : '400'}">${esc(n)}${on ? `<br><span style="font-size:.7rem;color:#4f46e5">${medal(i)}</span>` : ''}</button>`;
+                    }).join('')}
+                </div>
+                <button id="bp-rate-submit" style="width:100%;padding:12px;border:0;border-radius:10px;background:${picks.length === 3 ? '#4f46e5' : '#c7d2fe'};color:#fff;font-weight:800;cursor:pointer" ${picks.length === 3 ? '' : 'disabled'}>${latestVotes[myName] ? '투표 수정하기' : '투표 제출'} (${picks.length}/3)</button>
+                <p id="bp-rate-msg" style="text-align:center;font-weight:700;min-height:20px;margin:8px 0 0;font-size:.85rem"></p>`;
+            document.getElementById('bp-me-change').onclick = () => {
+                if (!confirm('이름을 다시 선택할까요? (꼭 본인 이름으로만 투표해 주세요)')) return;
+                myName = '';
+                localStorage.removeItem('bp_myName');
+                picks = [];
+                render();
+            };
+            rateBody.querySelectorAll('.bp-pick-btn').forEach(b => b.onclick = () => {
+                const n = b.dataset.n;
+                const i = picks.indexOf(n);
+                if (i > -1) picks.splice(i, 1);
+                else {
+                    if (picks.length >= 3) { alert('3명까지만 뽑을 수 있습니다. 다른 선수를 해제한 뒤 선택하세요.'); return; }
+                    picks.push(n);
+                }
+                render();
+            });
+            const submitBtn = document.getElementById('bp-rate-submit');
+            if (submitBtn) submitBtn.onclick = async () => {
+                if (picks.length !== 3) return;
+                const msgEl = document.getElementById('bp-rate-msg');
+                try {
+                    // 문서 키 = 투표자 이름 → 재제출 시 덮어쓰기 (중복 투표 불가)
+                    await setDoc(doc(db, "ratings", dateStr), { date: dateStr, votes: { [myName]: { picks: [...picks], at: Date.now() } } }, { merge: true });
+                    if (msgEl) { msgEl.style.color = '#16a34a'; msgEl.textContent = '투표가 저장되었습니다! (다시 제출하면 수정됩니다)'; }
+                } catch (e) {
+                    console.error(e);
+                    if (msgEl) { msgEl.style.color = '#ef4444'; msgEl.textContent = '저장 실패. 잠시 후 다시 시도해주세요.'; }
+                }
+            };
+            renderResultArea();
+        }
+
+        // 실시간 집계 (익명: 점수 합계만 공개)
+        onSnapshot(doc(db, "ratings", dateStr), (snap) => {
+            latestVotes = (snap.exists() && snap.data().votes) || {};
+            const pts = {};
+            Object.values(latestVotes).forEach(v => ((v && v.picks) || []).forEach((n, i) => { pts[n] = (pts[n] || 0) + (3 - i); }));
+            const ranked = Object.keys(pts).sort((a, b) => pts[b] - pts[a]);
+            const voters = Object.keys(latestVotes).length;
+            if (ranked.length === 0) { resultHtml = ''; renderResultArea(); }
+            else {
+                const max = pts[ranked[0]] || 1;
+                resultHtml = `<div style="border-top:1px solid #eee;padding-top:10px"><p style="font-weight:800;margin:0 0 8px;font-size:.9rem">📊 현재 집계 <span style="color:#9ca3af;font-weight:400">(${voters}명 참여 · 누가 뽑았는지는 공개되지 않습니다)</span></p>
+                    ${ranked.slice(0, 7).map(n => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:.85rem"><span style="width:64px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(n)}</span><div style="flex:1;background:#f3f4f6;border-radius:4px;height:14px"><div style="width:${Math.round(pts[n] / max * 100)}%;background:#818cf8;height:14px;border-radius:4px"></div></div><span style="width:36px;text-align:right;font-weight:800;color:#4f46e5">${pts[n]}점</span></div>`).join('')}</div>`;
+                renderResultArea();
+            }
+            // 내 기존 투표 복원 (아직 아무것도 안 골랐을 때만 → 편집 중 방해 금지)
+            if (myName && picks.length === 0 && latestVotes[myName] && Array.isArray(latestVotes[myName].picks)) {
+                picks = [...latestVotes[myName].picks];
+                render();
+            }
+        });
+
+        render();
+    } catch (e) { console.error('share board extras error:', e); }
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -635,7 +877,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    const modules = { playerMgmt, balancer, lineup, accounting, shareMgmt, voteMgmt, lineupStats };
+    const modules = { playerMgmt, balancer, lineup, accounting, shareMgmt, voteMgmt, lineupStats, matchRecord };
     const dependencies = { db, state };
     window.playerMgmt = playerMgmt;
     window.accounting = accounting;
@@ -683,8 +925,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             loadingOverlay.style.display = 'none';
         }
     } else {
-        Object.assign(pages, { players: document.getElementById('page-players'), balancer: document.getElementById('page-balancer'), lineup: document.getElementById('page-lineup'), accounting: document.getElementById('page-accounting'), share: document.getElementById('page-share'), manual: document.getElementById('page-manual') });
-        Object.assign(tabs, { players: document.getElementById('tab-players'), balancer: document.getElementById('tab-balancer'), lineup: document.getElementById('tab-lineup'), accounting: document.getElementById('tab-accounting'), share: document.getElementById('tab-share'), manual: document.getElementById('tab-manual') });
+        Object.assign(pages, { players: document.getElementById('page-players'), balancer: document.getElementById('page-balancer'), lineup: document.getElementById('page-lineup'), accounting: document.getElementById('page-accounting'), record: document.getElementById('page-record'), share: document.getElementById('page-share'), manual: document.getElementById('page-manual') });
+        Object.assign(tabs, { players: document.getElementById('tab-players'), balancer: document.getElementById('tab-balancer'), lineup: document.getElementById('tab-lineup'), accounting: document.getElementById('tab-accounting'), record: document.getElementById('tab-record'), share: document.getElementById('tab-share'), manual: document.getElementById('tab-manual') });
         renderManual();
         adminModal = document.getElementById('admin-modal');
         modalCancelBtn = document.getElementById('modal-cancel-btn'); 

@@ -9,6 +9,17 @@ function normalizeName(name) {
     return name ? name.normalize('NFC').trim() : '';
 }
 
+// [성향] 포지션 → 라인 분류 (성향 제안·점수 계산 공용)
+function lineOfPos(pos) {
+    const p = String(pos || '').toUpperCase();
+    if (p === 'GK') return 'GK';
+    if (['LB', 'RB', 'CB', 'DF'].includes(p)) return 'DEF';
+    if (['MF', 'CM'].includes(p)) return 'MID';
+    if (['LW', 'RW', 'FW'].includes(p)) return 'ATT';
+    return 'ETC';
+}
+const LINE_KO = { DEF: '수비', MID: '미들', ATT: '공격', GK: 'GK' };
+
 // [기능] 양팀 공동 심판: 1·3·5쿼터=팀1 휴식자, 2·4·6쿼터=팀2 휴식자가 맡음
 // (해당 팀에 휴식자가 없으면 상대팀 휴식자가 대신 맡음)
 function applySharedReferees() {
@@ -201,6 +212,16 @@ function performSwap(qIndex, dragInfo, targetInfo) {
 
     if (state.teamLineupCache && activeTeamIndex !== -1) {
         state.teamLineupCache[activeTeamIndex] = state.lineupResults;
+    }
+    // [학습] 운영진의 수동 교체를 조용히 기록 → 반복 패턴이 쌓이면 '성향 제안 카드'로 표시됨
+    if (window.logAdjustment) {
+        window.logAdjustment({
+            kind: 'lineup-swap', team: activeTeamIndex, q: qIndex,
+            moves: [
+                { name: draggingName, to: targetPosType },
+                { name: targetName, to: draggingPosType }
+            ]
+        });
     }
     renderAllQuarters();
     window.saveDailyMeetingData();
@@ -434,7 +455,8 @@ function executeLineupGeneration(members, formations, isSilent = false) {
             const gkCount = {};                 // 각자 키퍼 맡은 횟수
             const restCount = {};               // [추가] 각자 휴식한 횟수 (공정 배분용)
             const refCount = {};                // [추가] 각자 심판 본 횟수 (공정 배분용)
-            members.forEach(m => { pos1Usage[m] = 0; pos2Usage[m] = 0; onFieldCount[m] = 0; gkCount[m] = 0; restCount[m] = 0; refCount[m] = 0; });
+            const wishUsage = {};               // [성향] 각자 '희망 포지션'을 맡은 횟수 (wishQuota 보장용)
+            members.forEach(m => { pos1Usage[m] = 0; pos2Usage[m] = 0; onFieldCount[m] = 0; gkCount[m] = 0; restCount[m] = 0; refCount[m] = 0; wishUsage[m] = 0; });
             let gkLast = null;                  // 직전 쿼터 키퍼(전담 제외)
             let restRefLast = new Set();        // 직전 쿼터 휴식/심판자 집합
 
@@ -504,6 +526,7 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                         availablePlayers.splice(availablePlayers.indexOf(assignedGk), 1);
                         gkCount[assignedGk]++;
                         const gp = localPlayerDB[assignedGk];
+                        if ((gp.wishPos || []).includes('GK')) wishUsage[assignedGk]++; // [성향]
                         if ((gp.pos1 || []).includes('GK')) { pos1Usage[assignedGk]++; }
                         else if ((gp.pos2 || []).includes('GK')) { pos2Usage[assignedGk]++; qualityCost += 2; }
                         else { qualityCost += 5; }
@@ -534,6 +557,15 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                         } else {
                             val = 30 + (player.s1 || 65) * 0.1;
                         }
+                        // [성향 1] 본인 희망 포지션 보장: wishQuota(6쿼터 중 N회)에 못 미친 동안 강한 가산점
+                        //          → 실제 주포지션과 달라도 '즐기고 가는' 쿼터가 자동으로 확보됨
+                        const wq = player.wishQuota || 0;
+                        if (wq > 0 && (player.wishPos || []).includes(pos) && (wishUsage[playerName] || 0) < wq) val += 380;
+                        // [성향 2] 좌/우 선호: L*/R* 자리(LW·LB / RW·RB)에서 선호측이면 가산, 반대측이면 감점
+                        const sd = player.side || '';
+                        if (sd && (pos[0] === 'L' || pos[0] === 'R')) {
+                            if (pos[0] === sd) val += 90; else val -= 140;
+                        }
                         val += Math.random() * 40; // 시도별 다양성
                         if (val > bestVal) { bestVal = val; bestPlayer = playerName; }
                     }
@@ -541,6 +573,8 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                     if (bestPlayer) {
                         availablePlayers.splice(availablePlayers.indexOf(bestPlayer), 1);
                         const pinfo = localPlayerDB[bestPlayer];
+                        if ((pinfo.wishPos || []).includes(pos)) wishUsage[bestPlayer] = (wishUsage[bestPlayer] || 0) + 1; // [성향]
+                        if (pinfo.side && (pos[0] === 'L' || pos[0] === 'R') && pos[0] !== pinfo.side) qualityCost += 10;  // [성향] 반대측 배치 비용
                         if ((pinfo.pos1 || []).includes(pos)) { pos1Usage[bestPlayer]++; }
                         else if ((pinfo.pos2 || []).includes(pos)) { pos2Usage[bestPlayer]++; qualityCost += 2; }
                         else if (linesOfPos1(pinfo).has(posLine)) { qualityCost += 12; }
@@ -584,7 +618,15 @@ function executeLineupGeneration(members, formations, isSilent = false) {
             const qScores = lineups.map(l => Object.values(l).flat().filter(Boolean).reduce((sum, name) => sum + (localPlayerDB[name]?.s1 || 65), 0));
             const balance = qScores.length > 1 ? Math.max(...qScores) - Math.min(...qScores) : 0;
 
-            const totalCost = guaranteeShort * 1000 + gkGuaranteeShort * 800 + gkOverShort * 600 + qualityCost + preferShort * 15;
+            // [성향] 희망 포지션 보장(wishQuota) 미달 합계 → 시도 간 비교에서 강하게 최소화
+            let wishShort = 0;
+            members.forEach(m => {
+                const p = localPlayerDB[m];
+                const wq = Math.min(p.wishQuota || 0, onFieldCount[m]);
+                if (wq > 0) wishShort += Math.max(0, wq - (wishUsage[m] || 0));
+            });
+
+            const totalCost = guaranteeShort * 1000 + gkGuaranteeShort * 800 + gkOverShort * 600 + wishShort * 250 + qualityCost + preferShort * 15;
 
             if (totalCost < bestCost) {
                 bestCost = totalCost;
@@ -615,6 +657,7 @@ export function init(dependencies) {
                 <div><label for="formation-q6" class="block text-sm font-medium">6쿼터</label><select id="formation-q6" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option selected>4-2-3-1</option></select></div>
             </div>
             <div class="mt-8"><button id="generateLineupButton" class="w-full bg-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-teal-700 transition-transform transform hover:scale-105 shadow-lg">라인업 생성!</button></div>
+            <div id="pref-suggestions" class="mt-4 space-y-2"></div>
         </div>
         <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg">
             <div class="flex justify-between items-center mb-4 border-b pb-2">
@@ -660,7 +703,11 @@ export function init(dependencies) {
             window.showNotification(`라인업 생성 완료! (실력차: ${result.score.toFixed(1)})`);
         }
         resetLineupUI();
+        renderPrefSuggestions(); // [학습] 쌓인 드래그 기록에서 반복 패턴을 찾아 제안 카드 표시
     });
+
+    // 관리자 로그인 등 초기화가 끝난 뒤 한 번 시도 (실패해도 무해)
+    setTimeout(() => { try { renderPrefSuggestions(); } catch (e) {} }, 5000);
     
     pageElement.addEventListener('click', (e) => {
         if (pageElement.classList.contains('view-only')) {
@@ -735,3 +782,123 @@ export function getPosCellMap() {
 }
 
 export { executeLineupGeneration };
+
+/* =========================================================
+   [학습] 성향 제안 카드 — "앱과 논의하기"
+   운영진이 라인업에서 선수를 드래그로 옮길 때마다 조용히 기록(adjustLogs)하고,
+   최근 6주 동안 같은 방향의 이동이 서로 다른 날짜에 3회 이상 반복되면
+   "이 성향을 선수 정보에 저장할까요?" 카드를 띄운다.
+   [반영]을 눌러야만 실제로 저장되고, [무시]하면 이 기기에서 다시 묻지 않는다.
+   ========================================================= */
+const FIELD_POS_SET = new Set(['GK', 'LB', 'RB', 'CB', 'DF', 'MF', 'CM', 'LW', 'RW', 'FW']);
+
+function getDismissedPrefs() {
+    try { return JSON.parse(localStorage.getItem('bp_prefDismissed') || '{}'); } catch (e) { return {}; }
+}
+function dismissPref(key) {
+    const d = getDismissedPrefs();
+    d[key] = Date.now();
+    try { localStorage.setItem('bp_prefDismissed', JSON.stringify(d)); } catch (e) {}
+}
+
+async function renderPrefSuggestions() {
+    const box = document.getElementById('pref-suggestions');
+    if (!box) return;
+    if (!state.isAdmin || !window.fetchAdjustLogs) { box.innerHTML = ''; return; }
+
+    let logs = [];
+    try { logs = await window.fetchAdjustLogs(42); } catch (e) { return; }
+
+    // 선수별 이동 집계: 어느 라인으로/어느 측면으로 옮겨졌는지, 서로 다른 날짜 기준으로 센다
+    const acc = {}; // name -> { line: {DEF: Set(dates)...}, pos: {CB: n...}, side: {L: Set, R: Set} }
+    logs.forEach(log => {
+        if (log.kind !== 'lineup-swap' || !Array.isArray(log.moves)) return;
+        log.moves.forEach(mv => {
+            const name = normalizeName(mv.name);
+            const to = String(mv.to || '').toUpperCase();
+            if (!name || !FIELD_POS_SET.has(to)) return;
+            if (!acc[name]) acc[name] = { line: {}, pos: {}, side: { L: new Set(), R: new Set() } };
+            const a = acc[name];
+            const line = lineOfPos(to);
+            if (line !== 'ETC' && line !== 'GK') {
+                (a.line[line] = a.line[line] || new Set()).add(log.date);
+                a.pos[to] = (a.pos[to] || 0) + 1;
+            }
+            if (['LW', 'LB'].includes(to)) a.side.L.add(log.date);
+            if (['RW', 'RB'].includes(to)) a.side.R.add(log.date);
+        });
+    });
+
+    const dismissed = getDismissedPrefs();
+    const suggestions = [];
+    Object.keys(acc).forEach(name => {
+        const p = state.playerDB[name];
+        if (!p) return; // 미등록(게스트)은 제안 대상 아님
+        const a = acc[name];
+        const myLines = new Set((p.pos1 || []).map(lineOfPos));
+
+        // ① 반복적으로 '주포지션이 아닌 라인'으로 옮김 → 주포지션 추가 제안
+        Object.keys(a.line).forEach(line => {
+            const dates = a.line[line];
+            if (dates.size < 3 || myLines.has(line)) return;
+            const linePos = Object.keys(a.pos).filter(ps => lineOfPos(ps) === line);
+            const repPos = linePos.sort((x, y) => (a.pos[y] || 0) - (a.pos[x] || 0))[0];
+            if (!repPos) return;
+            const key = `${name}|pos1|${repPos}`;
+            if (dismissed[key]) return;
+            suggestions.push({
+                key, name,
+                text: `최근 <b>${dates.size}번의 모임</b>에서 <b>${name}</b>님을 <b>${LINE_KO[line]}(${repPos})</b> 자리로 직접 옮기셨어요. 주포지션에 <b>${repPos}</b>를 추가할까요?`,
+                apply: async () => {
+                    const cur = state.playerDB[name] || {};
+                    const newPos1 = Array.from(new Set([...(cur.pos1 || []), repPos]));
+                    await window.updatePlayerPref(name, { pos1: newPos1 });
+                }
+            });
+        });
+
+        // ② 반복적으로 왼쪽(또는 오른쪽) 자리로만 옮김 → 좌/우 선호 저장 제안
+        ['L', 'R'].forEach(sd => {
+            const other = sd === 'L' ? 'R' : 'L';
+            if (a.side[sd].size >= 3 && a.side[other].size === 0 && (p.side || '') !== sd) {
+                const key = `${name}|side|${sd}`;
+                if (dismissed[key]) return;
+                const ko = sd === 'L' ? '왼쪽' : '오른쪽';
+                suggestions.push({
+                    key, name,
+                    text: `<b>${name}</b>님을 최근 <b>${a.side[sd].size}번</b> 모두 <b>${ko}</b> 자리로 옮기셨어요. <b>${ko} 선호</b>로 저장할까요?`,
+                    apply: async () => { await window.updatePlayerPref(name, { side: sd }); }
+                });
+            }
+        });
+    });
+
+    if (suggestions.length === 0) { box.innerHTML = ''; return; }
+
+    box.innerHTML = `<p class="text-sm font-bold text-indigo-700">🧠 감지된 성향 제안 <span class="text-xs font-normal text-gray-400">(드래그 기록 기반 · 반영해야만 저장됩니다)</span></p>` +
+        suggestions.slice(0, 4).map((s, i) => `
+        <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-sm" data-sug="${i}">
+            <p class="text-gray-800">${s.text}</p>
+            <div class="flex gap-2 mt-2">
+                <button class="sug-apply bg-indigo-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-indigo-700" data-i="${i}">✅ 반영</button>
+                <button class="sug-dismiss bg-white border text-gray-500 text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-gray-100" data-i="${i}">무시</button>
+            </div>
+        </div>`).join('');
+
+    box.querySelectorAll('.sug-apply').forEach(b => b.onclick = async () => {
+        const s = suggestions[parseInt(b.dataset.i, 10)];
+        try {
+            await s.apply();
+            dismissPref(s.key);
+            renderPrefSuggestions();
+        } catch (e) {
+            console.error(e);
+            window.showNotification('반영에 실패했습니다.', 'error');
+        }
+    });
+    box.querySelectorAll('.sug-dismiss').forEach(b => b.onclick = () => {
+        const s = suggestions[parseInt(b.dataset.i, 10)];
+        dismissPref(s.key);
+        renderPrefSuggestions();
+    });
+}

@@ -11,6 +11,13 @@ function parsePositions(posCell) {
     return Array.from(new Set(positions.map(p => p.toUpperCase().trim()).filter(p => VALID.includes(p))));
 }
 
+// [추가] 좌/우 선호 한글 라벨
+function sideLabel(side) {
+    if (side === 'L') return '왼쪽';
+    if (side === 'R') return '오른쪽';
+    return '';
+}
+
 // [추가] 회비 유형 한글 라벨
 function feeTypeLabel(feeType) {
     if (feeType === 'admin') return '운영진(0)';
@@ -34,12 +41,17 @@ function downloadPlayersExcel() {
             '주포지션숙련도': p.s1 || 0,
             '부포지션': (p.pos2 || []).join(', '),
             '부포지션숙련도': p.s2 || 0,
-            '회비유형': feeTypeKo(p.feeType)
+            '회비유형': feeTypeKo(p.feeType),
+            // [성향] 선수 성향 필드도 왕복(다운로드→수정→업로드) 시 보존되도록 함께 내보냄
+            '희망포지션': (p.wishPos || []).join(', '),
+            '희망보장': p.wishQuota || 0,
+            '선호측면': sideLabel(p.side),
+            '메모': p.memo || ''
         };
     });
-    const header = ['이름', '주포지션', '주포지션숙련도', '부포지션', '부포지션숙련도', '회비유형'];
+    const header = ['이름', '주포지션', '주포지션숙련도', '부포지션', '부포지션숙련도', '회비유형', '희망포지션', '희망보장', '선호측면', '메모'];
     const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [], { header });
-    ws['!cols'] = [{ wch: 12 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }];
+    ws['!cols'] = [{ wch: 12 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 8 }, { wch: 8 }, { wch: 28 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '선수정보');
     const today = (window.getLocalDate ? window.getLocalDate() : new Date().toISOString().split('T')[0]);
@@ -54,6 +66,10 @@ function resetForm() {
     cancelBtn.classList.add('hidden');
     const feeSel = document.getElementById('player-fee-type');
     if (feeSel) feeSel.value = 'normal';
+    const sideSel = document.getElementById('player-side');
+    if (sideSel) sideSel.value = '';
+    const wq = document.getElementById('player-wishquota');
+    if (wq) wq.value = 0;
 }
 
 async function handleFormSubmit(e) {
@@ -80,6 +96,13 @@ async function handleFormSubmit(e) {
         s2: parseInt(document.getElementById('player-s2').value) || 0,
         // [추가] 회비 유형: normal(일반) / admin(운영진) / student(학생)
         feeType: document.getElementById('player-fee-type').value || 'normal',
+        // [성향] 본인 희망 포지션(실제 주포지션과 달라도 됨) + 6쿼터 중 최소 보장 횟수
+        wishPos: parsePositions(document.getElementById('player-wishpos').value),
+        wishQuota: Math.max(0, Math.min(6, parseInt(document.getElementById('player-wishquota').value) || 0)),
+        // [성향] 좌/우 선호: '' 무관 / 'L' 왼쪽 / 'R' 오른쪽 (윙·풀백 배치 시 반영)
+        side: document.getElementById('player-side').value || '',
+        // [성향] 운영진 메모 (라인업 로직에는 영향 없음, 기억 보조용)
+        memo: document.getElementById('player-memo').value.trim(),
     };
     await setDoc(doc(db, "players", name), newPlayerData);
     if (id && id !== name) await deleteDoc(doc(db, "players", id));
@@ -103,6 +126,10 @@ async function handleTableClick(e) {
         document.getElementById('player-pos2').value = (p.pos2 || []).join(', ');
         document.getElementById('player-s2').value = p.s2;
         document.getElementById('player-fee-type').value = p.feeType || 'normal';
+        document.getElementById('player-wishpos').value = (p.wishPos || []).join(', ');
+        document.getElementById('player-wishquota').value = p.wishQuota || 0;
+        document.getElementById('player-side').value = p.side || '';
+        document.getElementById('player-memo').value = p.memo || '';
         cancelBtn.classList.remove('hidden');
         form.scrollIntoView({ behavior: 'smooth' });
     }
@@ -132,6 +159,7 @@ export function init(dependencies) {
                                 <th scope="col" class="py-3 px-6">주 포지션 / 능력치</th>
                                 <th scope="col" class="py-3 px-6">부 포지션 / 능력치</th>
                                 <th scope="col" class="py-3 px-6">회비 유형</th>
+                                <th scope="col" class="py-3 px-6">성향</th>
                                 <th scope="col" class="py-3 px-6">출석률</th>
                                 <th scope="col" class="py-3 px-6">관리</th>
                             </tr>
@@ -157,6 +185,15 @@ export function init(dependencies) {
                                 <option value="student">학생 (인조 25 / 천연 35)</option>
                             </select>
                             <p class="text-xs text-gray-400 mt-1">출석 저장 시 이 유형에 맞춰 금액이 자동 입력됩니다.</p>
+                        </div>
+                        <div class="border-t pt-3">
+                            <p class="text-sm font-bold text-indigo-700 mb-2">🎯 성향 (라인업 자동 반영)</p>
+                            <div class="space-y-3">
+                                <div><label for="player-wishpos" class="block mb-1 text-sm font-medium">본인 희망 포지션 <span class="text-xs text-gray-400">(실제 주포지션과 달라도 됨)</span></label><input type="text" id="player-wishpos" placeholder="예: MF" class="bg-gray-50 border border-gray-300 text-sm rounded-lg block w-full p-2.5"></div>
+                                <div><label for="player-wishquota" class="block mb-1 text-sm font-medium">희망 포지션 보장 횟수 <span class="text-xs text-gray-400">(6쿼터 중 0~6회)</span></label><input type="number" id="player-wishquota" min="0" max="6" value="0" class="bg-gray-50 border border-gray-300 text-sm rounded-lg block w-full p-2.5"><p class="text-xs text-gray-400 mt-1">예: 실제 주포지션은 CB인데 본인은 MF를 원하면 → 희망 MF·2회. 라인업 생성 시 2쿼터는 MF, 나머지는 주포지션으로 배치됩니다.</p></div>
+                                <div><label for="player-side" class="block mb-1 text-sm font-medium">좌/우 선호 (윙·풀백)</label><select id="player-side" class="bg-gray-50 border border-gray-300 text-sm rounded-lg block w-full p-2.5"><option value="">무관</option><option value="L">왼쪽 선호</option><option value="R">오른쪽 선호</option></select></div>
+                                <div><label for="player-memo" class="block mb-1 text-sm font-medium">운영진 메모</label><textarea id="player-memo" rows="2" placeholder="예: 후반 체력 급락 → 1~3쿼터 위주 배치" class="bg-gray-50 border border-gray-300 text-sm rounded-lg block w-full p-2.5"></textarea></div>
+                            </div>
                         </div>
                         <div class="flex space-x-2"><button type="submit" class="w-full text-white bg-indigo-600 hover:bg-indigo-700 font-medium rounded-lg text-sm px-5 py-2.5 text-center">저장</button><button type="button" id="cancel-edit-btn" class="w-full text-gray-900 bg-white border border-gray-300 hover:bg-gray-100 font-medium rounded-lg text-sm px-5 py-2.5 text-center hidden">취소</button></div>
                     </form>
@@ -199,7 +236,7 @@ export function renderPlayerTable() {
     tableBody.innerHTML = '';
     const playerNames = Object.keys(state.playerDB).sort((a, b) => a.localeCompare(b, 'ko-KR'));
     if (playerNames.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-gray-500">등록된 선수가 없습니다.</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-gray-500">등록된 선수가 없습니다.</td></tr>`;
         return;
     }
     playerNames.forEach(name => {
@@ -208,7 +245,14 @@ export function renderPlayerTable() {
         const attendanceRate = ((attendanceCount / totalMeetings) * 100).toFixed(1);
         const row = document.createElement('tr');
         row.className = 'bg-white border-b';
-        row.innerHTML = `<td data-label="이름" class="py-4 px-6 font-medium text-gray-900 whitespace-nowrap">${p.name}</td><td data-label="주포지션" class="py-4 px-6 text-gray-700">${(p.pos1 || []).join(', ')} (${p.s1 || 0})</td><td data-label="부포지션" class="py-4 px-6 text-gray-700">${(p.pos2 || []).join(', ')} (${p.s2 || 0})</td><td data-label="회비유형" class="py-4 px-6 text-gray-700">${feeTypeLabel(p.feeType)}</td><td data-label="출석률" class="py-4 px-6 text-gray-700">${attendanceRate}% (${attendanceCount}/${totalMeetings})</td><td data-label="관리" class="py-4 px-6"><button class="edit-btn font-medium text-blue-600 hover:underline mr-3" data-name="${p.name}">수정</button><button class="delete-btn font-medium text-red-600 hover:underline" data-name="${p.name}">삭제</button></td>`;
+        // [성향] 희망 포지션·좌/우·메모를 압축 표시 (메모는 아이콘에 마우스를 올리면 보임)
+        const prefBits = [];
+        if ((p.wishPos || []).length > 0 && (p.wishQuota || 0) > 0) prefBits.push(`희망 ${(p.wishPos || []).join('/')}×${p.wishQuota}`);
+        if (p.side === 'L') prefBits.push('◀왼쪽');
+        if (p.side === 'R') prefBits.push('오른쪽▶');
+        const memoIcon = p.memo ? ` <span title="${String(p.memo).replace(/"/g, '&quot;')}" class="cursor-help">📝</span>` : '';
+        const prefCell = (prefBits.join(' · ') || '<span class="text-gray-300">-</span>') + memoIcon;
+        row.innerHTML = `<td data-label="이름" class="py-4 px-6 font-medium text-gray-900 whitespace-nowrap">${p.name}</td><td data-label="주포지션" class="py-4 px-6 text-gray-700">${(p.pos1 || []).join(', ')} (${p.s1 || 0})</td><td data-label="부포지션" class="py-4 px-6 text-gray-700">${(p.pos2 || []).join(', ')} (${p.s2 || 0})</td><td data-label="회비유형" class="py-4 px-6 text-gray-700">${feeTypeLabel(p.feeType)}</td><td data-label="성향" class="py-4 px-6 text-gray-700 text-xs whitespace-nowrap">${prefCell}</td><td data-label="출석률" class="py-4 px-6 text-gray-700">${attendanceRate}% (${attendanceCount}/${totalMeetings})</td><td data-label="관리" class="py-4 px-6"><button class="edit-btn font-medium text-blue-600 hover:underline mr-3" data-name="${p.name}">수정</button><button class="delete-btn font-medium text-red-600 hover:underline" data-name="${p.name}">삭제</button></td>`;
         tableBody.appendChild(row);
     });
 }
