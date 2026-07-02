@@ -5,8 +5,8 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, setPe
 import { state, setAdmin } from './store.js?v=2';
 import * as playerMgmt from './modules/playerManagement.js?v=4';
 import * as balancer from './modules/teamBalancer.js?v=5';
-import * as lineup from './modules/lineupGenerator.js?v=4';
-import * as accounting from './modules/accounting.js?v=5';
+import * as lineup from './modules/lineupGenerator.js?v=5';
+import * as accounting from './modules/accounting.js?v=6';
 import * as shareMgmt from './modules/shareManagement.js?v=4';
 import * as voteMgmt from './modules/voteManagement.js?v=5';
 import * as lineupStats from './modules/lineupStats.js?v=1';
@@ -110,7 +110,14 @@ const saveDailyMeetingData = window.debounce(async () => {
                     refereesObject[`q_${qIndex}`] = ref;
                 });
             }
-            transformedCache[teamIndex] = { ...originalLineup, resters: restersObject, referees: refereesObject };
+            // [추가] 수동 지정 심판도 객체로 변환하여 저장
+            const manualRefereesObject = {};
+            if (Array.isArray(originalLineup.manualReferees)) {
+                originalLineup.manualReferees.forEach((mr, qIndex) => {
+                    manualRefereesObject[`q_${qIndex}`] = mr;
+                });
+            }
+            transformedCache[teamIndex] = { ...originalLineup, resters: restersObject, referees: refereesObject, manualReferees: manualRefereesObject };
         } else {
             transformedCache[teamIndex] = originalLineup;
         }
@@ -161,8 +168,15 @@ function applyMeetingData(data) {
                 restoredReferees = transformedLineup.referees;
             }
 
+            let restoredManualReferees = null;
+            if (transformedLineup && typeof transformedLineup.manualReferees === 'object' && !Array.isArray(transformedLineup.manualReferees) && transformedLineup.manualReferees !== null) {
+                restoredManualReferees = Object.keys(transformedLineup.manualReferees).sort().map(key => transformedLineup.manualReferees[key]);
+            } else if (transformedLineup && Array.isArray(transformedLineup.manualReferees)) {
+                restoredManualReferees = transformedLineup.manualReferees;
+            }
+
             if (transformedLineup) {
-                originalCache[teamIndex] = { ...transformedLineup, resters: restoredResters, referees: restoredReferees };
+                originalCache[teamIndex] = { ...transformedLineup, resters: restoredResters, referees: restoredReferees, manualReferees: restoredManualReferees };
             }
         });
         state.teamLineupCache = originalCache;
@@ -498,7 +512,7 @@ function renderSharePageView(shareData) {
 
     const getQ = (obj, idx) => { if (!obj) return null; if (Array.isArray(obj)) return obj[idx]; return obj[`q${idx + 1}`] || obj[`q_${idx}`] || null; };
 
-    function pitchHTML(teamLineup, qIndex) {
+    function pitchHTML(teamLineup, qIndex, teamIdx) {
         if (!teamLineup || !teamLineup.lineups || !teamLineup.lineups[qIndex]) {
             return `<div class="bp-quarter"><div class="bp-pitch" style="display:flex;align-items:center;justify-content:center;color:#cbd5e1">-</div></div>`;
         }
@@ -525,7 +539,7 @@ function renderSharePageView(shareData) {
         foot += `<span><b>🛌</b> ${esc(resters.join(', ')) || '없음'}</span>`;
         return `<div class="bp-quarter">
             <div class="bp-pitch">
-                <div class="bp-qtitle">${qIndex + 1}쿼터 ${formation ? '(' + esc(formation) + ')' : ''}</div>
+                <div class="bp-qtitle">팀 ${(teamIdx ?? 0) + 1}, ${qIndex + 1}쿼터 ${formation ? '(' + esc(formation) + ')' : ''}</div>
                 <div class="bp-line" style="top:50%;left:0;width:100%;height:1.5px"></div>
                 <div class="bp-circle" style="top:50%;left:50%;width:24%;height:17%;transform:translate(-50%,-50%)"></div>
                 <div class="bp-box" style="top:83%;left:20%;width:60%;height:17%"></div>
@@ -544,7 +558,7 @@ function renderSharePageView(shareData) {
     const lineupHtml = teamKeys.map((teamKey, teamIdx) => {
         const lu = lineups[teamKey] || lineups[`team${teamIdx + 1}`] || lineups[teamIdx];
         let q = '';
-        for (let i = 0; i < 6; i++) q += pitchHTML(lu, i);
+        for (let i = 0; i < 6; i++) q += pitchHTML(lu, i, teamIdx);
         return `<div style="margin-bottom:18px"><h3 style="font-weight:800;text-align:center;margin-bottom:8px">팀 ${teamIdx + 1}</h3><div class="bp-qgrid">${q}</div></div>`;
     }).join('');
 

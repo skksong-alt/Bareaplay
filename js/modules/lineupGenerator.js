@@ -16,20 +16,35 @@ function applySharedReferees() {
     const teamIdxs = Object.keys(cache).filter(k => cache[k] && Array.isArray(cache[k].resters)).sort();
     if (teamIdxs.length === 0) return [];
 
+    const restersOf = (t, q) => (cache[t].resters && Array.isArray(cache[t].resters[q])) ? cache[t].resters[q] : [];
+
     const usage = {}; // 심판 횟수 공평하게 배분용
     const shared = [];
     for (let q = 0; q < 6; q++) {
-        // 쿼터마다 담당 팀을 번갈아 가며 정함
-        const order = teamIdxs.map((_, i) => teamIdxs[(q + i) % teamIdxs.length]);
         let chosen = null;
-        for (const t of order) {
-            const resters = (cache[t].resters && Array.isArray(cache[t].resters[q])) ? cache[t].resters[q] : [];
-            if (resters.length > 0) {
-                const sorted = [...resters].sort((a, b) => (usage[a] || 0) - (usage[b] || 0));
-                chosen = { name: sorted[0], team: Number(t) };
+
+        // [추가] 운영진이 수동 지정한 심판이 있고, 그 사람이 실제 해당 쿼터 휴식자라면 최우선 적용
+        for (const t of teamIdxs) {
+            const mr = Array.isArray(cache[t].manualReferees) ? cache[t].manualReferees[q] : null;
+            if (mr && restersOf(t, q).includes(mr)) {
+                chosen = { name: mr, team: Number(t) };
                 break;
             }
         }
+
+        // 수동 지정이 없으면 기존 자동 배분 (휴식자 중 심판 적게 본 사람 우선, 담당 팀 번갈아)
+        if (!chosen) {
+            const order = teamIdxs.map((_, i) => teamIdxs[(q + i) % teamIdxs.length]);
+            for (const t of order) {
+                const resters = restersOf(t, q);
+                if (resters.length > 0) {
+                    const sorted = [...resters].sort((a, b) => (usage[a] || 0) - (usage[b] || 0));
+                    chosen = { name: sorted[0], team: Number(t) };
+                    break;
+                }
+            }
+        }
+
         if (chosen) usage[chosen.name] = (usage[chosen.name] || 0) + 1;
         shared.push(chosen);
     }
@@ -107,6 +122,52 @@ function findInLineup(lineup, name) {
 function performSwap(qIndex, dragInfo, targetInfo) {
     const lineup = state.lineupResults.lineups[qIndex];
     const resters = state.lineupResults.resters[qIndex];
+
+    // [추가] 심판이 관여하는 교체 처리
+    const a = dragInfo, b = targetInfo;
+    if (a.posType === 'ref' || b.posType === 'ref') {
+        if (!Array.isArray(state.lineupResults.manualReferees)) {
+            state.lineupResults.manualReferees = [null, null, null, null, null, null];
+        }
+        const aRef = a.posType === 'ref';
+        const refM = aRef ? a : b;     // 심판 마커
+        const other = aRef ? b : a;    // 상대 마커(필드 또는 휴식)
+        const refIsDragged = aRef;     // 심판을 끌어서 상대에게 놓았는가
+
+        // 심판이 지금 보는 팀 소속이 아니면(=상대팀 휴식자가 심판) 이 화면에선 변경 불가
+        if (refM.team !== undefined && refM.team !== '' && Number(refM.team) !== activeTeamIndex) {
+            window.showNotification(`이 심판은 팀 ${Number(refM.team) + 1} 탭에서 변경할 수 있습니다.`, 'error');
+            return;
+        }
+        if (other.posType === 'ref') return; // 심판 ↔ 심판: 변화 없음
+
+        const refIdxRest = resters.indexOf(refM.name);
+
+        if (other.posType === 'rest') {
+            // 심판 ↔ 휴식자: 위치는 그대로, 휴식자 쪽을 새 심판으로 지정
+            state.lineupResults.manualReferees[qIndex] = other.name;
+        } else {
+            // 심판 ↔ 필드 선수: 실제로 자리를 맞바꾼다 (심판은 휴식자이므로 휴식↔필드와 동일)
+            const t_loc = findInLineup(lineup, other.name);
+            if (refIdxRest > -1 && t_loc) {
+                const refPlayer = resters.splice(refIdxRest, 1)[0];
+                const fieldPlayer = lineup[t_loc.pos].splice(t_loc.idx, 1)[0];
+                resters.push(fieldPlayer);
+                lineup[t_loc.pos].push(refPlayer);
+                // 심판을 필드로 끌어냈으면 자동 재배정, 필드 선수를 심판으로 끌어왔으면 그 선수를 심판으로 지정
+                state.lineupResults.manualReferees[qIndex] = refIsDragged ? null : other.name;
+            }
+        }
+
+        if (state.teamLineupCache && activeTeamIndex !== -1) {
+            state.teamLineupCache[activeTeamIndex] = state.lineupResults;
+        }
+        renderAllQuarters();
+        window.saveDailyMeetingData();
+        window.showNotification(`${a.name} ↔ ${b.name} 교체!`);
+        return;
+    }
+
     const draggingName = dragInfo.name, draggingPosType = dragInfo.posType;
     const targetName = targetInfo.name, targetPosType = targetInfo.posType;
 
@@ -183,21 +244,21 @@ function addDragAndDropHandlers() {
                 return;
             }
             performSwap(qIndex,
-                { name: dragging.dataset.name, posType: dragging.dataset.pos },
-                { name: marker.dataset.name, posType: marker.dataset.pos });
+                { name: dragging.dataset.name, posType: dragging.dataset.pos, team: dragging.dataset.team },
+                { name: marker.dataset.name, posType: marker.dataset.pos, team: marker.dataset.team });
         });
 
         // --- 모바일/PC 공통: 탭(클릭) 두 번으로 교체 ---
         marker.addEventListener('click', () => {
             if (!state.isAdmin) return;
-            if (marker.dataset.name === '미배정' || marker.dataset.pos === 'ref') return;
+            if (marker.dataset.name === '미배정') return;
             const qb = marker.closest('.quarter-block');
             if (!qb) return;
             const qIndex = parseInt(qb.dataset.q, 10);
 
             // 첫 번째 탭: 선수 선택
             if (!selectedSwapInfo) {
-                selectedSwapInfo = { qIndex, name: marker.dataset.name, posType: marker.dataset.pos };
+                selectedSwapInfo = { qIndex, name: marker.dataset.name, posType: marker.dataset.pos, team: marker.dataset.team };
                 marker.classList.add('selected-for-swap');
                 window.showNotification(`${marker.dataset.name} 선택됨. 바꿀 선수를 탭하세요.`);
                 return;
@@ -218,8 +279,8 @@ function addDragAndDropHandlers() {
             const first = selectedSwapInfo;
             selectedSwapInfo = null;
             performSwap(qIndex,
-                { name: first.name, posType: first.posType },
-                { name: marker.dataset.name, posType: marker.dataset.pos });
+                { name: first.name, posType: first.posType, team: first.team },
+                { name: marker.dataset.name, posType: marker.dataset.pos, team: marker.dataset.team });
         });
     });
 }
@@ -278,7 +339,12 @@ function renderAllQuarters() {
         let refHtml = '';
         if (referees.length > 0) {
             const refTeamLabel = refInfo ? ` (팀${refInfo.team + 1} 휴식자)` : '';
-            refHtml = `<div class="flex flex-col items-center mb-2"><span class="text-xs font-bold text-black mb-1">심판${refTeamLabel}</span><div class="flex gap-1">${referees.map(r => createPlayerMarker(r, 'ref', r, true).outerHTML).join('')}</div></div>`;
+            const refMarkersHtml = referees.map(r => {
+                const rm = createPlayerMarker(r, 'ref', r, true);
+                if (refInfo) rm.dataset.team = refInfo.team;
+                return rm.outerHTML;
+            }).join('');
+            refHtml = `<div class="flex flex-col items-center mb-2"><span class="text-xs font-bold text-black mb-1">심판${refTeamLabel}</span><div class="flex gap-1">${refMarkersHtml}</div></div>`;
         }
         
         // 순수 휴식 인원 (심판 제외)
