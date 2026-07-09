@@ -124,11 +124,12 @@ async function createVote() {
         if (!confirm('새 모임 투표를 시작하면, 현재 진행 중인 투표는 종료되어 지난 기록으로 보관됩니다.\n(고정 링크는 새 투표로 연결됩니다)\n\n계속할까요?')) return;
     }
 
-    // [추가] 투표 자동 마감: 운동 시작 시각 1시간 전에 자동으로 응답이 잠긴다.
+    // [v55 변경] 투표 자동 마감: 운동 시작 시각 '2시간 전'.
+    // 마감 후에도 참석 투표 자체는 가능하지만, 그 사람은 '대기자(waitlist)'로 따로 등록된다.
     let startAtMs = null, deadlineMs = null;
     if (date && time) {
         const t = Date.parse(`${date}T${time}:00`);
-        if (!isNaN(t)) { startAtMs = t; deadlineMs = t - 60 * 60 * 1000; }
+        if (!isNaN(t)) { startAtMs = t; deadlineMs = t - 2 * 60 * 60 * 1000; }
     }
 
     try {
@@ -194,8 +195,11 @@ function renderAdminStatus() {
     const panel = document.getElementById('vote-status-panel');
     if (!panel) return;
 
-    const attend = adminResponses.filter(r => r.status === 'attend')
+    // [v55] 참석자를 정규 참석 / 대기자(마감 후 참석)로 분리. 각각 투표순(선착순) 정렬.
+    const attendAll = adminResponses.filter(r => r.status === 'attend')
         .sort((a, b) => tsSeconds(a.attendingSince) - tsSeconds(b.attendingSince));
+    const attend = attendAll.filter(r => !r.waitlist);
+    const waitlist = attendAll.filter(r => !!r.waitlist);
     const maybe = adminResponses.filter(r => r.status === 'maybe')
         .sort((a, b) => tsSeconds(a.updatedAt) - tsSeconds(b.updatedAt));
     const absent = adminResponses.filter(r => r.status === 'absent')
@@ -207,6 +211,18 @@ function renderAdminStatus() {
                 <span class="text-xs text-gray-400 ml-2">투표 ${fmtTime(r.attendingSince)}</span></span>
             <span class="space-x-2">
                 <button data-id="${esc(r.id)}" class="vote-to-maybe text-xs text-amber-600 hover:underline">미정</button>
+                <button data-id="${esc(r.id)}" class="vote-to-absent text-xs text-yellow-600 hover:underline">불참</button>
+                <button data-id="${esc(r.id)}" class="vote-del text-xs text-red-500 hover:underline">삭제</button>
+            </span>
+        </li>`).join('');
+
+    // [v55] 대기자 목록: 마감 후 참석 투표자. 선착순 번호. '참석 확정' 버튼으로 정규 참석 전환 가능.
+    const waitRows = waitlist.map((r, i) => `
+        <li class="flex items-center justify-between py-1.5 border-b text-orange-700">
+            <span><span class="text-gray-400 mr-2">${i + 1}</span><b>${esc(r.name)}</b>${r.guest ? ' <span class="text-xs text-amber-600">(게스트)</span>' : ''}
+                <span class="text-xs text-gray-400 ml-2">투표 ${fmtTime(r.attendingSince)}</span></span>
+            <span class="space-x-2">
+                <button data-id="${esc(r.id)}" class="vote-confirm text-xs text-green-600 hover:underline">참석 확정</button>
                 <button data-id="${esc(r.id)}" class="vote-to-absent text-xs text-yellow-600 hover:underline">불참</button>
                 <button data-id="${esc(r.id)}" class="vote-del text-xs text-red-500 hover:underline">삭제</button>
             </span>
@@ -235,13 +251,14 @@ function renderAdminStatus() {
     panel.innerHTML = `
         <div class="border-t pt-4">
             <div class="flex items-center justify-between mb-3">
-                <h3 class="text-xl font-bold">투표 현황 <span class="text-green-600">참석 ${attend.length}</span> / <span class="text-amber-600">미정 ${maybe.length}</span> / <span class="text-gray-400">불참 ${absent.length}</span></h3>
+                <h3 class="text-xl font-bold">투표 현황 <span class="text-green-600">참석 ${attend.length}</span>${waitlist.length ? ` / <span class="text-orange-600">대기 ${waitlist.length}</span>` : ''} / <span class="text-amber-600">미정 ${maybe.length}</span> / <span class="text-gray-400">불참 ${absent.length}</span></h3>
                 <button id="vote-to-balancer" class="bg-indigo-600 text-white text-sm font-bold py-2 px-4 rounded-lg hover:bg-indigo-700">이 투표로 팀 짜기 →</button>
             </div>
-            ${adminVoteInfo && adminVoteInfo.deadlineMs ? `<p class="text-xs font-bold mb-1 ${Date.now() > adminVoteInfo.deadlineMs ? 'text-red-500' : 'text-emerald-600'}">⏰ 자동 마감: ${fmtMs(adminVoteInfo.deadlineMs)} — 경기 시작 1시간 전${Date.now() > adminVoteInfo.deadlineMs ? ' · 마감됨 (회원 응답 잠김, 관리자 수정은 가능)' : ''}</p>` : ''}
+            ${adminVoteInfo && adminVoteInfo.deadlineMs ? `<p class="text-xs font-bold mb-1 ${Date.now() > adminVoteInfo.deadlineMs ? 'text-red-500' : 'text-emerald-600'}">⏰ 자동 마감: ${fmtMs(adminVoteInfo.deadlineMs)} — 경기 시작 2시간 전${Date.now() > adminVoteInfo.deadlineMs ? ' · 마감됨 (이후 참석 투표는 대기자로 등록됩니다)' : ''}</p>` : ''}
             <p class="text-xs text-gray-400 mb-2">※ 참석자는 투표가 늦은 사람일수록 아래쪽에 있으며, 팀 배정 후 아래(늦은 투표)부터 휴식·키퍼를 맡습니다. (미정은 팀 배정에 포함되지 않습니다)</p>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div><p class="font-semibold text-green-700 mb-1">✅ 참석 (투표순)</p><ul class="text-sm">${attendRows || '<li class="text-gray-400 py-2">아직 없음</li>'}</ul></div>
+                <div><p class="font-semibold text-green-700 mb-1">✅ 참석 (투표순)</p><ul class="text-sm">${attendRows || '<li class="text-gray-400 py-2">아직 없음</li>'}</ul>
+                    ${waitlist.length ? `<p class="font-semibold text-orange-600 mt-3 mb-1">⏳ 대기자 (마감 후 참석 · 선착순)</p><ul class="text-sm">${waitRows}</ul>` : ''}</div>
                 <div><p class="font-semibold text-amber-700 mb-1">🤔 미정</p><ul class="text-sm">${maybeRows || '<li class="text-gray-400 py-2">아직 없음</li>'}</ul></div>
                 <div><p class="font-semibold text-gray-600 mb-1">❌ 불참</p><ul class="text-sm">${absentRows || '<li class="text-gray-400 py-2">아직 없음</li>'}</ul></div>
             </div>
@@ -255,6 +272,7 @@ function renderAdminStatus() {
     panel.querySelectorAll('.vote-to-attend').forEach(b => b.onclick = () => adminSetStatus(b.dataset.id, 'attend'));
     panel.querySelectorAll('.vote-to-maybe').forEach(b => b.onclick = () => adminSetStatus(b.dataset.id, 'maybe'));
     panel.querySelectorAll('.vote-del').forEach(b => b.onclick = () => adminDelete(b.dataset.id));
+    panel.querySelectorAll('.vote-confirm').forEach(b => b.onclick = () => adminConfirmWaitlist(b.dataset.id)); // [v55] 대기자 → 정규 참석
     const addBtn = document.getElementById('vote-admin-add-btn');
     if (addBtn) addBtn.onclick = adminAdd;
     const balBtn = document.getElementById('vote-to-balancer');
@@ -266,7 +284,15 @@ async function adminSetStatus(respId, status) {
     const ref = doc(db, "votes", activeVoteId, "responses", respId);
     const payload = { status, updatedAt: serverTimestamp() };
     if (status === 'attend') payload.attendingSince = serverTimestamp(); // 참석 처리 시각 갱신
+    payload.waitlist = false; // [v55] 관리자가 상태를 바꾸면 대기 표시는 해제 (관리자 결정 = 확정)
     await setDoc(ref, payload, { merge: true });
+}
+
+// [v55] 대기자 → 정규 참석 확정 (투표 시각은 그대로 보존 → 휴식 순번 형평성 유지)
+async function adminConfirmWaitlist(respId) {
+    if (!state.isAdmin || !activeVoteId) return;
+    await setDoc(doc(db, "votes", activeVoteId, "responses", respId), { waitlist: false, updatedAt: serverTimestamp() }, { merge: true });
+    window.showNotification('대기자를 참석으로 확정했습니다.');
 }
 
 async function adminDelete(respId) {
@@ -290,11 +316,19 @@ async function adminAdd() {
 }
 
 function sendToBalancer() {
-    const attend = adminResponses.filter(r => r.status === 'attend')
+    const attendAll = adminResponses.filter(r => r.status === 'attend')
         .sort((a, b) => tsSeconds(a.attendingSince) - tsSeconds(b.attendingSince));
-    if (attend.length === 0) { window.showNotification('참석자가 없습니다.', 'error'); return; }
+    const attend = attendAll.filter(r => !r.waitlist);
+    const waitlist = attendAll.filter(r => !!r.waitlist);
+    if (attendAll.length === 0) { window.showNotification('참석자가 없습니다.', 'error'); return; }
     // 투표가 이른 사람이 위, 늦은 사람이 아래 → 아래(늦은 투표)부터 휴식·키퍼
-    const names = attend.map(r => r.name);
+    let names = attend.map(r => r.name);
+    // [v55] 대기자가 있으면 포함 여부를 확인. 포함 시 명단 맨 아래(선착순)로 붙는다 → 휴식·키퍼 우선.
+    if (waitlist.length > 0) {
+        const inc = confirm(`대기자가 ${waitlist.length}명 있습니다. 대기자까지 함께 불러올까요?\n\n[확인] 참석 ${attend.length}명 + 대기 ${waitlist.length}명\n[취소] 참석 ${attend.length}명만`);
+        if (inc) names = names.concat(waitlist.map(r => r.name));
+    }
+    if (names.length === 0) { window.showNotification('불러올 참석자가 없습니다. (대기자만 있는 경우 대기자를 포함하거나 참석 확정하세요)', 'error'); return; }
     const textarea = document.getElementById('attendees');
     if (textarea) textarea.value = names.join('\n');
     const balTab = document.getElementById('tab-balancer');
@@ -353,8 +387,9 @@ async function togglePastVoteDetail(voteId) {
     try {
         const snap = await getDocs(collection(db, "votes", voteId, "responses"));
         const rs = snap.docs.map(d => d.data());
-        const group = (st) => rs.filter(r => r.status === st).map(r => esc(r.name || '-'));
+        const group = (st) => rs.filter(r => r.status === st && !r.waitlist).map(r => esc(r.name || '-'));
         const attend = group('attend'), maybe = group('maybe'), absent = group('absent');
+        const wait = rs.filter(r => r.status === 'attend' && !!r.waitlist).map(r => esc(r.name || '-')); // [v55]
         const col = (title, names, cls) => `<div>
             <p class="text-xs font-bold ${cls}">${title} (${names.length})</p>
             <p class="text-sm text-gray-600 mt-1">${names.length ? names.join(', ') : '-'}</p>
@@ -363,6 +398,7 @@ async function togglePastVoteDetail(voteId) {
             ${col('✅ 참석', attend, 'text-emerald-600')}
             ${col('🤔 미정', maybe, 'text-amber-600')}
             ${col('❌ 불참', absent, 'text-yellow-700')}
+            ${wait.length ? col('⏳ 대기 (마감 후 참석)', wait, 'text-orange-600') : ''}
         </div>`;
     } catch (e) {
         console.error('지난 투표 상세 실패:', e);
@@ -413,6 +449,7 @@ export async function renderVotePage(voteId) {
             <h1 style="font-size:1.6rem;font-weight:800;color:#111827">⚽ ${esc(headerTitle)}</h1>
             <p style="color:#6b7280;margin-top:6px">${esc(info)}</p>
             <p id="v-deadline" style="font-size:.85rem;font-weight:700;margin-top:6px;min-height:18px"></p>
+            <p id="v-deadline-note" style="font-size:.72rem;color:#9ca3af;margin-top:2px;display:none">종료 이후에는 대기자로 등록됩니다.</p>
         </div>
         <div style="background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08)">
             <label style="display:block;font-weight:700;margin-bottom:6px">이름</label>
@@ -442,21 +479,30 @@ export async function renderVotePage(voteId) {
     const nameInput = document.getElementById('v-name');
     const msg = document.getElementById('v-msg');
 
-    // [추가] 자동 마감 여부: 수동 종료(closed) 또는 마감시각(deadlineMs) 경과
-    const voteClosed = () => !!(vote.closed || (vote.deadlineMs && Date.now() > vote.deadlineMs));
+    // [v55 변경] 잠금과 마감을 분리:
+    //  - voteLocked(수동 종료): 모든 응답 잠금 (기존과 동일)
+    //  - afterDeadline(자동 마감 경과): 투표는 계속 가능하지만 '참석'은 대기자로 등록
+    const voteLocked = () => !!vote.closed;
+    const afterDeadline = () => !!(vote.deadlineMs && Date.now() > vote.deadlineMs);
     function applyClosedUI() {
         const dEl = document.getElementById('v-deadline');
+        const noteEl = document.getElementById('v-deadline-note');
         const btns = ['v-attend', 'v-maybe', 'v-absent'].map(id => document.getElementById(id)).filter(Boolean);
-        if (voteClosed()) {
+        if (voteLocked()) {
             btns.forEach(b => { b.disabled = true; b.style.opacity = .45; b.style.cursor = 'not-allowed'; });
-            if (dEl) { dEl.style.color = '#ef4444'; dEl.textContent = '⏰ 투표가 마감되었습니다. 변경이 필요하면 운영진에게 알려주세요.'; }
+            if (dEl) { dEl.style.color = '#ef4444'; dEl.textContent = '⏰ 투표가 종료되었습니다. 변경이 필요하면 운영진에게 알려주세요.'; }
+            if (noteEl) noteEl.style.display = 'none';
+        } else if (afterDeadline()) {
+            if (dEl) { dEl.style.color = '#ef4444'; dEl.textContent = `⏰ 투표가 마감되었습니다. (마감: ${fmtMs(vote.deadlineMs)})`; }
+            if (noteEl) { noteEl.style.display = ''; noteEl.textContent = '지금 참석을 누르면 대기자로 등록됩니다. (선착순)'; }
         } else if (vote.deadlineMs) {
-            if (dEl) { dEl.style.color = '#059669'; dEl.textContent = `⏰ 마감: ${fmtMs(vote.deadlineMs)} (경기 시작 1시간 전 자동 마감)`; }
+            if (dEl) { dEl.style.color = '#059669'; dEl.textContent = `⏰ 마감: ${fmtMs(vote.deadlineMs)} (경기 시작 2시간 전 자동 마감)`; }
+            if (noteEl) { noteEl.style.display = ''; noteEl.textContent = '종료 이후에는 대기자로 등록됩니다.'; }
         }
     }
 
     async function submitVote(status) {
-        if (voteClosed()) { msg.style.color = '#ef4444'; msg.textContent = '투표가 마감되었습니다. (경기 시작 1시간 전)'; applyClosedUI(); return; }
+        if (voteLocked()) { msg.style.color = '#ef4444'; msg.textContent = '투표가 종료되었습니다. 운영진에게 알려주세요.'; applyClosedUI(); return; }
         const name = normName(nameInput.value);
         if (!name) { msg.style.color = '#ef4444'; msg.textContent = '이름을 먼저 입력하세요.'; return; }
         const isGuest = !playerSet.has(name);
@@ -464,15 +510,32 @@ export async function renderVotePage(voteId) {
             const ref = doc(db, "votes", voteId, "responses", name);
             const existing = await getDoc(ref);
             const payload = { name, status, guest: isGuest, updatedAt: serverTimestamp() };
+            let asWaitlist = false;
             if (status === 'attend') {
-                const wasAttend = existing.exists() && existing.data().status === 'attend' && existing.data().attendingSince;
-                if (!wasAttend) payload.attendingSince = serverTimestamp();
+                const ex = existing.exists() ? existing.data() : null;
+                const wasAttend = !!(ex && ex.status === 'attend' && ex.attendingSince);
+                if (wasAttend) {
+                    // [v55] 이미 참석 상태인 사람이 다시 누른 경우: 기존 지위(정규/대기) 그대로 유지
+                    payload.waitlist = !!ex.waitlist;
+                    asWaitlist = !!ex.waitlist;
+                } else {
+                    payload.attendingSince = serverTimestamp();
+                    payload.waitlist = afterDeadline(); // [v55] 마감 후 참석 → 대기자 (선착순)
+                    asWaitlist = payload.waitlist;
+                }
+            } else {
+                payload.waitlist = false; // 미정/불참은 대기 개념 없음
             }
             if (!existing.exists()) payload.createdAt = serverTimestamp();
             await setDoc(ref, payload, { merge: true });
-            const label = status === 'attend' ? '참석' : (status === 'maybe' ? '미정' : '불참');
-            msg.style.color = status === 'attend' ? '#16a34a' : (status === 'maybe' ? '#d97706' : '#6b7280');
-            msg.textContent = `${name}님 -> ${label}으로 등록되었습니다!`;
+            if (status === 'attend' && asWaitlist) {
+                msg.style.color = '#ea580c';
+                msg.textContent = `${name}님 -> 대기자로 등록되었습니다! (마감 후 참석 · 선착순)`;
+            } else {
+                const label = status === 'attend' ? '참석' : (status === 'maybe' ? '미정' : '불참');
+                msg.style.color = status === 'attend' ? '#16a34a' : (status === 'maybe' ? '#d97706' : '#6b7280');
+                msg.textContent = `${name}님 -> ${label}으로 등록되었습니다!`;
+            }
         } catch (e) {
             console.error(e);
             msg.style.color = '#ef4444';
@@ -489,17 +552,26 @@ export async function renderVotePage(voteId) {
 
     onSnapshot(collection(db, "votes", voteId, "responses"), (snap) => {
         const all = snap.docs.map(d => d.data());
-        const attend = all.filter(r => r.status === 'attend').sort((a, b) => tsSeconds(a.attendingSince) - tsSeconds(b.attendingSince));
+        const attendAll = all.filter(r => r.status === 'attend').sort((a, b) => tsSeconds(a.attendingSince) - tsSeconds(b.attendingSince));
+        const attend = attendAll.filter(r => !r.waitlist);   // [v55] 정규 참석
+        const waitlist = attendAll.filter(r => !!r.waitlist); // [v55] 대기자 (마감 후 참석 · 선착순)
         const maybe = all.filter(r => r.status === 'maybe').sort((a, b) => tsSeconds(a.updatedAt) - tsSeconds(b.updatedAt));
         const absent = all.filter(r => r.status === 'absent').sort((a, b) => tsSeconds(a.updatedAt) - tsSeconds(b.updatedAt));
         const cEl = document.getElementById('v-counts');
-        if (cEl) cEl.innerHTML = `현황 &mdash; <span style="color:#16a34a">참석 ${attend.length}</span> &middot; <span style="color:#d97706">미정 ${maybe.length}</span> &middot; <span style="color:#9ca3af">불참 ${absent.length}</span>`;
+        if (cEl) cEl.innerHTML = `현황 &mdash; <span style="color:#16a34a">참석 ${attend.length}</span>${waitlist.length ? ` &middot; <span style="color:#ea580c">대기 ${waitlist.length}</span>` : ''} &middot; <span style="color:#d97706">미정 ${maybe.length}</span> &middot; <span style="color:#9ca3af">불참 ${absent.length}</span>`;
+        const rowHtml = (r, i, withNum) => `<div>${withNum ? (i + 1) + '. ' : ''}${esc(r.name)}${r.guest ? ' <span style="color:#d97706;font-size:.78rem">(G)</span>' : ''}</div>`;
         const fill = (id, arr, withNum) => {
             const el = document.getElementById(id);
             if (!el) return;
-            el.innerHTML = arr.length ? arr.map((r, i) => `<div>${withNum ? (i + 1) + '. ' : ''}${esc(r.name)}${r.guest ? ' <span style="color:#d97706;font-size:.78rem">(G)</span>' : ''}</div>`).join('') : '<span style="color:#cbd5e1">-</span>';
+            el.innerHTML = arr.length ? arr.map((r, i) => rowHtml(r, i, withNum)).join('') : '<span style="color:#cbd5e1">-</span>';
         };
         fill('v-l-attend', attend, true);
+        // [v55] 참석 칸 아래에 대기자 구역을 덧붙인다 (구분선 + 선착순 번호)
+        const attendEl = document.getElementById('v-l-attend');
+        if (attendEl && waitlist.length) {
+            attendEl.innerHTML += `<div style="color:#ea580c;font-weight:700;border-top:1px dashed #e5e7eb;margin-top:6px;padding-top:6px;font-size:.8rem">⏳ 대기자</div>`
+                + waitlist.map((r, i) => rowHtml(r, i, true)).join('');
+        }
         fill('v-l-maybe', maybe, false);
         fill('v-l-absent', absent, false);
     });

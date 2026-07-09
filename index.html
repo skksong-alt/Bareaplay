@@ -108,11 +108,37 @@
     
     <div id="print-area" class="hidden"></div>
 
-    <script type="module" src="js/app.js?v=12"></script>
+    <script type="module" src="js/app.js?v=13"></script>
     <script>
+        // [v55 보강] SW 등록 + 새 버전 알림 배너
+        //  - 새 버전이 설치되면 화면 아래에 배너를 띄우고, 버튼 한 번으로 즉시 갱신한다.
+        //  - 탭을 오래 켜둔 기기를 위해 1시간마다 새 버전을 자동 확인한다.
         if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW reg failed: ', err));
+            window.addEventListener('load', async () => {
+                try {
+                    const reg = await navigator.serviceWorker.register('/sw.js');
+                    setInterval(() => { reg.update().catch(() => {}); }, 60 * 60 * 1000);
+                    const showUpdateBanner = () => {
+                        if (document.getElementById('sw-update-banner')) return;
+                        const bar = document.createElement('div');
+                        bar.id = 'sw-update-banner';
+                        bar.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:9999;background:#111827;color:#fff;padding:12px 16px;border-radius:12px;box-shadow:0 4px 14px rgba(0,0,0,.3);display:flex;gap:12px;align-items:center;font-size:.9rem;max-width:92vw';
+                        bar.innerHTML = '<span>새 버전이 준비되었습니다.</span><button id="sw-update-btn" style="background:#4f46e5;color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;white-space:nowrap">지금 새로고침</button>';
+                        document.body.appendChild(bar);
+                        document.getElementById('sw-update-btn').onclick = () => {
+                            try { if (reg.waiting) reg.waiting.postMessage('SKIP_WAITING'); } catch (e) {}
+                            setTimeout(() => location.reload(), 300);
+                        };
+                    };
+                    if (reg.waiting && navigator.serviceWorker.controller) showUpdateBanner();
+                    reg.addEventListener('updatefound', () => {
+                        const nw = reg.installing;
+                        if (!nw) return;
+                        nw.addEventListener('statechange', () => {
+                            if (nw.state === 'installed' && navigator.serviceWorker.controller) showUpdateBanner();
+                        });
+                    });
+                } catch (err) { console.log('SW reg failed: ', err); }
             });
         }
     </script>

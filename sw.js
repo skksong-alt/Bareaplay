@@ -1,20 +1,26 @@
 // sw.js
-const CACHE_NAME = 'bareaplay-cache-v54';
+const CACHE_NAME = 'bareaplay-cache-v55';
 const urlsToCache = [
     '/', '/index.html', '/share.html', '/css/style.css',
-    '/js/app.js?v=12',
+    '/js/app.js?v=13',
     '/js/store.js?v=2',
     '/js/modules/playerManagement.js?v=5',
     '/js/modules/teamBalancer.js?v=6',
     '/js/modules/lineupGenerator.js?v=6',
     '/js/modules/accounting.js?v=6',
     '/js/modules/shareManagement.js?v=5',
-    '/js/modules/voteManagement.js?v=6',
+    '/js/modules/voteManagement.js?v=7',
     '/js/modules/lineupStats.js?v=1',
     '/js/modules/matchRecord.js?v=1',
     '/manifest.json', '/favicon.ico', '/assets/icon-512.png'
 ];
 
+
+// [v55 보강] 페이지에서 '즉시 교체' 요청을 받으면 대기 없이 새 버전으로 전환
+// (index.html 의 '새 버전 알림 배너'가 이 메시지를 보낸다)
+self.addEventListener('message', (event) => {
+    if (event && event.data === 'SKIP_WAITING') self.skipWaiting();
+});
 
 self.addEventListener('install', (event) => {
     event.waitUntil(

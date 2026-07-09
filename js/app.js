@@ -8,7 +8,7 @@ import * as balancer from './modules/teamBalancer.js?v=6';
 import * as lineup from './modules/lineupGenerator.js?v=6';
 import * as accounting from './modules/accounting.js?v=6';
 import * as shareMgmt from './modules/shareManagement.js?v=5';
-import * as voteMgmt from './modules/voteManagement.js?v=6';
+import * as voteMgmt from './modules/voteManagement.js?v=7';
 import * as lineupStats from './modules/lineupStats.js?v=1';
 import * as matchRecord from './modules/matchRecord.js?v=1'; // [신규] 경기기록 탭
 
@@ -426,7 +426,7 @@ function renderManual() {
     const sVote = sec('\uD83D\uDDF3\uFE0F', '참석 투표 \u2014 자동 마감', `
         <ul class="list-disc pl-5 space-y-1.5 text-sm">
             <li>모임배포 탭에서 <b>새 모임 투표 시작</b>을 누르면, 고정 링크(<code class="bg-gray-100 px-1 rounded">?vote=current</code>)가 이번 주 투표로 연결됩니다.</li>
-            <li><b>\u23F0 자동 마감</b>: 투표는 입력한 <b>운동 시작 시각 1시간 전</b>에 자동으로 잠깁니다. 회원 화면에 마감 시각이 표시되고, 마감 후에는 응답 버튼이 비활성화됩니다.</li>
+            <li><b>\u23F0 자동 마감 (v55 변경)</b>: 투표는 입력한 <b>운동 시작 시각 2시간 전</b>에 자동 마감됩니다. 마감 후에도 참석을 누를 수는 있지만 <b>대기자</b>로 따로 등록되며(선착순), 참석 명단 아래에 구분 표시됩니다. 관리자 화면에서 <b>[참석 확정]</b>으로 정규 참석으로 올릴 수 있습니다.</li>
             <li>마감 후 변경이 필요하면 <b>관리자 화면에서는 계속 수정</b>할 수 있습니다. (참석\u2194미정\u2194불참 전환, 직접 추가\u00B7삭제)</li>
             <li>예전에 만든 투표(마감 시각 정보가 없는 투표)는 예전처럼 계속 열려 있습니다.</li>
         </ul>`);
@@ -488,10 +488,12 @@ function renderManual() {
     const sShare = sec('\uD83D\uDCE2', '모임배포 \u2014 투표 & 공유 링크 & 활약 투표', `
         <p class="text-sm mb-2">이 탭에는 성격이 다른 <b>두 가지 링크</b>가 있습니다. 용도에 맞게 골라 단톡방에 올리세요.</p>
         <ul class="list-disc pl-5 space-y-1.5 text-sm">
-            <li><b>\u2460 참석 투표 링크</b>: 멤버들이 참석/미정/불참을 직접 누르는 <b>고정 링크</b>입니다. 미리보기에 "Barea 참석 투표"로 뜹니다. <b>운동 시작 1시간 전에 자동 마감</b>됩니다.</li>
+            <li><b>\u2460 참석 투표 링크</b>: 멤버들이 참석/미정/불참을 직접 누르는 <b>고정 링크</b>입니다. 미리보기에 "Barea 참석 투표"로 뜹니다. <b>운동 시작 2시간 전에 자동 마감</b>되며, 마감 후 참석 투표는 <b>대기자</b>로 등록됩니다. "이 투표로 팀 짜기"를 누르면 대기자 포함 여부를 물어봅니다.</li>
             <li><b>\u2461 공유 보드 링크</b>: <b>공유 링크 생성</b> 버튼으로 만든 링크(<code class="bg-gray-100 px-1 rounded">/share.html?shareId=...</code>)입니다. 팀 배정\u00B7라인업 결과가 표시되고, 미리보기에 "Barea 팀배정 및 라인업"으로 뜹니다.</li>
-            <li><b>\uD83C\uDFC5 오늘의 활약 투표 (신규)</b>: 공유 보드 <b>맨 아래</b>에 있습니다. 경기가 끝나면 회원이 <b>본인 이름을 명단에서 선택</b>(한 번 고르면 기기에 기억됨)한 뒤 <b>오늘 잘한 3명을 순서대로</b> 탭합니다. 1순위 3점\u00B72순위 2점\u00B73순위 1점으로 집계되며, 자기 자신은 못 뽑고, 다시 제출하면 이전 표를 덮어써서 중복 투표가 안 됩니다. <b>결과는 익명 집계만 공개</b>됩니다. (로그인\u00B7개인정보 없음 \u2014 출석 투표와 같은 방식)</li>
+            <li><b>\uD83C\uDFC5 오늘의 활약 투표 (신규)</b>: 공유 보드의 <b>팀 배정 아래(라인업 위)</b>에 접힌 상태로 있으며, 제목 옆에 "인기투표가 아니라 팀 배정 균형에 쓰인다"는 안내가 함께 표시됩니다. 경기가 끝나면 회원이 <b>본인 이름을 명단에서 선택</b>(한 번 고르면 기기에 기억됨)한 뒤 <b>오늘 잘한 3명을 순서대로</b> 탭합니다. 1순위 3점\u00B72순위 2점\u00B73순위 1점으로 집계되며, 자기 자신은 못 뽑고, 다시 제출하면 이전 표를 덮어써서 중복 투표가 안 됩니다. <b>결과는 익명 집계만 공개</b>됩니다. (로그인\u00B7개인정보 없음 \u2014 출석 투표와 같은 방식)</li>
             <li><b>\uD83D\uDCCA 쿼터 스코어</b>: 운영진이 경기기록 탭에 스코어를 저장하면 공유 보드에도 자동으로 표시됩니다.</li>
+            <li><b>\uD83C\uDF10 영어 보기 (v55 신규)</b>: 공유 보드 오른쪽 위 <b>English</b> 버튼을 누르면 선수 이름을 제외한 모든 문구가 영어로 바뀝니다(팀 1 \u2192 TEAM 1, 1쿼터 \u2192 Q1). 외국인 선수에게 같은 링크를 그대로 공유하면 되고, 선택한 언어는 그 기기에 기억됩니다.</li>
+            <li><b>\uD83D\uDCD0 공유 보드 순서 (v55 변경)</b>: 모임 정보 \u2192 팀 배정 \u2192 쿼터 스코어 \u2192 활약 투표 \u2192 라인업 순서이며, 라인업만 기본으로 펼쳐져 있습니다. 나머지는 제목을 누르면 열립니다.</li>
         </ul>
         ${warn('결과를 공유할 땐 반드시 <b>"공유 링크 생성" 버튼으로 만든 링크</b>를 올리세요. 일반 주소나 투표 링크를 올리면 미리보기 제목이 "참석 투표"로 뜹니다.')}
         ${tip('카카오톡은 링크 미리보기를 며칠간 저장(캐시)합니다. 미리보기가 예전 것으로 보이면 <b>카카오 OG 캐시 리셋 도구</b>(developers.kakao.com/tool/clear/og)에 링크를 넣어 갱신하세요.')}`);
@@ -517,7 +519,7 @@ function renderManual() {
         <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-8">
             <h3 class="font-bold text-indigo-800 mb-2">\u26A1 한눈에 보는 전체 흐름</h3>
             <ol class="list-decimal pl-5 space-y-1 text-sm text-indigo-900">
-                <li><b>모임배포</b> 탭에서 투표 링크를 만들어 단톡방에 공유 \u2192 참석 응답을 받습니다. (경기 1시간 전 자동 마감)</li>
+                <li><b>모임배포</b> 탭에서 투표 링크를 만들어 단톡방에 공유 \u2192 참석 응답을 받습니다. (경기 2시간 전 자동 마감 \u00B7 마감 후 참석은 대기자로 등록)</li>
                 <li><b>팀 배정기</b>에서 명단을 넣고 팀을 나눕니다. (함께/분리 지정\u00B7최근 조합 반복 방지)</li>
                 <li><b>라인업 생성기</b>에서 쿼터별 라인업을 만듭니다. (선수 성향 자동 반영)</li>
                 <li><b>모임배포</b>에서 최종 공유 링크를 단톡방에 뿌립니다.</li>
@@ -534,7 +536,8 @@ function renderManual() {
                     <div class="bg-gray-800 text-gray-100 rounded-md p-3 mt-1 font-mono text-xs">git add .<br>git commit -m "수정 내용"<br>git push</div>
                     push하면 Vercel이 자동 배포합니다.</li>
                 <li><b>\u2757 저장 사고 주의</b>: 코드 에디터에서 여러 파일을 열어둔 채 "모두 저장"을 누르면, 새로 교체한 파일이 에디터에 열려 있던 옛날 내용으로 다시 덮어쓰일 수 있습니다. <b>파일 교체 후에는 에디터 탭을 모두 닫고 저장\u00B7push하세요.</b></li>
-                <li><b>캐시\u00B7버전 규칙</b>: 내용을 바꾼 파일은 불러오는 주소 끝 <code class="bg-amber-100 px-1 rounded">?v=숫자</code>를 한 단계 올리고, <code class="bg-amber-100 px-1 rounded">sw.js</code>의 <code class="bg-amber-100 px-1 rounded">CACHE_NAME</code> 숫자도 함께 올립니다. (이번 업그레이드: app v12, playerManagement v5, teamBalancer v6, lineupGenerator v6, shareManagement v5, voteManagement v6, matchRecord v1 신규, 캐시 v54)</li>
+                <li><b>캐시\u00B7버전 규칙</b>: 내용을 바꾼 파일은 불러오는 주소 끝 <code class="bg-amber-100 px-1 rounded">?v=숫자</code>를 한 단계 올리고, <code class="bg-amber-100 px-1 rounded">sw.js</code>의 <code class="bg-amber-100 px-1 rounded">CACHE_NAME</code> 숫자도 함께 올립니다. (이번 업그레이드 v55: app v13, voteManagement v7, 캐시 v55 \u2014 나머지 모듈은 변동 없음)</li>
+                <li><b>\uD83D\uDD14 새 버전 알림 배너 (v55 신규)</b>: 새 버전이 배포되면 화면 아래에 "새 버전이 준비되었습니다" 배너가 떠서 버튼 한 번으로 갱신됩니다. 탭을 오래 켜둔 기기도 1시간마다 자동으로 새 버전을 확인하므로, 예전처럼 구버전에 갇히는 일이 크게 줄어듭니다.</li>
                 <li><b>\uD83D\uDCC1 파일 구성</b>: <code class="bg-amber-100 px-1 rounded">js/modules/matchRecord.js</code>가 새로 추가되었습니다(경기기록 탭). 새 파일을 레포의 <code class="bg-amber-100 px-1 rounded">js/modules/</code> 폴더에 넣어야 합니다.</li>
                 <li><b>\uD83D\uDDC4\uFE0F 새 Firestore 컬렉션</b>: <code class="bg-amber-100 px-1 rounded">matchRecords</code>(쿼터 스코어, 날짜별 1문서), <code class="bg-amber-100 px-1 rounded">ratings</code>(활약 투표, 날짜별 1문서\u00B7투표자 이름 키로 덮어쓰기), <code class="bg-amber-100 px-1 rounded">adjustLogs</code>(운영진 드래그 기록). <b>기존 출석(attendance)\u00B7회비(expenses)\u00B7일일모임(dailyMeetings) 데이터 구조는 그대로이며 삭제\u00B7변경되지 않습니다.</b> (dailyMeetings\u00B7players 문서에 새 필드만 추가됨)</li>
                 <li><b>\u2757 Firestore 보안 규칙 확인</b>: <code class="bg-amber-100 px-1 rounded">ratings</code>는 회원이 <b>로그인 없이</b> 쓰는 컬렉션입니다(투표 responses와 동일). 규칙이 컬렉션별 화이트리스트 방식이라면 Firebase Console \u2192 Firestore \u2192 규칙에서 <code class="bg-amber-100 px-1 rounded">ratings</code> 쓰기 허용을 추가해야 합니다. <code class="bg-amber-100 px-1 rounded">matchRecords</code>\u00B7<code class="bg-amber-100 px-1 rounded">adjustLogs</code>는 관리자(로그인)만 쓰고, 읽기는 공개가 필요합니다(공유 보드에서 스코어\u00B7집계 표시).</li>
@@ -580,8 +583,85 @@ window.refreshData = async function(collectionName) {
     }
 };
 
+/* =========================================================
+   [v55] 공유 보드 다국어(한/영) 지원
+   외국인 선수도 최종 팀배정·라인업을 읽을 수 있도록, 보드 오른쪽 위 버튼으로
+   '선수 이름을 제외한' 모든 문구를 영어로 전환한다. (팀 1 → TEAM 1, 1쿼터 → Q1)
+   선택한 언어는 기기(localStorage)에 기억되어 다음에도 유지된다.
+   ========================================================= */
+let __bpLang = (localStorage.getItem('bp_lang') === 'en') ? 'en' : 'ko';
+let __bpRateUnsub = null; // 활약 투표 실시간 구독 해제 핸들 (언어 전환 재렌더 시 중복 구독 방지)
+
+const BP_I18N = {
+    ko: {
+        locale: 'ko-KR',
+        langBtn: '🌐 English',
+        boardSub: '모임 보드',
+        infoTitle: '📅 모임 정보',
+        timeLbl: '시간', placeLbl: '장소', tbd: '미정',
+        teamAssign: '⚖️ 팀 배정',
+        lineupTitle: '📋 라인업',
+        team: (n) => `팀 ${n}`,
+        teamShort: (n) => `팀${n}`,
+        qShort: (n) => `${n}쿼터`,
+        scoreTitle: '📊 쿼터 스코어',
+        rateTitle: '🏅 오늘의 활약 투표',
+        rateSub: '인기투표가 아닙니다 — 투표 결과는 쿼터 스코어와 함께 각 선수의 실력 데이터에 반영되어, 다음 팀 배정을 더 균형 있게 만드는 데 사용됩니다.',
+        rateExplain: '골·어시스트뿐 아니라 수비·헌신·궂은일까지, 오늘 경기 전체에서 인상 깊었던 3명을 뽑아주세요. 투표가 쌓일수록 팀 나누기가 점점 정확해져 매주 더 팽팽한 경기가 됩니다.',
+        none: '없음',
+        rateNoRoster: '팀 배정 명단이 없어 투표를 열 수 없습니다.',
+        ratePickMe: '경기가 끝나면 <b>오늘 인상적이었던 3명</b>을 뽑아주세요. 먼저 <b>본인 이름</b>을 선택하세요. (이 기기에 기억됩니다)',
+        rateConfirmMe: (n) => `'${n}'님이 맞습니까?\n이 기기에 기억되며, 꼭 본인 이름으로만 투표해 주세요.`,
+        ratePick3: (n) => `<b>${n}</b>님, 오늘 잘한 <b>3명</b>을 순서대로 탭하세요.`,
+        rateChangeName: '이름 변경',
+        rateConfirmChange: '이름을 다시 선택할까요? (꼭 본인 이름으로만 투표해 주세요)',
+        rateMax3: '3명까지만 뽑을 수 있습니다. 다른 선수를 해제한 뒤 선택하세요.',
+        rateSubmit: '투표 제출', rateUpdate: '투표 수정하기',
+        rateSaved: '투표가 저장되었습니다! (다시 제출하면 수정됩니다)',
+        rateFail: '저장 실패. 잠시 후 다시 시도해주세요.',
+        rateTally: '📊 현재 집계',
+        rateTallySub: (n) => `(${n}명 참여 · 누가 뽑았는지는 공개되지 않습니다)`,
+        pts: '점',
+        medals: ['🥇 3점', '🥈 2점', '🥉 1점'],
+        footerNote: '© 2025 BareaPlay. Created by 송감독.'
+    },
+    en: {
+        locale: 'en-US',
+        langBtn: '🌐 한국어',
+        boardSub: 'Match Board',
+        infoTitle: '📅 Match Info',
+        timeLbl: 'Time', placeLbl: 'Venue', tbd: 'TBD',
+        teamAssign: '⚖️ Team Assignment',
+        lineupTitle: '📋 Lineups',
+        team: (n) => `TEAM ${n}`,
+        teamShort: (n) => `TEAM ${n}`,
+        qShort: (n) => `Q${n}`,
+        scoreTitle: '📊 Quarter Scores',
+        rateTitle: "🏅 Today's MVP Vote",
+        rateSub: "Not a popularity contest — results feed into each player's skill data (together with quarter scores) to keep future team assignments balanced.",
+        rateExplain: "Pick the 3 players who impressed you most today — not only goals and assists, but defending, effort and dirty work too. The more votes we collect, the tighter and more exciting next week's matches become.",
+        none: 'None',
+        rateNoRoster: 'No team roster yet, so voting is unavailable.',
+        ratePickMe: 'After the match, pick <b>the 3 most impressive players</b> of the day. First, select <b>your own name</b>. (Remembered on this device)',
+        rateConfirmMe: (n) => `Are you '${n}'?\nThis device will remember it. Please vote only under your own name.`,
+        ratePick3: (n) => `<b>${n}</b>, tap today's top <b>3 players</b> in order.`,
+        rateChangeName: 'Change name',
+        rateConfirmChange: 'Select your name again? (Please vote only under your own name)',
+        rateMax3: 'You can pick up to 3 players. Deselect one first.',
+        rateSubmit: 'Submit vote', rateUpdate: 'Update vote',
+        rateSaved: 'Your vote has been saved! (Submit again to change it)',
+        rateFail: 'Save failed. Please try again shortly.',
+        rateTally: '📊 Live tally',
+        rateTallySub: (n) => `(${n} voted · individual choices are not disclosed)`,
+        pts: ' pts',
+        medals: ['🥇 3 pts', '🥈 2 pts', '🥉 1 pt'],
+        footerNote: '© 2025 BareaPlay. Created by 송감독.'
+    }
+};
+
 function renderSharePageView(shareData) {
     const POS_MAP = { '4-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 75}, {pos: 'CB', x: 65, y: 80}, {pos: 'CB', x: 35, y: 80}, {pos: 'LB', x: 15, y: 75}, {pos: 'RW', x: 85, y: 45}, {pos: 'CM', x: 65, y: 55}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 15, y: 45}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-3-3': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 88, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 12, y: 78}, {pos: 'CM', x: 50, y: 65}, {pos: 'MF', x: 70, y: 50}, {pos: 'MF', x: 30, y: 50}, {pos: 'RW', x: 80, y: 25}, {pos: 'FW', x: 50, y: 18}, {pos: 'LW', x: 20, y: 25} ], '3-5-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 75, y: 80}, {pos: 'CB', x: 50, y: 85}, {pos: 'CB', x: 25, y: 80}, {pos: 'RW', x: 90, y: 50}, {pos: 'CM', x: 65, y: 55}, {pos: 'MF', x: 50, y: 65}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 10, y: 50}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-2-3-1': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 15, y: 78}, {pos: 'MF', x: 60, y: 65}, {pos: 'MF', x: 40, y: 65}, {pos: 'RW', x: 80, y: 40}, {pos: 'MF', x: 50, y: 45}, {pos: 'LW', x: 20, y: 40}, {pos: 'FW', x: 50, y: 18} ], '3-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 80, y: 80}, {pos: 'CB', x: 50, y: 82}, {pos: 'CB', x: 20, y: 80}, {pos: 'RW', x: 85, y: 50}, {pos: 'CM', x: 60, y: 60}, {pos: 'CM', x: 40, y: 60}, {pos: 'LW', x: 15, y: 50}, {pos: 'FW', x: 65, y: 25}, {pos: 'FW', x: 35, y: 25} ], '3-4-1': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 80, y: 80}, {pos: 'CB', x: 50, y: 82}, {pos: 'CB', x: 20, y: 80}, {pos: 'RW', x: 85, y: 50}, {pos: 'CM', x: 60, y: 60}, {pos: 'CM', x: 40, y: 60}, {pos: 'LW', x: 15, y: 50}, {pos: 'FW', x: 50, y: 20} ] };
+    const T = BP_I18N[__bpLang]; // [v55] 현재 언어 사전
     const { meetingInfo = {}, teams: teamsObject = {}, lineups = {}, attendance = null } = shareData || {};
     // [수정] 명단과 라인업을 '같은 키(teamN)'로 짝지어 렌더 → 팀1↔팀2 명단이 서로 뒤바뀌던 현상 방지
     const teamKeys = Object.keys(teamsObject || {}).sort((a, b) => {
@@ -593,10 +673,10 @@ function renderSharePageView(shareData) {
     const colors = ["#0D9488", "#0288D1", "#7B1FA2", "#43A047", "#F4511E"];
 
     let timeStr = '';
-    try { timeStr = meetingInfo.time ? new Date(meetingInfo.time).toLocaleString('ko-KR') : ''; } catch (e) { timeStr = String(meetingInfo.time || ''); }
+    try { timeStr = meetingInfo.time ? new Date(meetingInfo.time).toLocaleString(T.locale) : ''; } catch (e) { timeStr = String(meetingInfo.time || ''); }
     const locationHtml = safeUrl(meetingInfo.locationUrl)
         ? `<a href="${esc(safeUrl(meetingInfo.locationUrl))}" target="_blank" style="color:#2563eb;text-decoration:underline">${esc(meetingInfo.location)}</a>`
-        : (esc(meetingInfo.location) || '미정');
+        : (esc(meetingInfo.location) || T.tbd);
 
     const getQ = (obj, idx) => { if (!obj) return null; if (Array.isArray(obj)) return obj[idx]; return obj[`q${idx + 1}`] || obj[`q_${idx}`] || null; };
 
@@ -624,10 +704,10 @@ function renderSharePageView(shareData) {
         });
         let foot = '';
         if (referee) foot += `<span style="margin-right:8px"><b>⚖️</b> ${esc(referee)}</span>`;
-        foot += `<span><b>🛌</b> ${esc(resters.join(', ')) || '없음'}</span>`;
+        foot += `<span><b>🛌</b> ${esc(resters.join(', ')) || T.none}</span>`;
         return `<div class="bp-quarter">
             <div class="bp-pitch">
-                <div class="bp-qtitle">팀 ${(teamIdx ?? 0) + 1}, ${qIndex + 1}쿼터 ${formation ? '(' + esc(formation) + ')' : ''}</div>
+                <div class="bp-qtitle">${T.team((teamIdx ?? 0) + 1)} · ${T.qShort(qIndex + 1)} ${formation ? '(' + esc(formation) + ')' : ''}</div>
                 <div class="bp-line" style="top:50%;left:0;width:100%;height:1.5px"></div>
                 <div class="bp-circle" style="top:50%;left:50%;width:24%;height:17%;transform:translate(-50%,-50%)"></div>
                 <div class="bp-box" style="top:83%;left:20%;width:60%;height:17%"></div>
@@ -641,13 +721,13 @@ function renderSharePageView(shareData) {
     // [수정] 공유 보드에서 참석 현황 섹션 제거 — 투표 결과만 반영하므로 수동 추가 인원과 불일치하여 혼란 방지
     let attendHtml = '';
 
-    const teamHtml = teams.map((team, i) => `<div style="background:${colors[i % 5]};color:#fff;border-radius:12px;padding:12px"><div style="font-weight:800;border-bottom:1px solid rgba(255,255,255,.3);padding-bottom:6px;margin-bottom:6px">팀 ${i + 1}</div>${[...team].sort((a, b) => a.name.localeCompare(b.name, 'ko-KR')).map(pp => `<div style="background:rgba(255,255,255,.18);border-radius:6px;padding:5px 8px;margin-bottom:4px">${esc(String(pp.name).replace(' (신규)', ''))}</div>`).join('')}</div>`).join('');
+    const teamHtml = teams.map((team, i) => `<div style="background:${colors[i % 5]};color:#fff;border-radius:12px;padding:12px"><div style="font-weight:800;border-bottom:1px solid rgba(255,255,255,.3);padding-bottom:6px;margin-bottom:6px">${T.team(i + 1)}</div>${[...team].sort((a, b) => a.name.localeCompare(b.name, 'ko-KR')).map(pp => `<div style="background:rgba(255,255,255,.18);border-radius:6px;padding:5px 8px;margin-bottom:4px">${esc(String(pp.name).replace(' (신규)', ''))}</div>`).join('')}</div>`).join('');
 
     const lineupHtml = teamKeys.map((teamKey, teamIdx) => {
         const lu = lineups[teamKey] || lineups[`team${teamIdx + 1}`] || lineups[teamIdx];
         let q = '';
         for (let i = 0; i < 6; i++) q += pitchHTML(lu, i, teamIdx);
-        return `<div style="margin-bottom:18px"><h3 style="font-weight:800;text-align:center;margin-bottom:8px">팀 ${teamIdx + 1}</h3><div class="bp-qgrid">${q}</div></div>`;
+        return `<div style="margin-bottom:18px"><h3 style="font-weight:800;text-align:center;margin-bottom:8px">${T.team(teamIdx + 1)}</h3><div class="bp-qgrid">${q}</div></div>`;
     }).join('');
 
     document.title = 'Barea 팀배정 및 라인업';
@@ -670,33 +750,49 @@ function renderSharePageView(shareData) {
         .bp-foot{text-align:center;margin-top:6px;padding:4px;font-size:.75rem;font-weight:700;background:#f3f4f6;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         details.bp-card>summary{list-style:none;cursor:pointer;font-size:1.3rem;font-weight:800;display:flex;align-items:center;justify-content:space-between;padding-bottom:8px;border-bottom:1px solid #eee}
         details.bp-card>summary::-webkit-details-marker{display:none}
-        details.bp-card>summary::after{content:'▾';font-size:.9rem;color:#9ca3af;transition:transform .2s;margin-left:8px}
+        details.bp-card>summary::after{content:'▾';font-size:.9rem;color:#9ca3af;transition:transform .2s;margin-left:8px;flex-shrink:0}
         details.bp-card:not([open])>summary{border-bottom:none;padding-bottom:0}
         details.bp-card:not([open])>summary::after{transform:rotate(-90deg)}
         details.bp-card>.bp-body{margin-top:12px}
+        .bp-sub{display:block;font-size:.72rem;color:#9ca3af;font-weight:400;line-height:1.5;margin-top:3px}
     </style>
     <div class="bp-wrap">
-        <div style="text-align:center;margin:12px 0"><h1 style="font-size:1.8rem;font-weight:800;color:#111827">BareaPlay ⚽</h1><p style="color:#6b7280;margin-top:4px">모임 보드</p></div>
-        <div class="bp-card"><h2 class="bp-h2">📅 모임 정보</h2><p style="margin:4px 0"><b>시간:</b> ${esc(timeStr)}</p><p style="margin:4px 0"><b>장소:</b> ${locationHtml}</p></div>
+        <div style="text-align:center;margin:12px 0;position:relative">
+            <h1 style="font-size:1.8rem;font-weight:800;color:#111827">BareaPlay ⚽</h1>
+            <p style="color:#6b7280;margin-top:4px">${T.boardSub}</p>
+            <button id="bp-lang-btn" style="position:absolute;top:0;right:0;font-size:.78rem;font-weight:700;color:#4f46e5;background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;padding:6px 10px;cursor:pointer">${T.langBtn}</button>
+        </div>
+        <div class="bp-card"><h2 class="bp-h2">${T.infoTitle}</h2><p style="margin:4px 0"><b>${T.timeLbl}:</b> ${esc(timeStr)}</p><p style="margin:4px 0"><b>${T.placeLbl}:</b> ${locationHtml}</p></div>
         ${attendHtml}
-        <details class="bp-card"><summary>⚖️ 팀 배정</summary><div class="bp-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">${teamHtml}</div></details>
-        <details class="bp-card" open><summary>📋 라인업</summary><div class="bp-body">${lineupHtml}</div></details>
-        <div class="bp-card" id="bp-score-card" style="display:none"><h2 class="bp-h2">📊 쿼터 스코어</h2><div id="bp-score-body"></div></div>
-        <div class="bp-card"><h2 class="bp-h2">🏅 오늘의 활약 투표</h2><div id="bp-rate-body"></div></div>
-        <footer style="text-align:center;padding:16px;color:#9ca3af;font-size:.8rem">© 2025 BareaPlay. Created by 송감독.</footer>
+        <details class="bp-card"><summary>${T.teamAssign}</summary><div class="bp-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">${teamHtml}</div></details>
+        <details class="bp-card" id="bp-score-card" style="display:none"><summary>${T.scoreTitle}</summary><div class="bp-body" id="bp-score-body"></div></details>
+        <details class="bp-card" id="bp-rate-card"><summary><span style="min-width:0">${T.rateTitle}<span class="bp-sub">${T.rateSub}</span></span></summary><div class="bp-body"><p style="font-size:.8rem;color:#6b7280;margin:0 0 10px">${T.rateExplain}</p><div id="bp-rate-body"></div></div></details>
+        <details class="bp-card" open><summary>${T.lineupTitle}</summary><div class="bp-body">${lineupHtml}</div></details>
+        <footer style="text-align:center;padding:16px;color:#9ca3af;font-size:.8rem">${T.footerNote}</footer>
     </div>`;
     const __n = document.createElement('div'); __n.id = 'notification'; document.body.appendChild(__n);
-    setupShareBoardExtras(shareData); // [신규] 쿼터 스코어 표시 + 활약 투표(피어 평점)
+    // [v55] 언어 전환: 활약 투표 실시간 구독을 해제한 뒤 보드 전체를 다시 그린다 (데이터 재요청 없음)
+    const langBtn = document.getElementById('bp-lang-btn');
+    if (langBtn) langBtn.onclick = () => {
+        __bpLang = (__bpLang === 'en') ? 'ko' : 'en';
+        try { localStorage.setItem('bp_lang', __bpLang); } catch (e) {}
+        if (__bpRateUnsub) { try { __bpRateUnsub(); } catch (e) {} __bpRateUnsub = null; }
+        renderSharePageView(shareData);
+    };
+    setupShareBoardExtras(shareData); // 쿼터 스코어 표시 + 활약 투표(피어 평점)
 }
 
 /* =========================================================
-   [신규] 공유 보드 부가 기능 — 로그인 없이 참여하는 '오늘의 활약 투표'
+   공유 보드 부가 기능 — 로그인 없이 참여하는 '오늘의 활약 투표'
    신뢰 모델은 출석 투표와 동일: 그날 참가자 명단에서 본인 이름을 스스로 선택하고,
    기기(localStorage)에 기억된다. 문서 키가 투표자 이름이라 다시 제출하면 덮어써져
    중복 투표가 원천적으로 불가능하다. 결과는 익명 집계만 공개된다.
+   [v55] 모든 안내 문구는 BP_I18N(한/영) 사전을 사용하고,
+   실시간 구독은 __bpRateUnsub 에 보관해 언어 전환 시 중복 구독을 막는다.
    ========================================================= */
 function setupShareBoardExtras(shareData) {
     try {
+        const T = BP_I18N[__bpLang];
         const meetingInfo = shareData.meetingInfo || {};
         const dateStr = String(meetingInfo.time || '').split(' ')[0] || window.getLocalDate();
 
@@ -708,14 +804,14 @@ function setupShareBoardExtras(shareData) {
         }));
         names.sort((a, b) => a.localeCompare(b, 'ko-KR'));
 
-        // ── 쿼터 스코어: 운영진이 경기기록 탭에 저장한 스코어가 있으면 표시
+        // ── 쿼터 스코어: 운영진이 경기기록 탭에 저장한 스코어가 있으면 표시 (기본 접힘)
         getDoc(doc(db, "matchRecords", dateStr)).then(snap => {
             if (!snap.exists()) return;
             const qs = snap.data().quarters || {};
             const rows = Object.keys(qs).sort().map(k => {
                 const q = qs[k];
                 const qNum = (parseInt(k.replace(/[^0-9]/g, ''), 10) + 1) || '';
-                return `<div style="display:flex;justify-content:center;gap:12px;padding:6px 0;border-bottom:1px solid #f3f4f6;font-weight:700"><span style="color:#9ca3af;width:52px">${qNum}쿼터</span><span>팀${(q.a ?? 0) + 1}</span><span style="color:#4f46e5">${q.sa} : ${q.sb}</span><span>팀${(q.b ?? 1) + 1}</span></div>`;
+                return `<div style="display:flex;justify-content:center;gap:12px;padding:6px 0;border-bottom:1px solid #f3f4f6;font-weight:700"><span style="color:#9ca3af;min-width:52px">${T.qShort(qNum)}</span><span>${T.teamShort((q.a ?? 0) + 1)}</span><span style="color:#4f46e5">${q.sa} : ${q.sb}</span><span>${T.teamShort((q.b ?? 1) + 1)}</span></div>`;
             }).join('');
             if (!rows) return;
             const card = document.getElementById('bp-score-card');
@@ -727,7 +823,7 @@ function setupShareBoardExtras(shareData) {
         const rateBody = document.getElementById('bp-rate-body');
         if (!rateBody) return;
         if (names.length === 0) {
-            rateBody.innerHTML = '<p style="color:#9ca3af;font-size:.85rem">팀 배정 명단이 없어 투표를 열 수 없습니다.</p>';
+            rateBody.innerHTML = `<p style="color:#9ca3af;font-size:.85rem">${T.rateNoRoster}</p>`;
             return;
         }
         let myName = localStorage.getItem('bp_myName') || '';
@@ -735,7 +831,7 @@ function setupShareBoardExtras(shareData) {
         let picks = [];
         let latestVotes = {};
         let resultHtml = '';
-        const medal = (i) => ['🥇 3점', '🥈 2점', '🥉 1점'][i];
+        const medal = (i) => T.medals[i];
 
         function renderResultArea() {
             let el = document.getElementById('bp-rate-result');
@@ -751,13 +847,13 @@ function setupShareBoardExtras(shareData) {
         function render() {
             if (!myName) {
                 rateBody.innerHTML = `
-                    <p style="font-size:.9rem;color:#374151;margin:0 0 10px">경기가 끝나면 <b>오늘 인상적이었던 3명</b>을 뽑아주세요. 먼저 <b>본인 이름</b>을 선택하세요. (이 기기에 기억됩니다)</p>
+                    <p style="font-size:.9rem;color:#374151;margin:0 0 10px">${T.ratePickMe}</p>
                     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px">
                         ${names.map(n => `<button class="bp-me-btn" data-n="${esc(n)}" style="padding:9px 4px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;font-size:.85rem">${esc(n)}</button>`).join('')}
                     </div>`;
                 rateBody.querySelectorAll('.bp-me-btn').forEach(b => b.onclick = () => {
                     const n = b.dataset.n;
-                    if (!confirm(`'${n}'님이 맞습니까?\n이 기기에 기억되며, 꼭 본인 이름으로만 투표해 주세요.`)) return;
+                    if (!confirm(T.rateConfirmMe(n))) return;
                     myName = n;
                     localStorage.setItem('bp_myName', n);
                     const prev = latestVotes[myName];
@@ -770,8 +866,8 @@ function setupShareBoardExtras(shareData) {
             const cands = names.filter(n => n !== myName); // 자기 자신은 후보에서 제외
             rateBody.innerHTML = `
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                    <span style="font-size:.9rem"><b>${esc(myName)}</b>님, 오늘 잘한 <b>3명</b>을 순서대로 탭하세요.</span>
-                    <button id="bp-me-change" style="font-size:.75rem;color:#6b7280;background:none;border:none;text-decoration:underline;cursor:pointer">이름 변경</button>
+                    <span style="font-size:.9rem">${T.ratePick3(esc(myName))}</span>
+                    <button id="bp-me-change" style="font-size:.75rem;color:#6b7280;background:none;border:none;text-decoration:underline;cursor:pointer">${T.rateChangeName}</button>
                 </div>
                 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px;margin-bottom:10px">
                     ${cands.map(n => {
@@ -780,10 +876,10 @@ function setupShareBoardExtras(shareData) {
                         return `<button class="bp-pick-btn" data-n="${esc(n)}" style="padding:9px 4px;border:1.5px solid ${on ? '#4f46e5' : '#d1d5db'};border-radius:8px;background:${on ? '#eef2ff' : '#fff'};cursor:pointer;font-size:.85rem;font-weight:${on ? '800' : '400'}">${esc(n)}${on ? `<br><span style="font-size:.7rem;color:#4f46e5">${medal(i)}</span>` : ''}</button>`;
                     }).join('')}
                 </div>
-                <button id="bp-rate-submit" style="width:100%;padding:12px;border:0;border-radius:10px;background:${picks.length === 3 ? '#4f46e5' : '#c7d2fe'};color:#fff;font-weight:800;cursor:pointer" ${picks.length === 3 ? '' : 'disabled'}>${latestVotes[myName] ? '투표 수정하기' : '투표 제출'} (${picks.length}/3)</button>
+                <button id="bp-rate-submit" style="width:100%;padding:12px;border:0;border-radius:10px;background:${picks.length === 3 ? '#4f46e5' : '#c7d2fe'};color:#fff;font-weight:800;cursor:pointer" ${picks.length === 3 ? '' : 'disabled'}>${latestVotes[myName] ? T.rateUpdate : T.rateSubmit} (${picks.length}/3)</button>
                 <p id="bp-rate-msg" style="text-align:center;font-weight:700;min-height:20px;margin:8px 0 0;font-size:.85rem"></p>`;
             document.getElementById('bp-me-change').onclick = () => {
-                if (!confirm('이름을 다시 선택할까요? (꼭 본인 이름으로만 투표해 주세요)')) return;
+                if (!confirm(T.rateConfirmChange)) return;
                 myName = '';
                 localStorage.removeItem('bp_myName');
                 picks = [];
@@ -794,7 +890,7 @@ function setupShareBoardExtras(shareData) {
                 const i = picks.indexOf(n);
                 if (i > -1) picks.splice(i, 1);
                 else {
-                    if (picks.length >= 3) { alert('3명까지만 뽑을 수 있습니다. 다른 선수를 해제한 뒤 선택하세요.'); return; }
+                    if (picks.length >= 3) { alert(T.rateMax3); return; }
                     picks.push(n);
                 }
                 render();
@@ -806,17 +902,17 @@ function setupShareBoardExtras(shareData) {
                 try {
                     // 문서 키 = 투표자 이름 → 재제출 시 덮어쓰기 (중복 투표 불가)
                     await setDoc(doc(db, "ratings", dateStr), { date: dateStr, votes: { [myName]: { picks: [...picks], at: Date.now() } } }, { merge: true });
-                    if (msgEl) { msgEl.style.color = '#16a34a'; msgEl.textContent = '투표가 저장되었습니다! (다시 제출하면 수정됩니다)'; }
+                    if (msgEl) { msgEl.style.color = '#16a34a'; msgEl.textContent = T.rateSaved; }
                 } catch (e) {
                     console.error(e);
-                    if (msgEl) { msgEl.style.color = '#ef4444'; msgEl.textContent = '저장 실패. 잠시 후 다시 시도해주세요.'; }
+                    if (msgEl) { msgEl.style.color = '#ef4444'; msgEl.textContent = T.rateFail; }
                 }
             };
             renderResultArea();
         }
 
-        // 실시간 집계 (익명: 점수 합계만 공개)
-        onSnapshot(doc(db, "ratings", dateStr), (snap) => {
+        // 실시간 집계 (익명: 점수 합계만 공개) — [v55] 구독 핸들 보관
+        __bpRateUnsub = onSnapshot(doc(db, "ratings", dateStr), (snap) => {
             latestVotes = (snap.exists() && snap.data().votes) || {};
             const pts = {};
             Object.values(latestVotes).forEach(v => ((v && v.picks) || []).forEach((n, i) => { pts[n] = (pts[n] || 0) + (3 - i); }));
@@ -825,8 +921,8 @@ function setupShareBoardExtras(shareData) {
             if (ranked.length === 0) { resultHtml = ''; renderResultArea(); }
             else {
                 const max = pts[ranked[0]] || 1;
-                resultHtml = `<div style="border-top:1px solid #eee;padding-top:10px"><p style="font-weight:800;margin:0 0 8px;font-size:.9rem">📊 현재 집계 <span style="color:#9ca3af;font-weight:400">(${voters}명 참여 · 누가 뽑았는지는 공개되지 않습니다)</span></p>
-                    ${ranked.slice(0, 7).map(n => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:.85rem"><span style="width:64px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(n)}</span><div style="flex:1;background:#f3f4f6;border-radius:4px;height:14px"><div style="width:${Math.round(pts[n] / max * 100)}%;background:#818cf8;height:14px;border-radius:4px"></div></div><span style="width:36px;text-align:right;font-weight:800;color:#4f46e5">${pts[n]}점</span></div>`).join('')}</div>`;
+                resultHtml = `<div style="border-top:1px solid #eee;padding-top:10px"><p style="font-weight:800;margin:0 0 8px;font-size:.9rem">${T.rateTally} <span style="color:#9ca3af;font-weight:400">${T.rateTallySub(voters)}</span></p>
+                    ${ranked.slice(0, 7).map(n => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:.85rem"><span style="width:64px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(n)}</span><div style="flex:1;background:#f3f4f6;border-radius:4px;height:14px"><div style="width:${Math.round(pts[n] / max * 100)}%;background:#818cf8;height:14px;border-radius:4px"></div></div><span style="width:44px;text-align:right;font-weight:800;color:#4f46e5">${pts[n]}${T.pts}</span></div>`).join('')}</div>`;
                 renderResultArea();
             }
             // 내 기존 투표 복원 (아직 아무것도 안 골랐을 때만 → 편집 중 방해 금지)
