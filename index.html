@@ -83,9 +83,9 @@
             <nav class="flex md:justify-center border-b border-gray-200 overflow-x-auto">
                 <button id="tab-balancer" class="tab-button active text-lg font-semibold py-4 px-6 border-b-2 border-transparent">⚖️ 팀 배정기</button>
                 <button id="tab-lineup" class="tab-button text-lg font-semibold py-4 px-6 border-b-2 border-transparent">📋 라인업 생성기</button>
-                <button id="tab-accounting" class="tab-button text-lg font-semibold py-4 px-6 border-b-2 border-transparent">📈 출석&회계</button>
-                <button id="tab-record" class="tab-button text-lg font-semibold py-4 px-6 border-b-2 border-transparent">🏆 경기기록</button>
                 <button id="tab-share" class="tab-button text-lg font-semibold py-4 px-6 border-b-2 border-transparent">📢 모임배포</button>
+                <button id="tab-record" class="tab-button text-lg font-semibold py-4 px-6 border-b-2 border-transparent">🏆 경기기록</button>
+                <button id="tab-accounting" class="tab-button text-lg font-semibold py-4 px-6 border-b-2 border-transparent">📈 출석&회계</button>
                 <button id="tab-players" class="tab-button text-lg font-semibold py-4 px-6 border-b-2 border-transparent">👤 선수관리</button>
                 <button id="tab-manual" class="tab-button text-lg font-semibold py-4 px-6 border-b-2 border-transparent">📖 사용설명서</button>
             </nav>
@@ -110,7 +110,7 @@
 
     <script type="module" src="js/app.js?v=13"></script>
     <script>
-        // [v55 보강] SW 등록 + 새 버전 알림 배너
+        // [v55 보강 / v56 유지] SW 등록 + 새 버전 알림 배너
         //  - 새 버전이 설치되면 화면 아래에 배너를 띄우고, 버튼 한 번으로 즉시 갱신한다.
         //  - 탭을 오래 켜둔 기기를 위해 1시간마다 새 버전을 자동 확인한다.
         if ('serviceWorker' in navigator) {
