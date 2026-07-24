@@ -10,7 +10,13 @@ import { doc, getDoc, getDocs, setDoc, collection, serverTimestamp } from "https
 let db, state;
 let dateInput, teamsInfoEl, scoreRowsEl, eloBox, rateBox, seasonBox;
 let currentTeams = [];     // 선택 날짜의 팀 명단 [[이름,...], ...]
+let currentTeamNames = []; // [v58] 선택 날짜의 팀 이름 (dailyMeetings.teamNames)
 let currentRecord = null;  // matchRecords/{date} 문서 데이터
+
+// [v58] 팀 이름 표시: 저장된 이름 → 없으면 '팀 N'
+function tn(i) {
+    return (currentTeamNames && currentTeamNames[i]) ? String(currentTeamNames[i]) : `팀 ${i + 1}`;
+}
 const QUARTERS = 6;
 
 function localToday() { return window.getLocalDate ? window.getLocalDate() : new Date().toISOString().split('T')[0]; }
@@ -67,7 +73,7 @@ async function loadDate() {
     const date = dateInput.value || localToday();
     teamsInfoEl.innerHTML = '<p class="text-gray-400">불러오는 중...</p>';
     scoreRowsEl.innerHTML = '';
-    currentTeams = []; currentRecord = null;
+    currentTeams = []; currentTeamNames = []; currentRecord = null;
     try {
         const [mSnap, rSnap] = await Promise.all([
             getDoc(doc(db, "dailyMeetings", date)),
@@ -75,6 +81,7 @@ async function loadDate() {
         ]);
         if (rSnap.exists()) currentRecord = rSnap.data();
         if (mSnap.exists()) {
+            currentTeamNames = mSnap.data().teamNames || []; // [v58]
             const teamsObj = mSnap.data().teams || {};
             currentTeams = Object.keys(teamsObj).sort().map(k => (teamsObj[k] || []).map(p => cleanName(p.name)).filter(Boolean));
         } else if (currentRecord && currentRecord.teamsSnapshot) {
@@ -95,13 +102,13 @@ function renderTeamsInfo() {
         return;
     }
     teamsInfoEl.innerHTML = currentTeams.map((t, i) =>
-        `<span class="inline-block bg-gray-100 rounded-lg px-2 py-1 mr-2 mb-1 text-xs"><b>팀 ${i + 1}</b> (${t.length}명): ${t.join(', ')}</span>`
+        `<span class="inline-block bg-gray-100 rounded-lg px-2 py-1 mr-2 mb-1 text-xs"><b>${tn(i)}</b> (${t.length}명): ${t.join(', ')}</span>`
     ).join('');
 }
 
 function renderScoreRows() {
     if (currentTeams.length < 2) { scoreRowsEl.innerHTML = ''; return; }
-    const teamOptions = (sel) => currentTeams.map((_, i) => `<option value="${i}" ${i === sel ? 'selected' : ''}>팀 ${i + 1}</option>`).join('');
+    const teamOptions = (sel) => currentTeams.map((_, i) => `<option value="${i}" ${i === sel ? 'selected' : ''}>${tn(i)}</option>`).join('');
     const qs = (currentRecord && currentRecord.quarters) || {};
     let html = '';
     for (let q = 0; q < QUARTERS; q++) {

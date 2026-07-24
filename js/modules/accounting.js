@@ -58,6 +58,13 @@ function noShowCount(name) {
     return (state.attendanceLog || []).filter(l => normName(l.name) === key && l.paymentStatus === NOSHOW).length;
 }
 
+// [v58 추가] 💳 납부방식 (현금/카림/이체/기타) — attendance 문서의 payMethod 필드
+const PAY_METHODS = [['cash', '현금'], ['careem', '카림'], ['transfer', '이체'], ['etc', '기타']];
+function payMethodLabel(v) {
+    const f = PAY_METHODS.find(m => m[0] === v);
+    return f ? f[1] : '';
+}
+
 function getStatusColor(status) {
     switch (status) {
         case "●": return "bg-green-100 text-green-800";
@@ -71,6 +78,9 @@ function getStatusColor(status) {
 function renderFullPlayerChecklist() {
     if (!checklistContainer) return;
     checklistContainer.innerHTML = '';
+    // [v58] 수동 추가 입력칸의 자동완성 목록 갱신 (등록 선수 전체)
+    const __dl = document.getElementById('attendee-name-datalist');
+    if (__dl) __dl.innerHTML = Object.keys(state.playerDB || {}).sort((a, b) => a.localeCompare(b, 'ko-KR')).map(nm => `<option value="${window.esc(nm)}"></option>`).join('');
     const selectedDate = attendanceDate.value;
 
     const loggedAttendees = state.attendanceLog
@@ -142,7 +152,7 @@ function renderAttendanceLogTable(logs) {
     const sortedLogs = logs.sort((a, b) => (a.date || '').localeCompare(b.date || '') || a.name.localeCompare(b.name, 'ko-KR'));
 
     if (sortedLogs.length === 0) {
-        logBody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-gray-500">해당 기간의 출석 로그가 없습니다.</td></tr>`;
+        logBody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-gray-500">해당 기간의 출석 로그가 없습니다.</td></tr>`;
         updateCollectBar(0, 0, 0, 0);
         return;
     }
@@ -194,11 +204,12 @@ function renderAttendanceLogTable(logs) {
             <td data-label="이름" class="py-2 px-4 font-medium text-gray-900">${log.name}${cPill}${__badge}<button data-id="${docId}" class="delete-log-btn ml-2 text-red-500 hover:text-red-700 font-bold admin-control" title="이 기록 삭제" ${!state.isAdmin ? 'disabled' : ''}>✕</button></td>
             <td data-label="납부 상태"><select data-id="${docId}" class="log-status-select p-1 border rounded-md ${getStatusColor(log.paymentStatus)} admin-control" ${!state.isAdmin ? 'disabled': ''}><option value="" ${!log.paymentStatus ? 'selected' : ''}></option><option value="●" ${log.paymentStatus === '●' ? 'selected' : ''}>● 완납</option><option value="△" ${log.paymentStatus === '△' ? 'selected' : ''}>△ 일부</option><option value="✕" ${log.paymentStatus === '✕' ? 'selected' : ''}>✕ 미납</option><option value="N" ${log.paymentStatus === NOSHOW ? 'selected' : ''}>N 노쇼</option></select></td>
             <td data-label="납부액"><input type="number" data-id="${docId}" class="log-amount-input w-24 p-1 border rounded-md admin-control" placeholder="납부액" value="${log.paymentAmount || ''}" ${!state.isAdmin ? 'disabled': ''}></td>
+            <td data-label="납부방식"><div class="pay-method-group">${PAY_METHODS.map(([v, label]) => `<button type="button" data-id="${docId}" data-method="${v}" class="pay-method-btn${log.payMethod === v ? ' active pm-' + v : ''}" ${!state.isAdmin ? 'disabled' : ''}>${label}</button>`).join('')}</div></td>
             <td data-label="비고"><input type="text" data-id="${docId}" data-name="${window.esc(log.name)}" class="log-note-input w-full p-1 border rounded-md admin-control" placeholder="비고 입력..." value="${window.esc((log.note && String(log.note).trim()) ? log.note : ((state.playerNotes && state.playerNotes[normName(log.name)]) || ''))}" ${!state.isAdmin ? 'disabled': ''}></td>
         `;
         logBody.appendChild(row);
     });
-    logFoot.innerHTML = `<tr><td colspan="4" class="py-2 px-4 text-right">조회 기간 합계</td><td class="py-2 px-4 font-bold">${totalAmount.toLocaleString()}</td><td class="py-2 px-4"></td></tr>`;
+    logFoot.innerHTML = `<tr><td colspan="4" class="py-2 px-4 text-right">조회 기간 합계</td><td class="py-2 px-4 font-bold">${totalAmount.toLocaleString()}</td><td class="py-2 px-4" colspan="2"></td></tr>`;
 
     // [추가] 수금 진행바 갱신 (노쇼·운영진 제외한 실제 수금 대상 기준)
     updateCollectBar(payDone, payEligible, cCollected, payEligible - payDone);
@@ -234,6 +245,59 @@ function applyCollectToggle(docId) {
     }
     renderForDate();
     if (window._collectSave) window._collectSave(docId, field);
+}
+
+// [v58 추가] ➕ 기타 수입 로그 렌더 (incomes 컬렉션 — 후원금·이월금 등)
+function renderExtraIncomeLog(logs) {
+    const body = document.getElementById('extra-income-log-body');
+    const foot = document.getElementById('extra-income-log-foot');
+    if (!body || !foot) return;
+    body.innerHTML = '';
+    foot.innerHTML = '';
+    const sorted = (logs || []).slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || ((b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
+    if (sorted.length === 0) {
+        body.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-gray-500">기타 수입 기록이 없습니다.</td></tr>`;
+        return;
+    }
+    let total = 0;
+    sorted.forEach(log => {
+        total += Number(log.amount || 0);
+        const row = document.createElement('tr');
+        row.className = 'bg-white border-b';
+        row.innerHTML = `
+            <td data-label="날짜" class="py-2 px-4">${log.date || ''}</td>
+            <td data-label="항목" class="py-2 px-4 font-medium text-gray-900">${window.esc(log.item || '')}</td>
+            <td data-label="금액" class="py-2 px-4">${Number(log.amount || 0).toLocaleString()}</td>
+            <td data-label="관리"><button data-id="${log.id}" class="delete-extra-income-btn text-red-500 hover:underline admin-control" ${!state.isAdmin ? 'disabled' : ''}>삭제</button></td>
+        `;
+        body.appendChild(row);
+    });
+    foot.innerHTML = `<tr><td colspan="2" class="py-2 px-4 text-right">합계</td><td class="py-2 px-4 font-bold">${total.toLocaleString()}</td><td></td></tr>`;
+}
+
+// [v58 추가] 기타 수입 입력 (지출과 동일한 형태 · incomes 컬렉션에 저장)
+async function handleExtraIncomeSubmit(e) {
+    e.preventDefault();
+    if (!state.isAdmin) { window.showNotification('관리자만 입력할 수 있습니다.', 'error'); return; }
+    const dateEl = document.getElementById('extra-income-date');
+    const itemEl = document.getElementById('extra-income-item');
+    const amountEl = document.getElementById('extra-income-amount');
+    const item = itemEl.value.trim();
+    const amount = amountEl.value;
+    if (!item || !amount) { window.showNotification('항목과 금액을 모두 입력해주세요.', 'error'); return; }
+    try {
+        await addDoc(collection(db, "incomes"), {
+            item,
+            amount: Number(amount),
+            date: dateEl.value || attendanceDate.value || localDateStr(),
+            createdAt: serverTimestamp()
+        });
+        window.showNotification('기타 수입이 추가되었습니다.');
+        itemEl.value = ''; amountEl.value = '';
+    } catch (error) {
+        console.error("Error adding extra income: ", error);
+        window.showNotification('기타 수입 추가에 실패했습니다. (Firestore의 incomes 규칙 확인)', 'error');
+    }
 }
 
 function renderExpenseLog(logs) {
@@ -304,8 +368,9 @@ async function handleExpenseSubmit(e) {
 
 function calculateAndRenderTotalBalance() {
     const totalIncome = state.attendanceLog.reduce((sum, log) => sum + Number(log.paymentAmount || 0), 0);
+    const totalExtra = (state.extraIncomeLog || []).reduce((sum, log) => sum + Number(log.amount || 0), 0); // [v58] 기타 수입
     const totalExpense = state.expenseLog.reduce((sum, log) => sum + Number(log.amount || 0), 0);
-    const balance = totalIncome - totalExpense;
+    const balance = totalIncome + totalExtra - totalExpense;
     totalBalanceEl.textContent = `${balance.toLocaleString()} Dhs`;
 }
 
@@ -323,6 +388,13 @@ function renderAccountingChart() {
     };
 
     state.attendanceLog.forEach(log => processLog(log, 'income'));
+    // [v58] 기타 수입도 월별 수입에 합산 (amount 필드 사용)
+    (state.extraIncomeLog || []).forEach(log => {
+        if (!log.date) return;
+        const month = log.date.substring(0, 7);
+        monthlyData[month] = (monthlyData[month] || { income: 0, expense: 0 });
+        monthlyData[month].income += Number(log.amount || 0);
+    });
     state.expenseLog.forEach(log => processLog(log, 'expense'));
 
     const sortedMonths = Object.keys(monthlyData).sort().slice(-6);
@@ -348,10 +420,11 @@ function renderAccountingChart() {
 }
 
 // [전면 개편] 5개 시트(요약·인별집계·월별집계·상세회비·상세지출)로 완성도 높은 엑셀 생성
-function downloadExcel(incomeLogs, expenseLogs, startDate, endDate) {
+function downloadExcel(incomeLogs, expenseLogs, startDate, endDate, extraLogs = []) {
     const totalIncome = incomeLogs.reduce((s, l) => s + Number(l.paymentAmount || 0), 0);
+    const totalExtra = (extraLogs || []).reduce((s, l) => s + Number(l.amount || 0), 0); // [v58] 기타 수입
     const totalExpense = expenseLogs.reduce((s, l) => s + Number(l.amount || 0), 0);
-    const balance = totalIncome - totalExpense;
+    const balance = totalIncome + totalExtra - totalExpense;
     const unpaidCount = incomeLogs.filter(l => l.paymentStatus === '✕').length;
     const partialCount = incomeLogs.filter(l => l.paymentStatus === '△').length;
 
@@ -364,7 +437,9 @@ function downloadExcel(incomeLogs, expenseLogs, startDate, endDate) {
         ['생성일', localDateStr()],
         [],
         ['항목', '금액 (Dhs)'],
-        ['총 수입 (회비)', totalIncome],
+        ['회비 수입', totalIncome],
+        ['기타 수입', totalExtra],
+        ['총 수입', totalIncome + totalExtra],
         ['총 지출', totalExpense],
         ['잔액', balance],
         [],
@@ -400,6 +475,7 @@ function downloadExcel(incomeLogs, expenseLogs, startDate, endDate) {
     // 시트3: 월별 집계
     const monthly = {};
     incomeLogs.forEach(l => { const m = (l.date || '').substring(0, 7); if (m) { monthly[m] = monthly[m] || { income: 0, expense: 0 }; monthly[m].income += Number(l.paymentAmount || 0); } });
+    (extraLogs || []).forEach(l => { const m = (l.date || '').substring(0, 7); if (m) { monthly[m] = monthly[m] || { income: 0, expense: 0 }; monthly[m].income += Number(l.amount || 0); } }); // [v58]
     expenseLogs.forEach(l => { const m = (l.date || '').substring(0, 7); if (m) { monthly[m] = monthly[m] || { income: 0, expense: 0 }; monthly[m].expense += Number(l.amount || 0); } });
     const monthlyRows = Object.keys(monthly).sort().map(m => ({
         '월': m, '수입': monthly[m].income, '지출': monthly[m].expense, '잔액': monthly[m].income - monthly[m].expense
@@ -410,7 +486,7 @@ function downloadExcel(incomeLogs, expenseLogs, startDate, endDate) {
     // 시트4: 상세 - 회비
     const incomeData = incomeLogs
         .slice().sort((a, b) => (a.date || '').localeCompare(b.date || '') || a.name.localeCompare(b.name, 'ko-KR'))
-        .map(log => ({ '날짜': log.date, '이름': log.name, '납부 상태': log.paymentStatus, '납부액': Number(log.paymentAmount || 0), '비고': (log.note && String(log.note).trim()) ? log.note : ((state.playerNotes && state.playerNotes[normName(log.name)]) || '') }));
+        .map(log => ({ '날짜': log.date, '이름': log.name, '납부 상태': log.paymentStatus, '납부액': Number(log.paymentAmount || 0), '납부방식': payMethodLabel(log.payMethod), '비고': (log.note && String(log.note).trim()) ? log.note : ((state.playerNotes && state.playerNotes[normName(log.name)]) || '') }));
     const incomeSheet = XLSX.utils.json_to_sheet(incomeData.length ? incomeData : [{ '날짜': '데이터 없음' }]);
     XLSX.utils.book_append_sheet(wb, incomeSheet, "상세-회비");
 
@@ -421,8 +497,15 @@ function downloadExcel(incomeLogs, expenseLogs, startDate, endDate) {
     const expenseSheet = XLSX.utils.json_to_sheet(expenseData.length ? expenseData : [{ '날짜': '데이터 없음' }]);
     XLSX.utils.book_append_sheet(wb, expenseSheet, "상세-지출");
 
+    // [v58] 시트6: 상세 - 기타 수입
+    const extraData = (extraLogs || [])
+        .slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+        .map(log => ({ '날짜': log.date, '항목': log.item, '금액': Number(log.amount || 0) }));
+    const extraSheet = XLSX.utils.json_to_sheet(extraData.length ? extraData : [{ '날짜': '데이터 없음' }]);
+    XLSX.utils.book_append_sheet(wb, extraSheet, "상세-기타수입");
+
     XLSX.writeFile(wb, `BareaPlay_회계_${localDateStr()}.xlsx`);
-    window.showNotification("엑셀 파일이 다운로드되었습니다. (5개 시트)");
+    window.showNotification("엑셀 파일이 다운로드되었습니다. (6개 시트)");
 }
 
 // [추가] 현재 보기 모드: 'day'(선택한 날짜) | 'all'(전체) | 'range'(기간 지정)
@@ -467,6 +550,7 @@ export function renderForDate() {
     const filteredAttendance = state.attendanceLog.filter(log => (!startDate || log.date >= startDate) && (!endDate || log.date <= endDate));
 
     renderAttendanceLogTable(filteredAttendance);
+    renderExtraIncomeLog(state.extraIncomeLog || []); // [v58]
     renderExpenseLog(state.expenseLog);
 
     calculateAndRenderTotalBalance();
@@ -493,10 +577,11 @@ export function init(dependencies) {
     state = dependencies.state;
     state.currentAttendees = [];
     if (!state.playerNotes) state.playerNotes = {};
+    if (!state.extraIncomeLog) state.extraIncomeLog = []; // [v58] 기타 수입
 
     const pageElement = document.getElementById('page-accounting');
-    pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 space-y-8"><div class="bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">출석 기록 관리</h2><button id="admin-login-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1 px-3 rounded-lg">관리자 로그인</button></div><div class="mb-3"><label for="attendance-date" class="block text-md font-semibold text-gray-700 mb-2">날짜 선택</label><input type="date" id="attendance-date" class="w-full p-2 border rounded-lg"></div><div class="mb-3"><select id="record-date-jump" class="w-full p-2 border rounded-lg bg-white text-sm text-gray-700"><option value="">📌 기록 있는 날 바로가기</option></select></div><div class="mb-4"><label class="flex items-center gap-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg cursor-pointer admin-control"><input type="checkbox" id="grass-toggle" class="w-4 h-4 text-emerald-600 rounded"><span class="text-sm font-semibold text-emerald-800">🌱 천연잔디 날 (일반 70 / 학생 35)</span></label><p class="text-xs text-gray-400 mt-1">체크 후 저장하면 이 날의 회비가 천연잔디 금액으로 자동 입력됩니다.</p></div><div class="mb-4"><div class="flex justify-between items-center mb-2"><label class="block text-md font-semibold text-gray-700">참석자 선택</label><div class="space-x-2"><button id="check-all-btn" class="text-xs text-indigo-600 hover:underline admin-control" disabled>모두 선택</button><button id="uncheck-all-btn" class="text-xs text-gray-500 hover:underline admin-control" disabled>모두 해제</button></div></div><div id="attendance-checklist" class="max-h-60 overflow-y-auto border rounded-lg p-3 space-y-2"></div><div class="flex space-x-2 mt-2"><input type="text" id="manual-attendee-name" class="flex-grow bg-gray-50 border border-gray-300 text-sm rounded-lg p-2 admin-control" placeholder="수동 추가..."><button type="button" id="manual-attendee-add-btn" class="text-white bg-indigo-600 hover:bg-indigo-700 font-medium rounded-lg text-sm px-4 py-2 admin-control">추가</button></div></div><button id="record-attendance-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition-transform transform hover:scale-105 shadow-lg admin-control" disabled>선택한 날짜 출석 저장</button></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">💰 총 잔액</h2><p id="total-balance" class="text-4xl font-bold text-indigo-600">0 Dhs</p></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">📊 월별 요약</h2><div class="w-full"><canvas id="accountingChart"></canvas></div></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">운영진 공유사항</h2><textarea id="memo-area" class="w-full p-3 border rounded-lg admin-control bg-gray-50" rows="5" placeholder="미납자 정보, 주요 공지 등..." disabled></textarea><p class="text-xs text-gray-500 mt-2">메모는 자동으로 저장됩니다.</p>
-    </div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="border-b border-gray-200 mb-4"><nav class="flex -mb-px space-x-6" aria-label="Tabs"><button id="income-tab-btn" class="accounting-tab active text-indigo-600 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💰 회비 (수입)</button><button id="expense-tab-btn" class="accounting-tab text-gray-500 hover:text-gray-700 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💸 지출</button></nav></div><div id="income-log-section"><div class="mb-4"><div class="flex flex-wrap justify-between items-center gap-2 mb-2"><h2 class="text-2xl font-bold">회비 로그 <span id="log-range-label" class="text-base font-normal text-gray-500"></span></h2><div class="flex gap-2"><button id="collect-mode-btn" class="text-sm text-white bg-indigo-600 hover:bg-indigo-700 font-bold py-1.5 px-3 rounded-lg admin-control" disabled>수금 체크</button><button id="accounting-excel-download-btn" class="text-sm text-white bg-green-600 hover:bg-green-700 font-bold py-1.5 px-3 rounded-lg">엑셀</button><button id="delete-range-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1.5 px-3 rounded-lg admin-control" disabled>이 범위 삭제</button></div></div><div class="flex flex-wrap items-center gap-2"><div class="inline-flex rounded-lg border border-gray-300 overflow-hidden text-sm"><button id="view-day-btn" class="view-mode-btn px-3 py-1.5 font-medium">선택한 날짜</button><button id="view-all-btn" class="view-mode-btn px-3 py-1.5 font-medium border-l border-gray-300">전체</button><button id="view-range-btn" class="view-mode-btn px-3 py-1.5 font-medium border-l border-gray-300">기간 지정</button></div><div id="range-picker" class="hidden flex items-center gap-1"><input type="date" id="filter-start-date" class="p-1.5 border rounded-md text-sm bg-white"><span class="text-gray-400">~</span><input type="date" id="filter-end-date" class="p-1.5 border rounded-md text-sm bg-white"><select id="filter-period-select" class="p-1.5 border rounded-md bg-white text-sm"><option value="custom">직접 지정</option><option value="1m">최근 1개월</option><option value="3m">최근 3개월</option><option value="6m">최근 6개월</option><option value="all">전체</option></select></div></div></div><div id="collect-bar" class="hidden mb-3 p-3 rounded-lg border border-indigo-200 bg-indigo-50"><div class="flex flex-wrap items-center justify-between gap-2"><div class="text-sm font-semibold text-indigo-900">걷음 <span id="collect-done">0</span> / <span id="collect-total">0</span>명 · 걷은 금액 <span id="collect-amount">0</span> Dhs · 미수금 <span id="collect-remain">0</span>명</div><button id="collect-hide-btn" class="text-xs font-semibold text-indigo-700 bg-white border border-indigo-300 rounded px-2 py-1">안 낸 사람만 보기</button></div><div class="mt-2 h-2 w-full bg-indigo-100 rounded overflow-hidden"><div id="collect-progress-fill" class="h-full bg-indigo-600 rounded" style="width:0%"></div></div><p class="mt-1.5 text-xs text-indigo-700">표에서 이름 줄을 <b>탭하면 완납</b>(자동 금액)으로 기록됩니다. 다시 탭하면 취소. 일부만 받았으면 상태를 <b>△ 일부</b>로 두고 비고에 상세를 적으세요.</p></div><div class="overflow-x-auto max-h-[80vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">#</th> <th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">이름</th><th scope="col" class="py-3 px-4">납부 상태</th><th scope="col" class="py-3 px-4">납부액</th><th scope="col" class="py-3 px-4">비고</th></tr></thead><tbody id="accounting-log-body"></tbody><tfoot id="accounting-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div><div id="expense-log-section" class="hidden"><h2 class="text-2xl font-bold mb-4">지출 로그</h2><form id="expense-form" class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6 items-end"><div class="sm:col-span-2"><label for="expense-item" class="block text-sm font-medium">항목</label><input type="text" id="expense-item" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><div><label for="expense-amount" class="block text-sm font-medium">금액</label><input type="number" id="expense-amount" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><button type="submit" class="w-full bg-red-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600 admin-control" disabled>지출 추가</button></form><div class="overflow-x-auto max-h-[70vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">항목</th><th scope="col" class="py-3 px-4">금액</th><th scope="col" class="py-3 px-4">관리</th></tr></thead><tbody id="expense-log-body"></tbody><tfoot id="expense-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div></div></div>`;
+    pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 space-y-8"><div class="bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">출석 기록 관리</h2><button id="admin-login-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1 px-3 rounded-lg">관리자 로그인</button></div><div class="mb-3"><label for="attendance-date" class="block text-md font-semibold text-gray-700 mb-2">날짜 선택</label><input type="date" id="attendance-date" class="w-full p-2 border rounded-lg"></div><div class="mb-3"><select id="record-date-jump" class="w-full p-2 border rounded-lg bg-white text-sm text-gray-700"><option value="">📌 기록 있는 날 바로가기</option></select></div><div class="mb-4"><label class="flex items-center gap-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg cursor-pointer admin-control"><input type="checkbox" id="grass-toggle" class="w-4 h-4 text-emerald-600 rounded"><span class="text-sm font-semibold text-emerald-800">🌱 천연잔디 날 (일반 70 / 학생 35)</span></label><p class="text-xs text-gray-400 mt-1">체크 후 저장하면 이 날의 회비가 천연잔디 금액으로 자동 입력됩니다.</p></div><div class="mb-4"><div class="flex justify-between items-center mb-2"><label class="block text-md font-semibold text-gray-700">참석자 선택</label><div class="space-x-2"><button id="check-all-btn" class="text-xs text-indigo-600 hover:underline admin-control" disabled>모두 선택</button><button id="uncheck-all-btn" class="text-xs text-gray-500 hover:underline admin-control" disabled>모두 해제</button></div></div><div id="attendance-checklist" class="max-h-60 overflow-y-auto border rounded-lg p-3 space-y-2"></div><div class="flex space-x-2 mt-2"><input type="text" id="manual-attendee-name" list="attendee-name-datalist" class="flex-grow bg-gray-50 border border-gray-300 text-sm rounded-lg p-2 admin-control" placeholder="수동 추가 (늦참자·게스트)..."><datalist id="attendee-name-datalist"></datalist><button type="button" id="manual-attendee-add-btn" class="text-white bg-indigo-600 hover:bg-indigo-700 font-medium rounded-lg text-sm px-4 py-2 admin-control">추가</button></div></div><button id="record-attendance-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition-transform transform hover:scale-105 shadow-lg admin-control" disabled>선택한 날짜 출석 저장</button></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">💰 총 잔액</h2><p id="total-balance" class="text-4xl font-bold text-indigo-600">0 Dhs</p></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">📊 월별 요약</h2><div class="w-full"><canvas id="accountingChart"></canvas></div></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">운영진 공유사항</h2><textarea id="memo-area" class="w-full p-3 border rounded-lg admin-control bg-gray-50" rows="5" placeholder="미납자 정보, 주요 공지 등..." disabled></textarea><p class="text-xs text-gray-500 mt-2">메모는 자동으로 저장됩니다.</p>
+    </div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="border-b border-gray-200 mb-4"><nav class="flex -mb-px space-x-6" aria-label="Tabs"><button id="income-tab-btn" class="accounting-tab active text-indigo-600 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💰 회비 (수입)</button><button id="expense-tab-btn" class="accounting-tab text-gray-500 hover:text-gray-700 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💸 지출</button></nav></div><div id="income-log-section"><div class="mb-4"><div class="flex flex-wrap justify-between items-center gap-2 mb-2"><h2 class="text-2xl font-bold">회비 로그 <span id="log-range-label" class="text-base font-normal text-gray-500"></span></h2><div class="flex gap-2"><button id="collect-mode-btn" class="text-sm text-white bg-indigo-600 hover:bg-indigo-700 font-bold py-1.5 px-3 rounded-lg admin-control" disabled>수금 체크</button><button id="accounting-excel-download-btn" class="text-sm text-white bg-green-600 hover:bg-green-700 font-bold py-1.5 px-3 rounded-lg">엑셀</button><button id="delete-range-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1.5 px-3 rounded-lg admin-control" disabled>이 범위 삭제</button></div></div><div class="flex flex-wrap items-center gap-2"><div class="inline-flex rounded-lg border border-gray-300 overflow-hidden text-sm"><button id="view-day-btn" class="view-mode-btn px-3 py-1.5 font-medium">선택한 날짜</button><button id="view-all-btn" class="view-mode-btn px-3 py-1.5 font-medium border-l border-gray-300">전체</button><button id="view-range-btn" class="view-mode-btn px-3 py-1.5 font-medium border-l border-gray-300">기간 지정</button></div><div id="range-picker" class="hidden flex items-center gap-1"><input type="date" id="filter-start-date" class="p-1.5 border rounded-md text-sm bg-white"><span class="text-gray-400">~</span><input type="date" id="filter-end-date" class="p-1.5 border rounded-md text-sm bg-white"><select id="filter-period-select" class="p-1.5 border rounded-md bg-white text-sm"><option value="custom">직접 지정</option><option value="1m">최근 1개월</option><option value="3m">최근 3개월</option><option value="6m">최근 6개월</option><option value="all">전체</option></select></div></div></div><div id="collect-bar" class="hidden mb-3 p-3 rounded-lg border border-indigo-200 bg-indigo-50"><div class="flex flex-wrap items-center justify-between gap-2"><div class="text-sm font-semibold text-indigo-900">걷음 <span id="collect-done">0</span> / <span id="collect-total">0</span>명 · 걷은 금액 <span id="collect-amount">0</span> Dhs · 미수금 <span id="collect-remain">0</span>명</div><button id="collect-hide-btn" class="text-xs font-semibold text-indigo-700 bg-white border border-indigo-300 rounded px-2 py-1">안 낸 사람만 보기</button></div><div class="mt-2 h-2 w-full bg-indigo-100 rounded overflow-hidden"><div id="collect-progress-fill" class="h-full bg-indigo-600 rounded" style="width:0%"></div></div><p class="mt-1.5 text-xs text-indigo-700">표에서 이름 줄을 <b>탭하면 완납</b>(자동 금액)으로 기록됩니다. 다시 탭하면 취소. 일부만 받았으면 상태를 <b>△ 일부</b>로 두고 비고에 상세를 적으세요.</p></div><div class="overflow-x-auto max-h-[80vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">#</th> <th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">이름</th><th scope="col" class="py-3 px-4">납부 상태</th><th scope="col" class="py-3 px-4">납부액</th><th scope="col" class="py-3 px-4">납부방식</th><th scope="col" class="py-3 px-4">비고</th></tr></thead><tbody id="accounting-log-body"></tbody><tfoot id="accounting-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div><div class="mt-6 border-t pt-4"><h3 class="text-lg font-bold mb-1">➕ 기타 수입 <span class="text-sm font-normal text-gray-400">(후원금·이월금 등 회비 외 수입)</span></h3><p class="text-xs text-gray-400 mb-3">여기에 입력한 수입은 총 잔액·월별 차트·엑셀에 자동 반영됩니다. (회비 기록과는 분리 저장)</p><form id="extra-income-form" class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4 items-end"><div><label for="extra-income-date" class="block text-sm font-medium">날짜</label><input type="date" id="extra-income-date" class="mt-1 w-full p-2 border rounded-lg bg-gray-50"></div><div><label for="extra-income-item" class="block text-sm font-medium">항목</label><input type="text" id="extra-income-item" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" placeholder="예: 후원금 (홍길동)" required></div><div><label for="extra-income-amount" class="block text-sm font-medium">금액</label><input type="number" id="extra-income-amount" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><button type="submit" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 admin-control" disabled>수입 추가</button></form><div class="overflow-x-auto max-h-[40vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">항목</th><th scope="col" class="py-3 px-4">금액</th><th scope="col" class="py-3 px-4">관리</th></tr></thead><tbody id="extra-income-log-body"></tbody><tfoot id="extra-income-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div></div><div id="expense-log-section" class="hidden"><h2 class="text-2xl font-bold mb-4">지출 로그</h2><form id="expense-form" class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6 items-end"><div class="sm:col-span-2"><label for="expense-item" class="block text-sm font-medium">항목</label><input type="text" id="expense-item" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><div><label for="expense-amount" class="block text-sm font-medium">금액</label><input type="number" id="expense-amount" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><button type="submit" class="w-full bg-red-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600 admin-control" disabled>지출 추가</button></form><div class="overflow-x-auto max-h-[70vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">항목</th><th scope="col" class="py-3 px-4">금액</th><th scope="col" class="py-3 px-4">관리</th></tr></thead><tbody id="expense-log-body"></tbody><tfoot id="expense-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div></div></div>`;
 
     attendanceDate = document.getElementById('attendance-date');
     checklistContainer = document.getElementById('attendance-checklist');
@@ -566,6 +651,20 @@ export function init(dependencies) {
     if(incomeTabBtn) incomeTabBtn.addEventListener('click', () => switchAccountingTab(incomeTabBtn));
     if(expenseTabBtn) expenseTabBtn.addEventListener('click', () => switchAccountingTab(expenseTabBtn));
     if(expenseForm) expenseForm.addEventListener('submit', handleExpenseSubmit);
+    // [v58] 기타 수입 폼 + 삭제
+    const extraIncomeForm = document.getElementById('extra-income-form');
+    if (extraIncomeForm) extraIncomeForm.addEventListener('submit', handleExtraIncomeSubmit);
+    const extraIncomeBody = document.getElementById('extra-income-log-body');
+    if (extraIncomeBody) extraIncomeBody.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.delete-extra-income-btn');
+        if (!btn || !state.isAdmin) return;
+        if (confirm('이 기타 수입 내역을 정말 삭제하시겠습니까?')) {
+            await deleteDoc(doc(db, 'incomes', btn.dataset.id));
+            window.showNotification('기타 수입 내역이 삭제되었습니다.');
+        }
+    });
+    const extraIncomeDate = document.getElementById('extra-income-date');
+    if (extraIncomeDate && !extraIncomeDate.value) extraIncomeDate.value = localDateStr();
     if(checkAllBtn) checkAllBtn.addEventListener('click', () => checklistContainer.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = true));
     if(uncheckAllBtn) uncheckAllBtn.addEventListener('click', () => checklistContainer.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = false));
 
@@ -594,7 +693,8 @@ export function init(dependencies) {
         const [startDate, endDate] = effectiveRange();
         const filteredAttendance = state.attendanceLog.filter(log => (!startDate || log.date >= startDate) && (!endDate || log.date <= endDate));
         const filteredExpenses = state.expenseLog.filter(log => (!startDate || log.date >= startDate) && (!endDate || log.date <= endDate));
-        downloadExcel(filteredAttendance, filteredExpenses, startDate, endDate);
+        const filteredExtra = (state.extraIncomeLog || []).filter(log => (!startDate || log.date >= startDate) && (!endDate || log.date <= endDate)); // [v58]
+        downloadExcel(filteredAttendance, filteredExpenses, startDate, endDate, filteredExtra);
     });
 
     // [추가] 현재 보기 범위의 회비 기록 전체 삭제
@@ -758,12 +858,23 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
         if (target.classList.contains('log-status-select')) {
             updatedField = { paymentStatus: target.value };
             e.target.className = `log-status-select p-1 border rounded-md ${getStatusColor(e.target.value)} admin-control`;
-            // [추가] 미납(✕) 또는 노쇼(N) 선택 시 납부액을 자동으로 0 처리 (완납/일부는 건드리지 않음)
+            // [추가] 미납(✕) 또는 노쇼(N) 선택 시 납부액을 자동으로 0 처리 (일부는 건드리지 않음)
             if (target.value === '✕' || target.value === NOSHOW) {
                 updatedField.paymentAmount = 0;
                 const __row = target.closest('tr');
                 const __amt = __row && __row.querySelector('.log-amount-input');
                 if (__amt) __amt.value = 0;
+            }
+            // [v58 추가] 완납(●) 선택 시 회비유형·구장에 맞는 금액 자동 입력 (수금 체크 탭과 동일 규칙)
+            //            자동 입력 후에도 납부액 칸에서 직접 수정할 수 있습니다.
+            if (target.value === '●') {
+                const __rec = (state.attendanceLog || []).find(l => l.id === docId);
+                const __fee = computeFee(__rec ? __rec.name : '', !!(__rec && __rec.grass));
+                updatedField.paymentAmount = __fee;
+                if (__rec) { __rec.paymentStatus = '●'; __rec.paymentAmount = __fee; }
+                const __row2 = target.closest('tr');
+                const __amt2 = __row2 && __row2.querySelector('.log-amount-input');
+                if (__amt2) __amt2.value = __fee;
             }
         }
         else if (target.classList.contains('log-amount-input')) updatedField = { paymentAmount: target.value };
@@ -777,6 +888,22 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
         }
 
         if (Object.keys(updatedField).length > 0) debouncedUpdate(docId, updatedField);
+    });
+
+    // [v58 추가] 💳 납부방식 칩 탭 → 저장 (같은 칩을 다시 탭하면 해제)
+    if (logBody) logBody.addEventListener('click', (e) => {
+        const b = e.target.closest('.pay-method-btn');
+        if (!b) return;
+        if (!state.isAdmin) return;
+        e.stopPropagation(); // 수금모드 행 탭(완납 토글)과 충돌 방지
+        const docId = b.dataset.id;
+        const method = b.dataset.method;
+        if (!docId || !method) return;
+        const rec = (state.attendanceLog || []).find(l => l.id === docId);
+        const next = (rec && rec.payMethod === method) ? '' : method;
+        if (rec) rec.payMethod = next;
+        renderForDate();
+        if (window._collectSave) window._collectSave(docId, { payMethod: next });
     });
 
     // [추가] 회비 로그 행별 삭제 (이름 옆 ✕ 버튼)
@@ -813,613 +940,7 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
         }
     });
 
-    // [v57] 과거 기록 이관 버튼 설치
-    setupMigration();
+    // [v58] 과거 기록 이관 버튼(setupMigration)은 이관 완료 후 제거되었습니다.
+    //       이미 이관된 attendance/expenses 데이터(mig 태그)는 그대로 유지됩니다.
 }
 
-
-// ================================================================
-// [v57 추가] 엑셀 과거 기록 이관 (2026-01-07 ~ 2026-06-17) — 일회성
-//  - 엑셀 "2026 바레아 회비관리" 장부를 앱 데이터로 변환해 내장.
-//  - 버튼 한 번으로 반영, 다시 누르면 이관분만 전체 삭제(되돌리기).
-//  - 모든 이관 문서에 mig 태그가 있어 앱에서 직접 입력한 기록과 절대 섞이지 않음.
-//  - 6/24 이후는 앱 기록이 원본이므로 이관 범위에서 제외됨.
-// ================================================================
-const MIG_TAG = 'excel2026H1';
-const MIG_D = ["2026-01-07", "2026-01-14", "2026-01-21", "2026-01-26", "2026-02-04", "2026-02-11", "2026-02-18", "2026-02-25", "2026-03-11", "2026-03-18", "2026-04-01", "2026-04-07", "2026-04-15", "2026-04-22", "2026-04-29", "2026-05-06", "2026-05-13", "2026-05-20", "2026-06-03", "2026-06-10", "2026-06-17"];
-// [날짜idx, 이름, 상태(1=완납●/0=미납✕), 금액, 비고]
-const MIG_REC = [
-    [0, "고태호", 1, 0, "면제"],
-    [0, "김겸일", 1, 50, ""],
-    [0, "김경윤", 1, 50, ""],
-    [0, "김규남", 1, 0, "운영진"],
-    [0, "김대근", 1, 50, "이체"],
-    [0, "김세웅", 1, 50, "이체"],
-    [0, "김영걸", 1, 50, "이체"],
-    [0, "김우주", 1, 25, ""],
-    [0, "김인수", 1, 50, "이체"],
-    [0, "김진우", 1, 50, ""],
-    [0, "김환희", 1, 50, ""],
-    [0, "데니스", 0, 0, ""],
-    [0, "문석형", 1, 50, ""],
-    [0, "박경용", 1, 50, ""],
-    [0, "박대영", 1, 50, ""],
-    [0, "박정진", 1, 50, ""],
-    [0, "베놈", 1, 0, "면제"],
-    [0, "송준용", 1, 50, ""],
-    [0, "송진호", 1, 0, "운영진"],
-    [0, "신정호", 1, 50, ""],
-    [0, "안단태", 1, 50, ""],
-    [0, "여인혁", 0, 0, ""],
-    [0, "오마르", 0, 0, ""],
-    [0, "윤중부", 1, 0, "운영진"],
-    [0, "이찬희", 1, 100, "2회분"],
-    [0, "임동민", 1, 50, ""],
-    [0, "장도영", 0, 0, ""],
-    [0, "전의용", 1, 0, "분기 기납"],
-    [0, "정명일", 1, 50, ""],
-    [0, "정영락", 1, 50, ""],
-    [0, "조한빛", 1, 0, "면제"],
-    [0, "차민수", 1, 0, "운영진"],
-    [1, "권혁우", 1, 50, "이체"],
-    [1, "김겸일", 1, 50, ""],
-    [1, "김규남", 1, 0, "운영진"],
-    [1, "김대근", 1, 100, "이체·2회분"],
-    [1, "김세웅", 1, 50, "이체"],
-    [1, "김인수", 1, 50, ""],
-    [1, "김해식", 1, 50, ""],
-    [1, "데니스", 1, 100, "이체·2회분"],
-    [1, "문석형", 1, 50, ""],
-    [1, "박경용", 1, 50, ""],
-    [1, "박대영", 1, 50, ""],
-    [1, "송진호", 1, 0, "운영진"],
-    [1, "안단태", 1, 50, ""],
-    [1, "여인혁", 1, 100, "2회분"],
-    [1, "오마르", 1, 100, "이체·2회분"],
-    [1, "윤중부", 1, 0, "운영진"],
-    [1, "이찬희", 1, 50, ""],
-    [1, "임동민", 1, 50, ""],
-    [1, "장도영", 1, 100, "이체·2회분"],
-    [1, "전의용", 1, 450, "분기 기납(450 선납)"],
-    [1, "정명일", 1, 50, ""],
-    [1, "정영락", 1, 50, ""],
-    [1, "조한빛", 0, 0, ""],
-    [1, "차민수", 1, 0, "운영진"],
-    [2, "고태호", 1, 50, "이체"],
-    [2, "김규남", 1, 0, "운영진"],
-    [2, "김세웅", 1, 50, "이체"],
-    [2, "김인수", 1, 50, "이체"],
-    [2, "김진우", 1, 50, ""],
-    [2, "김해식", 1, 50, ""],
-    [2, "김환희", 1, 50, ""],
-    [2, "남승민", 1, 50, ""],
-    [2, "문석형", 1, 50, ""],
-    [2, "박경용", 1, 50, ""],
-    [2, "박정진", 1, 50, ""],
-    [2, "송진호", 1, 0, "운영진"],
-    [2, "신정호", 1, 50, ""],
-    [2, "안단태", 1, 50, ""],
-    [2, "여인혁", 1, 50, ""],
-    [2, "윤중부", 1, 0, "운영진"],
-    [2, "임동민", 1, 50, ""],
-    [2, "장도영", 1, 50, "이체"],
-    [2, "전의용", 1, 0, "분기 기납"],
-    [2, "정명일", 1, 50, ""],
-    [2, "조한빛", 1, 100, "2회분"],
-    [2, "차민수", 1, 0, "운영진"],
-    [3, "김건효", 1, 0, "면제"],
-    [3, "김경윤", 1, 50, ""],
-    [3, "김규남", 1, 0, "운영진"],
-    [3, "김세웅", 1, 50, "이체"],
-    [3, "김인수", 1, 50, "카림"],
-    [3, "김해식", 1, 50, "카림"],
-    [3, "남승민", 1, 50, ""],
-    [3, "데니스", 0, 0, ""],
-    [3, "박경용", 1, 50, "카림"],
-    [3, "박정진", 1, 50, ""],
-    [3, "송준용", 1, 50, ""],
-    [3, "송진호", 1, 0, "운영진"],
-    [3, "신정호", 1, 50, "카림"],
-    [3, "안단태", 1, 50, ""],
-    [3, "윤중부", 1, 0, "운영진"],
-    [3, "이찬희", 1, 50, "카림"],
-    [3, "임동민", 1, 50, ""],
-    [3, "장도영", 1, 50, "카림"],
-    [3, "정명일", 1, 50, "카림"],
-    [3, "조한빛", 1, 50, ""],
-    [3, "지승현", 1, 50, ""],
-    [3, "차민수", 1, 0, "운영진"],
-    [4, "김겸일", 1, 50, ""],
-    [4, "김경윤", 1, 50, ""],
-    [4, "김규남", 1, 0, "운영진"],
-    [4, "김대근", 0, 0, ""],
-    [4, "김우주", 1, 25, ""],
-    [4, "남승민", 1, 50, ""],
-    [4, "데니스", 0, 0, ""],
-    [4, "박경용", 1, 50, "카림"],
-    [4, "베놈", 1, 0, "면제"],
-    [4, "송준용", 1, 50, ""],
-    [4, "송진호", 1, 0, "운영진"],
-    [4, "신정호", 1, 50, "카림"],
-    [4, "아미르", 1, 50, ""],
-    [4, "안단태", 1, 0, "분기 기납"],
-    [4, "여인혁", 1, 50, "카림"],
-    [4, "윤중부", 1, 0, "운영진"],
-    [4, "이찬희", 1, 50, "카림"],
-    [4, "장도영", 1, 50, "카림"],
-    [4, "전의용", 1, 0, "분기 기납"],
-    [4, "정명일", 1, 50, "카림"],
-    [4, "차민수", 1, 0, "운영진"],
-    [4, "최준경", 1, 50, "이체"],
-    [5, "고태호", 1, 50, "카림"],
-    [5, "김경윤", 1, 50, ""],
-    [5, "김규남", 1, 0, "운영진"],
-    [5, "김대근", 1, 100, "2회분"],
-    [5, "김세웅", 1, 50, "이체"],
-    [5, "김우주", 1, 25, ""],
-    [5, "김인수", 1, 50, "카림"],
-    [5, "남승민", 1, 50, "카림"],
-    [5, "데니스", 1, 200, "4회분"],
-    [5, "박대영", 1, 50, "카림"],
-    [5, "박상묵", 1, 50, "카림"],
-    [5, "박정진", 1, 50, ""],
-    [5, "베놈", 1, 0, "면제"],
-    [5, "송준용", 1, 50, ""],
-    [5, "송진호", 1, 0, "운영진"],
-    [5, "아미르", 1, 50, ""],
-    [5, "안단태", 1, 0, "분기 기납"],
-    [5, "여인혁", 1, 50, "카림"],
-    [5, "윤중부", 1, 0, "운영진"],
-    [5, "장도영", 1, 50, "카림"],
-    [5, "정명일", 1, 50, "카림"],
-    [5, "정영락", 0, 0, ""],
-    [5, "차민수", 1, 0, "운영진"],
-    [5, "최준경", 1, 50, "이체"],
-    [6, "고태호", 1, 50, "카림"],
-    [6, "권혁우", 1, 50, "이체"],
-    [6, "김겸일", 1, 50, ""],
-    [6, "김경윤", 1, 50, ""],
-    [6, "김규남", 1, 0, "운영진"],
-    [6, "김대근", 1, 50, "카림"],
-    [6, "김세웅", 1, 50, "이체"],
-    [6, "김인수", 1, 50, "카림"],
-    [6, "김진우", 1, 50, ""],
-    [6, "김해식", 1, 50, "카림"],
-    [6, "김환희", 0, 0, ""],
-    [6, "나원건", 1, 50, ""],
-    [6, "남승민", 1, 50, "카림"],
-    [6, "박대영", 1, 50, "카림"],
-    [6, "박범수", 1, 50, "2회분"],
-    [6, "박정진", 1, 50, "카림"],
-    [6, "송준용", 1, 50, "카림"],
-    [6, "송진호", 1, 0, "운영진"],
-    [6, "안단태", 1, 0, "분기 기납"],
-    [6, "여인혁", 1, 50, "카림"],
-    [6, "윤중부", 1, 0, "운영진"],
-    [6, "장도영", 1, 50, "카림"],
-    [6, "정명일", 1, 50, ""],
-    [6, "정영락", 0, 0, ""],
-    [6, "차민수", 1, 0, "운영진"],
-    [7, "김건효", 1, 50, ""],
-    [7, "김해식", 1, 50, "카림"],
-    [7, "남승민", 1, 50, "카림"],
-    [7, "박경용", 1, 50, ""],
-    [7, "박대영", 1, 50, "카림"],
-    [7, "박범수", 1, 0, "면제"],
-    [7, "박정진", 1, 50, "카림"],
-    [7, "송진호", 1, 0, "운영진"],
-    [7, "신정호", 1, 50, "카림"],
-    [7, "여인혁", 1, 50, "카림"],
-    [7, "윤중부", 1, 0, "운영진"],
-    [7, "장도영", 1, 50, "카림"],
-    [7, "정명일", 1, 50, ""],
-    [7, "정영락", 1, 200, "4회분"],
-    [7, "차민수", 1, 0, "운영진"],
-    [8, "고태호", 1, 50, "카림"],
-    [8, "김건효", 1, 50, "카림"],
-    [8, "김경윤", 1, 50, ""],
-    [8, "김대근", 1, 50, ""],
-    [8, "김세웅", 1, 50, "이체"],
-    [8, "김인수", 1, 50, "카림"],
-    [8, "나원건", 1, 50, ""],
-    [8, "남승민", 1, 50, "카림"],
-    [8, "박범수", 1, 25, ""],
-    [8, "윤중부", 1, 0, "운영진"],
-    [8, "이찬희", 1, 50, "카림"],
-    [8, "장도영", 1, 50, "카림"],
-    [8, "정영락", 1, 50, ""],
-    [9, "고태호", 1, 50, "카림"],
-    [9, "김경윤", 1, 50, ""],
-    [9, "김규남", 1, 0, "운영진"],
-    [9, "김대근", 1, 50, ""],
-    [9, "김인수", 1, 50, "카림"],
-    [9, "나원건", 1, 50, ""],
-    [9, "남승민", 1, 50, "카림"],
-    [9, "박범수", 1, 25, ""],
-    [9, "여인혁", 1, 50, "카림"],
-    [9, "윤중부", 1, 0, "운영진"],
-    [9, "이찬희", 1, 50, ""],
-    [9, "장도영", 1, 50, "카림"],
-    [9, "정영락", 1, 50, ""],
-    [9, "지승현", 1, 50, "카림"],
-    [10, "고태호", 1, 50, ""],
-    [10, "김규남", 1, 0, "운영진"],
-    [10, "김대근", 1, 50, "이체"],
-    [10, "김우주", 1, 0, "면제"],
-    [10, "김인수", 1, 50, "이체"],
-    [10, "김환희", 1, 50, ""],
-    [10, "나원건", 1, 50, ""],
-    [10, "남승민", 1, 50, "카림"],
-    [10, "박상묵", 1, 50, "카림"],
-    [10, "윤중부", 1, 0, "운영진"],
-    [10, "이찬희", 1, 50, "카림"],
-    [10, "장도영", 1, 50, "카림"],
-    [10, "정명일", 1, 50, ""],
-    [10, "정영락", 1, 50, ""],
-    [10, "정우영", 1, 50, "이체"],
-    [11, "고태호", 1, 50, "카림"],
-    [11, "김규남", 1, 0, "운영진"],
-    [11, "김대근", 1, 50, "이체"],
-    [11, "김세웅", 1, 50, "이체"],
-    [11, "김환희", 1, 50, ""],
-    [11, "남승민", 1, 50, "카림"],
-    [11, "여인혁", 1, 50, "카림"],
-    [11, "윤중부", 1, 0, "운영진"],
-    [11, "이찬희", 1, 50, "카림"],
-    [11, "장도영", 1, 50, "카림"],
-    [11, "정영락", 1, 50, ""],
-    [12, "고태호", 1, 50, "카림"],
-    [12, "김건효", 1, 50, ""],
-    [12, "김겸일", 0, 0, ""],
-    [12, "김규남", 1, 0, "운영진"],
-    [12, "김대근", 1, 50, "이체"],
-    [12, "김세웅", 1, 50, "이체"],
-    [12, "김인수", 1, 50, ""],
-    [12, "남승민", 1, 50, "카림"],
-    [12, "미상", 1, 50, ""],
-    [12, "여인혁", 1, 50, "카림"],
-    [12, "윤중부", 1, 0, "운영진"],
-    [12, "이승", 1, 50, ""],
-    [12, "장도영", 1, 50, "카림"],
-    [12, "정영락", 1, 50, ""],
-    [12, "정우영", 1, 50, "이체"],
-    [13, "고태호", 1, 50, "카림"],
-    [13, "김경윤", 1, 50, ""],
-    [13, "김규남", 1, 0, "운영진"],
-    [13, "김대근", 1, 50, "이체"],
-    [13, "김인수", 1, 50, "이체"],
-    [13, "남승민", 1, 50, "카림"],
-    [13, "미상", 1, 0, "면제"],
-    [13, "백승한", 1, 50, ""],
-    [13, "윤중부", 1, 0, "운영진"],
-    [13, "이승", 1, 50, ""],
-    [13, "장도영", 1, 50, "카림"],
-    [13, "정명일", 1, 50, ""],
-    [13, "정영락", 1, 50, ""],
-    [13, "정우영", 1, 50, "이체"],
-    [14, "고태호", 1, 50, "카림"],
-    [14, "김경윤", 1, 50, ""],
-    [14, "김규남", 1, 0, "운영진"],
-    [14, "김대근", 1, 50, "이체"],
-    [14, "김세웅", 0, 0, "확인 필요"],
-    [14, "김인수", 0, 0, "확인 필요"],
-    [14, "남승민", 1, 50, "카림"],
-    [14, "데니스", 1, 50, ""],
-    [14, "박상묵", 1, 50, "카림"],
-    [14, "안단태", 1, 0, "분기 기납"],
-    [14, "윤중부", 1, 0, "운영진"],
-    [14, "장도영", 1, 50, "카림"],
-    [14, "정명일", 1, 50, ""],
-    [14, "정영락", 1, 50, ""],
-    [14, "정우영", 1, 50, "이체"],
-    [15, "고태호", 1, 50, "카림"],
-    [15, "김겸일", 1, 100, "2회분"],
-    [15, "김경윤", 1, 50, ""],
-    [15, "김규남", 1, 0, "운영진"],
-    [15, "김대근", 1, 50, "이체"],
-    [15, "김세웅", 1, 100, "이체·2회분"],
-    [15, "김우주", 1, 25, ""],
-    [15, "김해식", 1, 50, "카림"],
-    [15, "남승민", 1, 50, "카림"],
-    [15, "데니스", 0, 0, ""],
-    [15, "문석형", 1, 50, ""],
-    [15, "박대영", 1, 50, "카림"],
-    [15, "박정진", 1, 50, ""],
-    [15, "송준용", 1, 50, ""],
-    [15, "송진호", 1, 0, "운영진"],
-    [15, "신정호", 1, 50, ""],
-    [15, "안단태", 1, 0, "분기 기납"],
-    [15, "윤중부", 1, 0, "운영진"],
-    [15, "이아론", 1, 25, ""],
-    [15, "이찬희", 1, 50, ""],
-    [15, "장도영", 1, 50, "카림"],
-    [15, "정명일", 0, 0, ""],
-    [15, "정영락", 1, 50, ""],
-    [15, "정우영", 1, 50, "이체"],
-    [15, "존", 1, 50, ""],
-    [16, "고태호", 1, 50, "카림"],
-    [16, "김건효", 1, 50, "카림"],
-    [16, "김겸일", 0, 0, ""],
-    [16, "김경윤", 1, 50, ""],
-    [16, "김규남", 1, 0, "운영진"],
-    [16, "김대근", 1, 50, "이체"],
-    [16, "김세웅", 1, 50, "이체"],
-    [16, "김우주", 1, 25, ""],
-    [16, "김인수", 1, 50, "카림"],
-    [16, "김해식", 1, 50, "카림"],
-    [16, "데니스", 1, 50, ""],
-    [16, "박정진", 1, 50, ""],
-    [16, "발토스", 1, 50, ""],
-    [16, "송준용", 1, 50, ""],
-    [16, "송진호", 1, 0, "운영진"],
-    [16, "안단태", 1, 0, "분기 기납"],
-    [16, "여인혁", 1, 50, "카림"],
-    [16, "윤중부", 1, 0, "운영진"],
-    [16, "장도영", 1, 50, "카림"],
-    [16, "정영락", 1, 50, ""],
-    [16, "정우영", 1, 50, "이체"],
-    [16, "존", 1, 50, ""],
-    [17, "고태호", 1, 50, "카림"],
-    [17, "김건효", 1, 50, "카림"],
-    [17, "김겸일", 1, 150, "이체·3회분"],
-    [17, "김경윤", 1, 50, ""],
-    [17, "김규남", 1, 0, "운영진"],
-    [17, "김대근", 1, 50, "이체"],
-    [17, "김봉준", 1, 0, "면제"],
-    [17, "김세웅", 1, 50, "이체"],
-    [17, "김인수", 1, 50, "카림"],
-    [17, "김해식", 1, 50, "카림"],
-    [17, "남승민", 1, 50, ""],
-    [17, "데니스", 0, 0, ""],
-    [17, "문석형", 0, 0, ""],
-    [17, "박상묵", 1, 50, "카림"],
-    [17, "송진호", 1, 0, "운영진"],
-    [17, "신정호", 1, 50, "카림"],
-    [17, "아미르", 1, 50, "카림"],
-    [17, "안단태", 1, 0, "분기 기납"],
-    [17, "여인혁", 1, 50, "카림"],
-    [17, "윤중부", 1, 0, "운영진"],
-    [17, "장도영", 1, 50, "카림"],
-    [17, "정영락", 0, 0, ""],
-    [17, "정우영", 1, 50, "이체"],
-    [17, "지승현", 1, 50, ""],
-    [17, "최준경", 1, 50, "이체"],
-    [18, "고태호", 1, 50, "카림"],
-    [18, "김겸일", 1, 50, ""],
-    [18, "김경윤", 1, 50, ""],
-    [18, "김규남", 1, 0, "운영진"],
-    [18, "김대근", 1, 50, "이체"],
-    [18, "김봉준", 1, 50, ""],
-    [18, "김세웅", 1, 50, "이체"],
-    [18, "김인수", 1, 50, "카림"],
-    [18, "김해식", 0, 0, ""],
-    [18, "남승민", 1, 50, ""],
-    [18, "데니스", 1, 50, ""],
-    [18, "문석형", 1, 50, ""],
-    [18, "박대영", 1, 50, "카림"],
-    [18, "박정진", 1, 50, ""],
-    [18, "베놈", 1, 50, ""],
-    [18, "송준용", 1, 50, ""],
-    [18, "송진호", 1, 0, "운영진"],
-    [18, "아미르", 1, 50, "카림"],
-    [18, "여인혁", 1, 50, "카림"],
-    [18, "오마르", 1, 50, "카림"],
-    [18, "윤중부", 1, 0, "운영진"],
-    [18, "장도영", 1, 50, "카림"],
-    [18, "정명일", 1, 50, ""],
-    [18, "정영락", 1, 50, ""],
-    [18, "정우영", 1, 50, "이체"],
-    [18, "지승현", 1, 50, "카림"],
-    [18, "차민수", 1, 0, "운영진"],
-    [19, "김겸일", 0, 0, ""],
-    [19, "김경윤", 1, 50, ""],
-    [19, "김규남", 1, 0, "운영진"],
-    [19, "김대근", 1, 50, "이체"],
-    [19, "김인수", 1, 50, "카림"],
-    [19, "나원건", 1, 50, "카림"],
-    [19, "남승민", 1, 50, ""],
-    [19, "데니스", 0, 0, ""],
-    [19, "미상", 1, 50, "카림"],
-    [19, "박경용", 1, 50, ""],
-    [19, "박대영", 1, 50, "카림"],
-    [19, "박상묵", 1, 50, "카림"],
-    [19, "박정진", 1, 50, ""],
-    [19, "송진호", 1, 0, "운영진"],
-    [19, "아미르", 1, 50, "카림"],
-    [19, "여인혁", 1, 50, "카림"],
-    [19, "윤중부", 1, 0, "운영진"],
-    [19, "장도영", 1, 50, "카림"],
-    [19, "정명일", 1, 0, "면제"],
-    [19, "정영락", 0, 0, ""],
-    [19, "지승현", 1, 50, "카림"],
-    [19, "차민수", 1, 0, "운영진"],
-    [19, "최준경", 1, 50, ""],
-    [20, "김겸일", 1, 100, "2회분"],
-    [20, "김규남", 1, 0, "운영진"],
-    [20, "김대근", 1, 50, "이체"],
-    [20, "김우주", 1, 25, ""],
-    [20, "김인수", 1, 50, "카림"],
-    [20, "김해식", 1, 50, "카림"],
-    [20, "나원건", 1, 50, "카림"],
-    [20, "남승민", 1, 50, ""],
-    [20, "데니스", 1, 50, ""],
-    [20, "미상", 1, 50, ""],
-    [20, "박경용", 1, 50, ""],
-    [20, "박대영", 1, 50, "카림"],
-    [20, "박상묵", 1, 50, "카림"],
-    [20, "박정진", 1, 50, ""],
-    [20, "송준용", 1, 50, ""],
-    [20, "송진호", 1, 0, "운영진"],
-    [20, "안단태", 1, 0, "분기 기납"],
-    [20, "여인혁", 1, 50, "카림"],
-    [20, "윤중부", 1, 0, "운영진"],
-    [20, "이승", 1, 50, ""],
-    [20, "이찬희", 1, 50, "카림"],
-    [20, "장도영", 1, 50, "카림"],
-    [20, "정명일", 1, 50, ""],
-    [20, "정영락", 1, 100, "2회분"],
-    [20, "지승현", 1, 50, "카림"],
-    [20, "최준경", 1, 50, ""]
-];
-// [날짜idx, 장부항목, 금액, 비고] → 이름 '[장부] ...' 로 기록
-const MIG_LEDGER = [
-    [0, "전년 이월금", 4949.62, "엑셀 장부 이월"],
-    [9, "후원금", 5000, ""],
-    [1, "게스트 회비", 50, "게스트 참석비"],
-    [4, "게스트 회비", 50, "게스트 참석비"],
-    [10, "게스트 회비", 100, "게스트 참석비"],
-    [11, "게스트 회비", 50, "게스트 참석비"],
-    [12, "게스트 회비", 50, "게스트 참석비"],
-    [13, "게스트 회비", 50, "게스트 참석비"],
-    [14, "게스트 회비", 50, "게스트 참석비"],
-    [15, "게스트 회비", 50, "게스트 참석비"],
-    [19, "게스트 회비", 50, "게스트 참석비"],
-    [20, "게스트 회비", 50, "게스트 참석비"],
-    [0, "수납시점 보정", -100, "선납·후납 수납시점 차이"],
-    [1, "수납시점 보정", -300, "선납·후납 수납시점 차이"],
-    [2, "수납시점 보정", 50, "선납·후납 수납시점 차이"],
-    [4, "수납시점 보정", 480, "선납·후납 수납시점 차이"],
-    [5, "수납시점 보정", -500, "선납·후납 수납시점 차이"],
-    [6, "수납시점 보정", -50, "선납·후납 수납시점 차이"],
-    [7, "수납시점 보정", 500, "선납·후납 수납시점 차이"],
-    [8, "수납시점 보정", -50, "선납·후납 수납시점 차이"],
-    [10, "수납시점 보정", -50, "선납·후납 수납시점 차이"],
-    [12, "수납시점 보정", 500, "선납·후납 수납시점 차이"],
-    [14, "수납시점 보정", 100, "선납·후납 수납시점 차이"],
-    [17, "수납시점 보정", -100, "선납·후납 수납시점 차이"],
-    [18, "수납시점 보정", 620, "선납·후납 수납시점 차이"],
-    [19, "수납시점 보정", 50, "선납·후납 수납시점 차이"]
-];
-// [날짜idx, 지출항목, 금액]
-const MIG_EXP = [
-    [0, "경기장", 3880.8],
-    [0, "물", 42],
-    [0, "장비", 149],
-    [1, "물", 42],
-    [2, "물", 10],
-    [2, "장비", 786],
-    [3, "물", 15],
-    [4, "물", 20],
-    [5, "경기장", 3880.8],
-    [5, "물", 25],
-    [6, "물", 191.35],
-    [7, "물", 30],
-    [8, "경기장", 536.03],
-    [8, "물", 30],
-    [9, "경기장", 306.3],
-    [9, "물", 20],
-    [10, "경기장", 1165.2],
-    [10, "물", 20],
-    [11, "경기장", 612.6],
-    [11, "물", 20],
-    [12, "경기장", 50],
-    [12, "물", 24],
-    [13, "경기장", 816],
-    [13, "물", 30],
-    [14, "경기장", 776],
-    [14, "물", 38],
-    [15, "경기장", 2000],
-    [15, "물", 502],
-    [16, "경기장", 3880.8],
-    [16, "물", 42.8],
-    [17, "물", 36],
-    [18, "경기장", 2000],
-    [18, "물", 40],
-    [19, "경기장", 3880.8],
-    [19, "물", 54],
-    [20, "물", 60.7]
-];
-
-function migBuildDocs() {
-    const att = [];
-    MIG_REC.forEach((r) => {
-        const date = MIG_D[r[0]];
-        const name = r[1];
-        att.push({
-            id: `${date}_${name}`,
-            data: { date, name, paymentStatus: r[2] === 1 ? '\u25CF' : '\u2715', paymentAmount: r[3], note: r[4], grass: false, mig: MIG_TAG }
-        });
-    });
-    MIG_LEDGER.forEach((r) => {
-        const date = MIG_D[r[0]];
-        const name = `[장부] ${r[1]}`;
-        att.push({
-            id: `${date}_${name}`,
-            data: { date, name, paymentStatus: '\u25CF', paymentAmount: r[2], note: r[3], grass: false, mig: MIG_TAG }
-        });
-    });
-    const exp = MIG_EXP.map((r) => ({
-        id: `mig_${MIG_D[r[0]]}_${r[1]}`,
-        data: { date: MIG_D[r[0]], item: r[1], amount: r[2], mig: MIG_TAG }
-    }));
-    return { att, exp };
-}
-
-async function migRunChunked(tasks) {
-    for (let i = 0; i < tasks.length; i += 100) {
-        await Promise.all(tasks.slice(i, i + 100).map((fn) => fn()));
-    }
-}
-
-async function handleMigration() {
-    if (!state.isAdmin) {
-        window.showNotification('관리자 로그인 후 사용할 수 있습니다.', 'error');
-        return;
-    }
-    const existingAtt = (state.attendanceLog || []).filter((l) => l.mig === MIG_TAG);
-    const existingExp = (state.expenseLog || []).filter((l) => l.mig === MIG_TAG);
-    if (existingAtt.length > 0 || existingExp.length > 0) {
-        const ok = confirm(
-            `이미 과거 기록이 반영되어 있습니다 (수입 ${existingAtt.length}건 · 지출 ${existingExp.length}건).\n\n` +
-            `[확인]을 누르면 이관된 과거 기록만 전부 삭제(되돌리기)합니다.\n` +
-            `앱에서 직접 입력한 기록(6/24 이후 등)은 삭제되지 않습니다.`
-        );
-        if (!ok) return;
-        try {
-            const dels = [];
-            existingAtt.forEach((l) => dels.push(() => deleteDoc(doc(db, 'attendance', l.id))));
-            existingExp.forEach((l) => dels.push(() => deleteDoc(doc(db, 'expenses', l.id))));
-            await migRunChunked(dels);
-            window.showNotification(`이관 기록 ${dels.length}건이 삭제되었습니다.`);
-        } catch (err) {
-            console.error('migration undo error:', err);
-            window.showNotification('삭제 중 오류가 발생했습니다. 다시 시도해주세요.', 'error');
-        }
-        return;
-    }
-    const built = migBuildDocs();
-    const incSum = built.att.reduce((s, d) => s + Number(d.data.paymentAmount || 0), 0);
-    const expSum = built.exp.reduce((s, d) => s + Number(d.data.amount || 0), 0);
-    const net = Math.round((incSum - expSum) * 100) / 100;
-    const ok = confirm(
-        `엑셀 과거 기록(2026-01-07 ~ 2026-06-17)을 가져옵니다.\n\n` +
-        `\u00B7 출석·회비 기록 ${MIG_REC.length}건 (21회 모임)\n` +
-        `\u00B7 장부 항목 ${MIG_LEDGER.length}건 (이월금·후원금·게스트 회비·수납시점 보정)\n` +
-        `\u00B7 지출 ${built.exp.length}건 (경기장·물·장비)\n` +
-        `\u00B7 반영 후 총 잔액 변화: +${net.toLocaleString()} Dhs\n\n` +
-        `기존 앱 기록(6/24 이후)은 전혀 건드리지 않습니다. 진행할까요?`
-    );
-    if (!ok) return;
-    try {
-        const writes = [];
-        built.att.forEach((d) => writes.push(() => setDoc(doc(db, 'attendance', d.id), d.data)));
-        built.exp.forEach((d) => writes.push(() => setDoc(doc(db, 'expenses', d.id), Object.assign({}, d.data, { createdAt: serverTimestamp() }))));
-        await migRunChunked(writes);
-        window.showNotification(`과거 기록 ${writes.length}건을 가져왔습니다. 총 잔액이 약 5,726 Dhs인지 확인하세요.`);
-    } catch (err) {
-        console.error('migration import error:', err);
-        window.showNotification('가져오기 중 오류가 발생했습니다. 버튼을 다시 눌러 삭제 후 재시도하세요.', 'error');
-    }
-}
-
-function setupMigration() {
-    if (!excelDownloadBtn || document.getElementById('mig-import-btn')) return;
-    const btn = document.createElement('button');
-    btn.id = 'mig-import-btn';
-    btn.className = 'text-sm text-white bg-gray-500 hover:bg-gray-600 font-bold py-1.5 px-3 rounded-lg admin-control';
-    btn.textContent = '\uD83D\uDCE5 과거기록';
-    btn.title = '엑셀 장부(2026년 1~6월) 일회성 가져오기 · 이미 가져온 상태에서 누르면 되돌리기';
-    btn.disabled = !state.isAdmin;
-    btn.addEventListener('click', handleMigration);
-    excelDownloadBtn.insertAdjacentElement('afterend', btn);
-}

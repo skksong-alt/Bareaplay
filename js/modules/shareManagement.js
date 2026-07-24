@@ -1,6 +1,6 @@
 // js/modules/shareManagement.js
 import { doc, setDoc, collection, onSnapshot, addDoc, getDoc, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
-import { getPosCellMap } from './lineupGenerator.js?v=6'; // [정리] 포메이션 좌표 단일화
+import { getPosCellMap } from './lineupGenerator.js?v=7'; // [정리] 포메이션 좌표 단일화
 
 let db, state;
 let addLocationBtn, shareDate, shareTime, shareLocationSelect;
@@ -125,6 +125,7 @@ async function generateShareableLink() {
                 locationUrl: shareLocationSelect.options[shareLocationSelect.selectedIndex]?.dataset.url || ''
             },
             teams: teamsObject,
+            teamNames: (state.teamNames || []).slice(0, state.teams.length), // [v58] 팀 이름(Team A/B 또는 커스텀)도 공유 보드에 전달
             lineups: allTeamLineups,
             attendance: attendanceSnapshot,
             createdAt: new Date().toISOString()
@@ -177,6 +178,8 @@ export function generatePrintView(shareData) {
     });
     const teams = __teamKeys.map(k => __teamsObj[k]);
     const { meetingInfo, lineups } = shareData;
+    // [v58] 팀 이름: 공유 데이터에 저장된 이름 → 없으면 '팀 N'
+    const __tn = (i) => (Array.isArray(shareData.teamNames) && shareData.teamNames[i]) ? shareData.teamNames[i] : `팀 ${i + 1}`;
     const colors = ["#0D9488","#0288D1","#7B1FA2","#43A047","#F4511E"];
 
     const printWindow = window.open('', '_blank');
@@ -210,7 +213,7 @@ export function generatePrintView(shareData) {
             <div class="pitch-line-print" style="top:50%; left:50%; width:1.5px; height:1.5px; border-radius:50%; transform: translate(-50%, -50%); background:white;"></div>
             <div class="penalty-box-print" style="top: 83%; left: 20%; width: 60%; height: 17%;"></div>
             <div class="penalty-box-print" style="top: 0%; left: 20%; width: 60%; height: 17%;"></div>
-            <div class="quarter-title-integrated">팀 ${teamIdx + 1} - ${qIndex + 1}쿼터 (${formation})</div>`;
+            <div class="quarter-title-integrated">${__tn(teamIdx)} - ${qIndex + 1}쿼터 (${formation})</div>`;
         
         const counters = {};
         (posCellMap[formation] || []).forEach(fc => {
@@ -307,7 +310,7 @@ export function generatePrintView(shareData) {
             <h2 class="section-title">⚖️ 팀 배정 결과</h2>
             <div class="team-grid-print">`;
     teams.forEach((team, i) => {
-        fullHtml += `<div class="team-box" style="background:${colors[i%5]}"><h3>팀 ${i+1}</h3><ul>${[...team].sort((a,b)=>a.name.localeCompare(b.name,'ko-KR')).map(p=>`<li>${p.name.replace(' (신규)','')}</li>`).join('')}</ul></div>`;
+        fullHtml += `<div class="team-box" style="background:${colors[i%5]}"><h3>${__tn(i)}</h3><ul>${[...team].sort((a,b)=>a.name.localeCompare(b.name,'ko-KR')).map(p=>`<li>${p.name.replace(' (신규)','')}</li>`).join('')}</ul></div>`;
     });
     fullHtml += `</div></div><div class="print-footer">© 2025 BareaPlay. Created by 송감독.</div></div>`;
     
@@ -316,13 +319,13 @@ export function generatePrintView(shareData) {
         const teamColor = colors[teamIdx % 5];
         
         fullHtml += `<div class="page-break"></div><div class="print-container">`;
-        fullHtml += `<h2 class="single-team-title" style="border-bottom: 3px solid ${teamColor};">팀 ${teamIdx + 1} 라인업 (1-3쿼터)</h2>`;
+        fullHtml += `<h2 class="single-team-title" style="border-bottom: 3px solid ${teamColor};">${__tn(teamIdx)} 라인업 (1-3쿼터)</h2>`;
         fullHtml += `<div class="lineup-grid-final">`;
         for (let i = 0; i < 3; i++) { fullHtml += createQuarterHTML(lineup, teamIdx, i); }
         fullHtml += `</div><div class="print-footer">© 2025 BareaPlay. Created by 송감독.</div></div>`;
         
         fullHtml += `<div class="page-break"></div><div class="print-container">`;
-        fullHtml += `<h2 class="single-team-title" style="border-bottom: 3px solid ${teamColor};">팀 ${teamIdx + 1} 라인업 (4-6쿼터)</h2>`;
+        fullHtml += `<h2 class="single-team-title" style="border-bottom: 3px solid ${teamColor};">${__tn(teamIdx)} 라인업 (4-6쿼터)</h2>`;
         fullHtml += `<div class="lineup-grid-final">`;
         for (let i = 3; i < 6; i++) { fullHtml += createQuarterHTML(lineup, teamIdx, i); }
         fullHtml += `</div><div class="print-footer">© 2025 BareaPlay. Created by 송감독.</div></div>`;

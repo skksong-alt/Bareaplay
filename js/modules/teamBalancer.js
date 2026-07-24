@@ -15,6 +15,93 @@ function normalizeName(name) {
     return name ? name.normalize('NFC').trim() : '';
 }
 
+// [v58 추가] 🏷️ 팀 이름: 기본값 Team A/B/C… , 결과 카드에서 관리자가 직접 수정 가능.
+//   state.teamNames 배열로 관리하며 dailyMeetings/{날짜} 문서에 함께 저장/복원된다.
+function defaultTeamName(i) {
+    return 'Team ' + String.fromCharCode(65 + (i % 26));
+}
+function teamNameOf(i) {
+    const n = (state.teamNames && state.teamNames[i]) ? String(state.teamNames[i]).trim() : '';
+    return n || defaultTeamName(i);
+}
+function ensureTeamNames(count) {
+    if (!Array.isArray(state.teamNames)) state.teamNames = [];
+    for (let i = 0; i < count; i++) if (!state.teamNames[i]) state.teamNames[i] = defaultTeamName(i);
+    state.teamNames = state.teamNames.slice(0, count);
+}
+// 다른 모듈(라인업 탭 등)에서도 같은 이름을 쓰도록 전역 노출
+window.teamName = teamNameOf;
+
+// [v58 추가] 등록 선수 DB에서 정규화 이름으로 검색 (없으면 null)
+function findPlayerInDB(name) {
+    const key = normalizeName(String(name || '').replace(' (신규)', ''));
+    if (!key) return null;
+    if (state.playerDB[key]) return state.playerDB[key];
+    const found = Object.keys(state.playerDB || {}).find(k => normalizeName(k) === key);
+    return found ? state.playerDB[found] : null;
+}
+
+// [v58 추가] 팀 명단 변경(추가/제거) 후 공통 후처리:
+//   참가자 명단·회비 후보·라인업 탭을 동기화하고 날짜 문서에 저장한다.
+//   (라인업 캐시는 지우지 않음 → 기존 라인업·공유 보드가 파괴되지 않는다)
+function syncAfterRosterChange() {
+    const names = [];
+    (state.teams || []).forEach(t => (t || []).forEach(p => {
+        const n = normalizeName(String(p.name || '').replace(' (신규)', ''));
+        if (n && !names.includes(n)) names.push(n);
+    }));
+    state.initialAttendeeOrder = names;
+    if (attendeesTextarea && document.activeElement !== attendeesTextarea) attendeesTextarea.value = names.join('\n');
+    renderResults(state.teams);
+    if (window.lineup && window.lineup.renderTeamSelectTabs) window.lineup.renderTeamSelectTabs(state.teams);
+    // '오늘' 모임을 편집 중일 때만 출석&회계 탭의 참석 후보 명단도 즉시 갱신
+    const todayStr = window.getLocalDate ? window.getLocalDate() : '';
+    if (window.accounting && window.accounting.autoFillAttendees && dateInput && dateInput.value === todayStr) {
+        window.accounting.autoFillAttendees(names);
+    }
+    if (window.saveDailyMeetingData) window.saveDailyMeetingData();
+}
+
+// [v58 추가] ➕ 배정 완료된 특정 팀에 선수 1명 추가 (현장 늦참자 대응 — 재배정 불필요)
+function addPlayerToTeam(teamIndex, rawName) {
+    const name = normalizeName(String(rawName || '').replace(' (신규)', ''));
+    if (!name) { window.showNotification('추가할 선수 이름을 입력해주세요.', 'error'); return; }
+    const existsIn = (state.teams || []).findIndex(t => (t || []).some(p => normalizeName(String(p.name || '').replace(' (신규)', '')) === name));
+    if (existsIn > -1) { window.showNotification(`${name} 선수는 이미 ${teamNameOf(existsIn)}에 있습니다.`, 'error'); return; }
+    const dbPlayer = findPlayerInDB(name);
+    const player = dbPlayer ? { ...dbPlayer } : { name, s1: 65, pos1: [] };
+    state.teams[teamIndex].push(player);
+    if (window.logAdjustment) window.logAdjustment({ kind: 'team-add', name, to: teamIndex });
+    syncAfterRosterChange();
+    window.showNotification(`${name} 선수가 ${teamNameOf(teamIndex)}에 추가되었습니다.${dbPlayer ? '' : ' (미등록 → NEW 게스트)'}`);
+}
+
+// [v58 추가] ✕ 특정 팀에서 선수 1명 제외
+function removePlayerFromTeam(teamIndex, playerName) {
+    const team = state.teams && state.teams[teamIndex];
+    if (!team) return;
+    const idx = team.findIndex(p => p.name === playerName);
+    if (idx < 0) return;
+    const clean = String(playerName).replace(' (신규)', '');
+    if (!confirm(`'${clean}' 선수를 ${teamNameOf(teamIndex)}에서 빼시겠습니까?\n(참가자 명단·회비 후보에서도 함께 제외됩니다)`)) return;
+    team.splice(idx, 1);
+    if (window.logAdjustment) window.logAdjustment({ kind: 'team-remove', name: clean, from: teamIndex });
+    syncAfterRosterChange();
+    window.showNotification(`${clean} 선수가 ${teamNameOf(teamIndex)}에서 제외되었습니다.`);
+}
+
+// [v58 추가] 🛡️ 재배정 덮어쓰기 경고: 이미 팀이 저장된 날짜에서 다시 배정하려 할 때 확인
+function confirmExistingOverwrite() {
+    if (!state.teams || state.teams.length === 0) return true;
+    return confirm(
+        '이 날짜에는 이미 팀배정이 저장되어 있습니다.\n' +
+        '새로 배정하면 기존 팀·라인업이 덮어써지고, 공유 보드·활약 투표 명단도 바뀝니다.\n\n' +
+        '※ 늦게 온 선수의 회비 처리만 필요하다면 재배정하지 마시고,\n' +
+        '   팀 카드 아래의 [선수 추가] 칸이나 출석&회계 탭의 [수동 추가]를 이용하세요.\n\n' +
+        '계속할까요?'
+    );
+}
+
 function handlePlayerDragStart(e, playerName, fromTeamIndex) {
     const data = JSON.stringify({ playerName, fromTeamIndex });
     e.dataTransfer.setData("application/json", data);
@@ -47,7 +134,7 @@ function handleTeamDrop(e, toTeamIndex) {
             if(window.saveDailyMeetingData) window.saveDailyMeetingData();
             // [학습] 운영진의 수동 팀 이동을 조용히 기록 (성향 분석용)
             if (window.logAdjustment) window.logAdjustment({ kind: 'team-move', name: playerName, from: fromTeamIndex, to: toTeamIndex });
-            window.showNotification(`${playerName} 선수가 팀 ${fromTeamIndex + 1}에서 팀 ${toTeamIndex + 1}로 이동했습니다.`);
+            window.showNotification(`${playerName} 선수가 ${teamNameOf(fromTeamIndex)}에서 ${teamNameOf(toTeamIndex)}(으)로 이동했습니다.`); // [v58] 팀 이름 반영
         }
     } catch (err) {
         console.error("Drop Error: ", err);
@@ -87,6 +174,16 @@ export function renderResults(teams) {
     if(placeholder) placeholder.classList.add('hidden');
 
     state.teams = teams;
+    ensureTeamNames(teams.length); // [v58] 팀 이름 기본값(Team A/B…) 보장
+
+    // [v58] 선수 추가 입력칸의 자동완성 목록 (등록 선수 전체)
+    let dl = document.getElementById('balancer-player-datalist');
+    if (!dl) {
+        dl = document.createElement('datalist');
+        dl.id = 'balancer-player-datalist';
+        resultContainer.parentNode.appendChild(dl);
+    }
+    dl.innerHTML = Object.keys(state.playerDB || {}).sort((a, b) => a.localeCompare(b, 'ko-KR')).map(n => `<option value="${window.esc(n)}"></option>`).join('');
 
     teams.forEach((team, index) => {
         const teamSkillSum = team.reduce((acc, p) => acc + (p.s1 || 0), 0);
@@ -124,17 +221,51 @@ export function renderResults(teams) {
             const newBadge = isNew ? `<span class="ml-1 text-[10px] bg-yellow-400 text-black px-1 rounded">NEW</span>` : '';
             const aceBadge = player._ace ? '<span class="mr-1" title="에이스">⭐</span>' : '';
 
-            playerTag.innerHTML = `<span class="font-semibold flex items-center">${aceBadge}${displayName}${newBadge}</span><div class="flex items-center"><span class="text-sm opacity-90 mr-2">${posIcons}</span></div>`;
+            // [v58] 관리자에게는 선수별 ✕ 제거 버튼 표시 (현장에서 잘못 추가한 선수 되돌리기)
+            const removeBtn = state.isAdmin ? `<button type="button" class="team-remove-player-btn ml-1 text-white/70 hover:text-white font-bold px-1" title="이 팀에서 제외">✕</button>` : '';
+            playerTag.innerHTML = `<span class="font-semibold flex items-center">${aceBadge}${displayName}${newBadge}</span><div class="flex items-center"><span class="text-sm opacity-90 mr-2">${posIcons}</span>${removeBtn}</div>`;
             playerTag.addEventListener('dragstart', (e) => handlePlayerDragStart(e, player.name, index));
+            const __rmBtn = playerTag.querySelector('.team-remove-player-btn');
+            if (__rmBtn) __rmBtn.addEventListener('click', (e) => { e.stopPropagation(); removePlayerFromTeam(index, player.name); });
             playersContainer.appendChild(playerTag);
         });
         
         const header = document.createElement('div');
         header.className = 'mb-3';
-        header.innerHTML = `<h3 class="text-2xl font-bold">팀 ${index + 1}</h3><div class="text-sm opacity-90 font-medium bg-black/20 inline-block px-2 py-1 rounded-md mt-1">총합: ${teamSkillSum.toFixed(1)} | 평균: ${teamSkillAvg} | 인원: ${team.length}명</div><div class="text-sm font-medium mt-2">🧤${posCounts.GK} 🛡️${posCounts.DF} ⚙️${posCounts.MF} 🎯${posCounts.FW}</div>`;
+        // [v58] 팀 이름 표시 + 관리자용 ✏️ 이름 수정 버튼
+        const editNameBtn = state.isAdmin ? `<button type="button" class="team-name-edit-btn text-base opacity-70 hover:opacity-100" title="팀 이름 수정">✏️</button>` : '';
+        header.innerHTML = `<h3 class="text-2xl font-bold flex items-center gap-2"><span>${window.esc(teamNameOf(index))}</span>${editNameBtn}</h3><div class="text-sm opacity-90 font-medium bg-black/20 inline-block px-2 py-1 rounded-md mt-1">총합: ${teamSkillSum.toFixed(1)} | 평균: ${teamSkillAvg} | 인원: ${team.length}명</div><div class="text-sm font-medium mt-2">🧤${posCounts.GK} 🛡️${posCounts.DF} ⚙️${posCounts.MF} 🎯${posCounts.FW}</div>`;
+        const __editBtn = header.querySelector('.team-name-edit-btn');
+        if (__editBtn) __editBtn.addEventListener('click', () => {
+            const cur = teamNameOf(index);
+            const nv = prompt('팀 이름을 입력하세요. (최대 20자)', cur);
+            if (nv === null) return;
+            const clean = nv.trim().slice(0, 20);
+            if (!clean || clean === cur) return;
+            ensureTeamNames(state.teams.length);
+            state.teamNames[index] = clean;
+            if (window.saveDailyMeetingData) window.saveDailyMeetingData();
+            renderResults(state.teams);
+            if (window.lineup && window.lineup.renderTeamSelectTabs) window.lineup.renderTeamSelectTabs(state.teams);
+            window.showNotification(`팀 이름이 '${clean}'(으)로 변경되었습니다.`);
+        });
 
         teamCard.appendChild(header);
         teamCard.appendChild(playersContainer);
+
+        // [v58] ➕ 현장 선수 추가 입력칸 (관리자 전용) — 재배정 없이 이 팀에 바로 추가
+        if (state.isAdmin) {
+            const addBox = document.createElement('div');
+            addBox.className = 'mt-2 pt-2 border-t border-white/30';
+            addBox.innerHTML = `<div class="flex gap-1"><input type="text" list="balancer-player-datalist" class="team-add-player-input flex-grow min-w-0 p-1.5 rounded-md text-gray-800 text-sm" placeholder="선수 추가 (늦참자 등)..."><button type="button" class="team-add-player-btn bg-white/25 hover:bg-white/40 text-white text-sm font-bold px-3 rounded-md">추가</button></div>`;
+            const __in = addBox.querySelector('.team-add-player-input');
+            const __btn = addBox.querySelector('.team-add-player-btn');
+            const doAdd = () => { addPlayerToTeam(index, __in.value); };
+            __btn.addEventListener('click', doAdd);
+            __in.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doAdd(); } });
+            teamCard.appendChild(addBox);
+        }
+
         resultContainer.appendChild(teamCard);
     });
 }
@@ -298,6 +429,7 @@ function executeTeamAssignmentGA() {
     
     state.initialAttendeeOrder = [...attendNames];
     const teamCount = parseInt(teamCountSelect.value, 10);
+    ensureTeamNames(teamCount); // [v58] 팀 이름 기본값 보장 (기존 커스텀 이름은 유지)
     const W = { SKILL: Number(sliders.skill.value), POS: Number(sliders.pos.value), SIZE: Number(sliders.size.value) };
 
     // [추가] 🧲 함께/분리 지정 파싱 (이번 배정의 점수 계산에 반영)
@@ -431,6 +563,62 @@ function executeTeamAssignmentGA() {
     resetUI();
 }
 
+// [v58 추가] 📝 직접 팀 입력 칸 렌더 (팀 수에 맞춰 textarea 생성 · 기존 입력값 보존)
+function renderManualTeamInputs() {
+    const box = document.getElementById('manual-team-inputs');
+    if (!box) return;
+    const teamCount = parseInt(teamCountSelect.value, 10) || 2;
+    const prev = {};
+    box.querySelectorAll('textarea').forEach((ta, i) => { prev[i] = ta.value; });
+    box.innerHTML = '';
+    for (let i = 0; i < teamCount; i++) {
+        const wrap = document.createElement('div');
+        wrap.innerHTML = `<label class="block text-sm font-medium mb-1">${window.esc(teamNameOf(i))}</label><textarea id="manual-team-ta-${i}" rows="4" class="w-full p-2 border border-gray-300 rounded-lg bg-white text-sm" placeholder="한 줄에 한 명씩 입력하세요."></textarea>`;
+        box.appendChild(wrap);
+        const ta = wrap.querySelector('textarea');
+        if (prev[i]) ta.value = prev[i];
+    }
+}
+
+// [v58 추가] 📝 직접 팀 입력 → 자동 배정(GA)을 건너뛰고 입력한 그대로 팀 생성.
+//   이후 흐름(결과 카드·라인업 탭·공유 보드·회비 명단·날짜 문서 저장)은 자동 배정과 완전히 동일하다.
+function executeManualTeamAssignment() {
+    const teamCount = parseInt(teamCountSelect.value, 10) || 2;
+    ensureTeamNames(teamCount);
+    const teams = [];
+    const seen = new Set();
+    const orderedNames = [];
+    for (let i = 0; i < teamCount; i++) {
+        const ta = document.getElementById(`manual-team-ta-${i}`);
+        const names = (ta ? ta.value : '').split('\n').map(n => normalizeName(String(n).replace(' (신규)', ''))).filter(Boolean);
+        const team = [];
+        names.forEach(n => {
+            if (seen.has(n)) return; // 두 팀에 중복 입력된 이름은 먼저 적힌 팀 우선
+            seen.add(n);
+            orderedNames.push(n);
+            const dbPlayer = findPlayerInDB(n);
+            team.push(dbPlayer ? { ...dbPlayer } : { name: n, s1: 65, pos1: [] });
+        });
+        teams.push(team);
+    }
+    if (orderedNames.length === 0) { window.showNotification('팀별 명단을 입력해주세요.', 'error'); return; }
+    if (teams.some(t => t.length === 0)) { window.showNotification('비어 있는 팀이 있습니다. 모든 팀에 최소 1명을 입력해주세요.', 'error'); return; }
+    if (!confirmExistingOverwrite()) return; // [v58] 기존 배정 덮어쓰기 경고
+
+    state.initialAttendeeOrder = orderedNames;
+    if (attendeesTextarea) attendeesTextarea.value = orderedNames.join('\n');
+
+    renderResults(teams);
+
+    // 타 모듈 데이터 연동 (자동 배정과 동일한 파이프라인)
+    if (window.accounting && window.accounting.autoFillAttendees) window.accounting.autoFillAttendees(orderedNames);
+    if (window.lineup && window.lineup.renderTeamSelectTabs) window.lineup.renderTeamSelectTabs(teams);
+    if (window.shareMgmt && window.shareMgmt.updateTeamData) window.shareMgmt.updateTeamData(teams);
+    if (window.saveDailyMeetingData) window.saveDailyMeetingData();
+
+    window.showNotification('입력한 명단 그대로 팀을 만들었습니다.');
+}
+
 function resetUI() {
     if(loadingSpinner) loadingSpinner.classList.add('hidden');
     if(generateButton) {
@@ -444,7 +632,7 @@ export function init(dependencies) {
     db = dependencies.db; // [추가] 최근 조합 반복 방지용
     
     const pageElement = document.getElementById('page-balancer');
-    pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">입력 정보</h2><div class="mb-4"><label for="balancer-date" class="block text-md font-semibold text-gray-700 mb-2">📅 모임 날짜</label><input type="date" id="balancer-date" class="w-full p-3 border border-gray-300 rounded-lg bg-white"><p class="text-xs text-gray-400 mt-1">날짜를 바꾸면 그 날짜의 명단·팀배정·라인업을 불러옵니다. 저장된 내용이 없는 날(예: 다음주)은 빈 상태로 시작합니다.</p></div><div class="mb-4"><div class="flex justify-between items-center mb-2"><label for="attendees" class="block text-md font-semibold text-gray-700">참가자 명단</label><div class="flex items-center gap-3"><button id="reset-attendees-btn" class="text-sm text-red-500 hover:underline">명단 초기화</button><button id="load-all-players-btn" class="text-sm text-indigo-600 hover:underline">모든 선수 불러오기</button></div></div><textarea id="attendees" rows="12" class="w-full p-3 border border-gray-300 rounded-lg bg-gray-50" placeholder="선수 이름을 한 줄에 한 명씩 입력하세요."></textarea></div><div class="mb-4"><div class="flex justify-between items-center mb-2"><label for="aces" class="block text-md font-semibold text-gray-700">⭐ 에이스 지정 (선택)</label><button id="reset-aces-btn" class="text-sm text-red-500 hover:underline">비우기</button></div><textarea id="aces" rows="3" class="w-full p-3 border border-gray-300 rounded-lg bg-amber-50" placeholder="잘하는 핵심 선수를 한 줄에 한 명씩 입력하세요. 여기 적은 선수는 한 팀에 몰리지 않게, 설정한 팀 수에 맞춰 각 팀으로 고르게 나뉩니다."></textarea></div><details class="mb-4 border border-gray-200 rounded-lg p-3 bg-gray-50"><summary class="text-md font-semibold text-gray-700 cursor-pointer select-none">🧲 함께/분리·반복 방지 (선택)</summary><div class="space-y-3 mt-3"><div><label for="pin-together" class="block text-sm font-medium mb-1">🤝 같은 팀으로 묶기 <span class="text-xs text-gray-400">(한 줄에 쉼표로)</span></label><textarea id="pin-together" rows="2" class="w-full p-2 border border-gray-300 rounded-lg bg-white text-sm" placeholder="예: 김철수, 김민수&#10;(형제·차량 동승 등)"></textarea></div><div><label for="pin-apart" class="block text-sm font-medium mb-1">🚧 다른 팀으로 나누기 <span class="text-xs text-gray-400">(한 줄에 쉼표로)</span></label><textarea id="pin-apart" rows="2" class="w-full p-2 border border-gray-300 rounded-lg bg-white text-sm" placeholder="예: 박영수, 이재현"></textarea></div><label class="flex items-center gap-2 text-sm font-medium text-gray-700"><input type="checkbox" id="avoid-repeat" checked class="w-4 h-4 rounded"> 🔄 최근 4주 같은 팀 조합 반복 최소화</label><p class="text-xs text-gray-400">에이스 자동 균등 배치와 충돌하면 함께/분리가 완벽히 지켜지지 않을 수 있습니다. 그 경우 드래그로 조정하세요.</p></div></details><div class="mb-6"><label for="teamCount" class="block text-md font-semibold text-gray-700 mb-2">생성할 팀 수</label><select id="teamCount" class="w-full p-3 border border-gray-300 rounded-lg bg-white"><option value="2" selected>2팀</option><option value="3">3팀</option><option value="4">4팀</option><option value="5">5팀</option></select></div><details class="mt-2 border border-gray-200 rounded-lg p-3 bg-gray-50"><summary class="text-md font-semibold text-gray-700 cursor-pointer select-none">⚙️ 밸런스 가중치 (고급 설정 · 평소엔 안 건드려도 됩니다)</summary><div class="space-y-4 mt-3"><div><label for="w_skill" class="flex justify-between items-center text-sm font-medium"><span>⚡ 능력치</span><span id="w_skill_val" class="font-bold text-indigo-600">100</span></label><input id="w_skill" type="range" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"></div><div><label for="w_pos" class="flex justify-between items-center text-sm font-medium"><span>🛡️ 포지션</span><span id="w_pos_val" class="font-bold text-indigo-600">100</span></label><input id="w_pos" type="range" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"></div><div><label for="w_size" class="flex justify-between items-center text-sm font-medium"><span>👥 인원수</span><span id="w_size_val" class="font-bold text-indigo-600">100</span></label><input id="w_size" type="range" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"></div></div></details><div class="mt-8"><button id="generateButton" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition-transform transform hover:scale-105 shadow-lg">팀 생성하기!</button></div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">팀 배정 결과</h2><div id="loading-balancer" class="hidden"><svg class="animate-spin h-6 w-6 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div></div><p class="text-sm text-gray-500 mb-4 -mt-2">💡 생성된 팀 간에 선수를 드래그하여 수동으로 조정할 수 있습니다.</p><div id="result-container-balancer" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 min-h-[60vh]"><div id="placeholder-balancer" class="col-span-full flex items-center justify-center text-gray-400"><p>팀 생성 버튼을 눌러주세요.</p></div></div></div></div>`;
+    pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">입력 정보</h2><div class="mb-4"><label for="balancer-date" class="block text-md font-semibold text-gray-700 mb-2">📅 모임 날짜</label><input type="date" id="balancer-date" class="w-full p-3 border border-gray-300 rounded-lg bg-white"><p class="text-xs text-gray-400 mt-1">날짜를 바꾸면 그 날짜의 명단·팀배정·라인업을 불러옵니다. 저장된 내용이 없는 날(예: 다음주)은 빈 상태로 시작합니다.</p></div><div class="mb-4"><div class="flex justify-between items-center mb-2"><label for="attendees" class="block text-md font-semibold text-gray-700">참가자 명단</label><div class="flex items-center gap-3"><button id="reset-attendees-btn" class="text-sm text-red-500 hover:underline">명단 초기화</button><button id="load-all-players-btn" class="text-sm text-indigo-600 hover:underline">모든 선수 불러오기</button></div></div><textarea id="attendees" rows="12" class="w-full p-3 border border-gray-300 rounded-lg bg-gray-50" placeholder="선수 이름을 한 줄에 한 명씩 입력하세요."></textarea></div><div class="mb-4"><div class="flex justify-between items-center mb-2"><label for="aces" class="block text-md font-semibold text-gray-700">⭐ 에이스 지정 (선택)</label><button id="reset-aces-btn" class="text-sm text-red-500 hover:underline">비우기</button></div><textarea id="aces" rows="3" class="w-full p-3 border border-gray-300 rounded-lg bg-amber-50" placeholder="잘하는 핵심 선수를 한 줄에 한 명씩 입력하세요. 여기 적은 선수는 한 팀에 몰리지 않게, 설정한 팀 수에 맞춰 각 팀으로 고르게 나뉩니다."></textarea></div><details class="mb-4 border border-gray-200 rounded-lg p-3 bg-gray-50"><summary class="text-md font-semibold text-gray-700 cursor-pointer select-none">🧲 함께/분리·반복 방지 (선택)</summary><div class="space-y-3 mt-3"><div><label for="pin-together" class="block text-sm font-medium mb-1">🤝 같은 팀으로 묶기 <span class="text-xs text-gray-400">(한 줄에 쉼표로)</span></label><textarea id="pin-together" rows="2" class="w-full p-2 border border-gray-300 rounded-lg bg-white text-sm" placeholder="예: 김철수, 김민수&#10;(형제·차량 동승 등)"></textarea></div><div><label for="pin-apart" class="block text-sm font-medium mb-1">🚧 다른 팀으로 나누기 <span class="text-xs text-gray-400">(한 줄에 쉼표로)</span></label><textarea id="pin-apart" rows="2" class="w-full p-2 border border-gray-300 rounded-lg bg-white text-sm" placeholder="예: 박영수, 이재현"></textarea></div><label class="flex items-center gap-2 text-sm font-medium text-gray-700"><input type="checkbox" id="avoid-repeat" checked class="w-4 h-4 rounded"> 🔄 최근 4주 같은 팀 조합 반복 최소화</label><p class="text-xs text-gray-400">에이스 자동 균등 배치와 충돌하면 함께/분리가 완벽히 지켜지지 않을 수 있습니다. 그 경우 드래그로 조정하세요.</p></div></details><details id="manual-team-box" class="mb-4 border border-emerald-200 rounded-lg p-3 bg-emerald-50"><summary class="text-md font-semibold text-emerald-800 cursor-pointer select-none">📝 직접 팀 입력 (자동 배정 없이 그대로 만들기)</summary><div class="mt-3 space-y-3"><p class="text-xs text-gray-500">이미 정해둔 팀이 있으면 팀별로 이름을 한 줄에 한 명씩 넣고 <b>이대로 팀 만들기</b>를 누르세요. 자동 배정을 건너뛰고 입력 그대로 팀이 만들어지며, 라인업·공유 보드·회비 명단에 똑같이 연결됩니다.</p><div id="manual-team-inputs" class="space-y-2"></div><button id="manual-team-create-btn" type="button" class="w-full bg-emerald-600 text-white font-bold py-2.5 px-4 rounded-lg hover:bg-emerald-700">이대로 팀 만들기</button></div></details><div class="mb-6"><label for="teamCount" class="block text-md font-semibold text-gray-700 mb-2">생성할 팀 수</label><select id="teamCount" class="w-full p-3 border border-gray-300 rounded-lg bg-white"><option value="2" selected>2팀</option><option value="3">3팀</option><option value="4">4팀</option><option value="5">5팀</option></select></div><details class="mt-2 border border-gray-200 rounded-lg p-3 bg-gray-50"><summary class="text-md font-semibold text-gray-700 cursor-pointer select-none">⚙️ 밸런스 가중치 (고급 설정 · 평소엔 안 건드려도 됩니다)</summary><div class="space-y-4 mt-3"><div><label for="w_skill" class="flex justify-between items-center text-sm font-medium"><span>⚡ 능력치</span><span id="w_skill_val" class="font-bold text-indigo-600">100</span></label><input id="w_skill" type="range" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"></div><div><label for="w_pos" class="flex justify-between items-center text-sm font-medium"><span>🛡️ 포지션</span><span id="w_pos_val" class="font-bold text-indigo-600">100</span></label><input id="w_pos" type="range" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"></div><div><label for="w_size" class="flex justify-between items-center text-sm font-medium"><span>👥 인원수</span><span id="w_size_val" class="font-bold text-indigo-600">100</span></label><input id="w_size" type="range" min="0" max="100" value="100" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"></div></div></details><div class="mt-8"><button id="generateButton" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition-transform transform hover:scale-105 shadow-lg">팀 생성하기!</button></div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">팀 배정 결과</h2><div id="loading-balancer" class="hidden"><svg class="animate-spin h-6 w-6 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div></div><p class="text-sm text-gray-500 mb-4 -mt-2">💡 생성된 팀 간에 선수를 드래그하여 수동으로 조정할 수 있습니다.</p><div id="result-container-balancer" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 min-h-[60vh]"><div id="placeholder-balancer" class="col-span-full flex items-center justify-center text-gray-400"><p>팀 생성 버튼을 눌러주세요.</p></div></div></div></div>`;
     
     generateButton = document.getElementById('generateButton');
     attendeesTextarea = document.getElementById('attendees');
@@ -525,7 +713,19 @@ export function init(dependencies) {
         if (window.saveDailyMeetingData) window.saveDailyMeetingData();
     });
 
+    // [v58] 팀 수 변경 → 직접 팀 입력 칸 개수 동기화
+    if (teamCountSelect) teamCountSelect.addEventListener('change', renderManualTeamInputs);
+    renderManualTeamInputs();
+
+    // [v58] 📝 직접 팀 입력 생성 버튼
+    const manualCreateBtn = document.getElementById('manual-team-create-btn');
+    if (manualCreateBtn) manualCreateBtn.addEventListener('click', () => {
+        if (pageElement.classList.contains('view-only')) { window.promptForAdminPassword(); return; }
+        executeManualTeamAssignment();
+    });
+
     generateButton.addEventListener('click', () => {
+        if (!confirmExistingOverwrite()) return; // [v58] 기존 배정 덮어쓰기 경고
         loadingSpinner.classList.remove('hidden');
         placeholder.classList.add('hidden');
         generateButton.disabled = true;

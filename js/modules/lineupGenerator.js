@@ -754,7 +754,7 @@ export function renderTeamSelectTabs(teams) {
     teams.forEach((team, index) => {
         const teamButton = document.createElement('button');
         teamButton.className = `team-tab-btn p-2 rounded-lg border-2 font-semibold transition team-tab-btn-${(index % 5) + 1}`;
-        teamButton.textContent = `팀 ${index + 1}`;
+        teamButton.textContent = (window.teamName ? window.teamName(index) : `팀 ${index + 1}`); // [v58] 팀 배정기에서 정한 팀 이름 표시
         teamButton.dataset.teamIndex = index;
         if (index === previouslyActiveIndex) {
             teamButton.classList.add('active');

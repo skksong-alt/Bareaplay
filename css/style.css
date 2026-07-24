@@ -119,14 +119,14 @@ body {
     .w-full thead { display: none; }
 
     /* === 표→카드 변환: 회비/지출/선수목록 공통 === */
-    #accounting-log-body, #expense-log-body, #player-table-body,
+    #accounting-log-body, #expense-log-body, #extra-income-log-body, #player-table-body,
     #income-log-section table, #expense-log-section table,
     #page-players table { display: block; width: 100%; }
     #income-log-section .overflow-x-auto,
     #expense-log-section .overflow-x-auto,
     #page-players .overflow-x-auto { overflow-x: visible; max-height: none !important; overflow-y: visible !important; }
 
-    #accounting-log-body tr, #expense-log-body tr, #player-table-body tr {
+    #accounting-log-body tr, #expense-log-body tr, #extra-income-log-body tr, #player-table-body tr {
         display: grid;
         grid-template-columns: 1fr 1fr;
         align-items: center;
@@ -139,19 +139,26 @@ body {
         border-radius: 0.5rem;
         background-color: #ffffff;
     }
-    #accounting-log-body td, #expense-log-body td, #player-table-body td {
+    #accounting-log-body td, #expense-log-body td, #extra-income-log-body td, #player-table-body td {
         display: block;
         padding: 0 !important;
         border-bottom: none;
     }
-    #accounting-log-body td::before, #expense-log-body td::before { display: none; }
+    #accounting-log-body td::before, #expense-log-body td::before, #extra-income-log-body td::before { display: none; }
 
-    /* 회비 로그: [이름 | 날짜] / [상태 | 납부액] / [비고] */
+    /* [v58] 기타 수입: [날짜 | 금액] / [항목 | 관리] */
+    #extra-income-log-body td[data-label="날짜"] { grid-column: 1 / 2; font-size: 0.72rem; color: #9ca3af; }
+    #extra-income-log-body td[data-label="금액"] { grid-column: 2 / 3; text-align: right; font-weight: 700; }
+    #extra-income-log-body td[data-label="항목"] { grid-column: 1 / 2; font-size: 0.9rem; font-weight: 600; color: #111827; }
+    #extra-income-log-body td[data-label="관리"] { grid-column: 2 / 3; text-align: right; }
+
+    /* 회비 로그: [이름 | 날짜] / [상태 | 납부액] / [납부방식] / [비고] */
     #accounting-log-body td[data-label="#"] { display: none; }
     #accounting-log-body td[data-label="이름"] { grid-column: 1 / 2; font-size: 0.95rem; font-weight: 700; }
     #accounting-log-body td[data-label="날짜"] { grid-column: 2 / 3; text-align: right; font-size: 0.72rem; color: #9ca3af; }
     #accounting-log-body td[data-label="납부 상태"] { grid-column: 1 / 2; }
     #accounting-log-body td[data-label="납부액"] { grid-column: 2 / 3; }
+    #accounting-log-body td[data-label="납부방식"] { grid-column: 1 / 3; } /* [v58] 칩 4개가 한 줄 전체 사용 */
     #accounting-log-body td[data-label="비고"] { grid-column: 1 / 3; }
 
     /* [핵심] '선택한 날짜' 모드에선 카드마다 반복되는 날짜를 숨기고 이름이 한 줄을 다 쓰게 */
@@ -233,6 +240,24 @@ body {
 .collect-pill.noshow { background:#fb923c; color:#fff; }
 .collect-pill.unpaid { background:#e5e7eb; color:#4b5563; }
 
+/* === [v58] 💳 납부방식 칩 (현금/카림/이체/기타) === */
+.pay-method-group { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.pay-method-btn {
+    padding: 0.2rem 0.55rem;
+    font-size: 0.75rem !important; font-weight: 700;
+    border-radius: 6px;
+    border: 1px solid #d1d5db;
+    background: #f9fafb; color: #6b7280;
+    cursor: pointer; white-space: nowrap;
+    transition: background-color .12s, color .12s;
+}
+.pay-method-btn:disabled { cursor: default; opacity: .55; }
+.pay-method-btn.active { color: #fff; border-color: transparent; }
+.pay-method-btn.active.pm-cash { background: #059669; }      /* 현금 */
+.pay-method-btn.active.pm-careem { background: #16a34a; }    /* 카림 */
+.pay-method-btn.active.pm-transfer { background: #2563eb; }  /* 이체 */
+.pay-method-btn.active.pm-etc { background: #7c3aed; }       /* 기타 */
+
 /* === [Q2] 모바일 '수금 체크' 초압축 레이아웃 ===
    한 사람을 2줄짜리 작은 카드로 → 한 화면에 10명 이상 표시.
    레이아웃:  [이름 +상태칩]            [납부액]
@@ -275,6 +300,11 @@ body {
         font-size: 16px; line-height: 1.15;
         border-radius: 0.3rem;
     }
+    /* [v58] 3행: 납부방식 칩 (전체 폭) */
+    #income-log-section.collect-mode #accounting-log-body td[data-label="납부방식"] {
+        grid-area: 3 / 1 / 4 / 3;
+    }
+    #income-log-section.collect-mode .pay-method-btn { padding: 0.12rem 0.45rem; font-size: 0.72rem !important; }
     /* 삭제 ✕ 버튼은 수금 중엔 숨겨 오탭 방지(해제하면 다시 보임) */
     #income-log-section.collect-mode #accounting-log-body .delete-log-btn { display: none; }
     /* 상태 칩 약간 축소 */

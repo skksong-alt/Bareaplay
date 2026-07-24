@@ -360,20 +360,59 @@ async function renderPastVotes() {
         panel.innerHTML = list.map(v => {
             const label = esc(v.title || v.date || '(제목 없음)');
             const sub = esc([v.date, v.time, v.location].filter(Boolean).join(' · '));
+            // [v58] 목록 오른쪽에 🗑 삭제 버튼 (관리자 전용) — 투표 문서 + responses 하위 문서를 함께 삭제
+            const delBtn = state && state.isAdmin
+                ? `<button type="button" data-vote-del="${esc(v.id)}" data-vote-label="${label}" class="past-vote-del-btn flex-shrink-0 text-red-400 hover:text-red-600 px-3 py-2" title="이 투표를 영구 삭제">🗑</button>`
+                : '';
             return `<div class="border rounded-lg">
-                <button type="button" data-vote="${esc(v.id)}" class="past-vote-item w-full text-left px-3 py-2 hover:bg-gray-50 flex justify-between items-center">
-                    <span class="font-semibold text-gray-700">${label}</span>
-                    <span class="text-xs text-gray-400">${sub} ▾</span>
-                </button>
+                <div class="flex items-center">
+                    <button type="button" data-vote="${esc(v.id)}" class="past-vote-item flex-grow min-w-0 text-left px-3 py-2 hover:bg-gray-50 flex justify-between items-center">
+                        <span class="font-semibold text-gray-700 truncate">${label}</span>
+                        <span class="text-xs text-gray-400 flex-shrink-0 ml-2">${sub} ▾</span>
+                    </button>
+                    ${delBtn}
+                </div>
                 <div id="past-detail-${esc(v.id)}" class="hidden px-3 pb-3"></div>
             </div>`;
         }).join('');
         panel.querySelectorAll('.past-vote-item').forEach(btn => {
             btn.addEventListener('click', () => togglePastVoteDetail(btn.getAttribute('data-vote')));
         });
+        // [v58] 지난 투표 삭제
+        panel.querySelectorAll('.past-vote-del-btn').forEach(btn => {
+            btn.addEventListener('click', () => deletePastVote(btn.getAttribute('data-vote-del'), btn.getAttribute('data-vote-label')));
+        });
     } catch (e) {
         console.error('지난 투표 로드 실패:', e);
         panel.innerHTML = '<p class="text-sm text-red-500">불러오기에 실패했습니다.</p>';
+    }
+}
+
+// [v58 추가] 🗑 지난 투표 영구 삭제 (관리자 전용)
+//   Firestore는 문서를 지워도 하위 컬렉션이 자동 삭제되지 않으므로,
+//   responses 하위 문서를 먼저 전부 지운 뒤 투표 문서를 삭제한다.
+//   진행 중(활성) 투표는 목록에 표시되지 않아 삭제 대상에서 원천 제외된다.
+async function deletePastVote(voteId, label) {
+    if (!state || !state.isAdmin) { window.showNotification('관리자만 삭제할 수 있습니다.', 'error'); return; }
+    if (!voteId) return;
+    if (voteId === activeVoteId) { window.showNotification('진행 중인 투표는 삭제할 수 없습니다.', 'error'); return; }
+    let respDocs = [];
+    try {
+        const snap = await getDocs(collection(db, "votes", voteId, "responses"));
+        respDocs = snap.docs;
+    } catch (e) { console.error('응답 조회 실패:', e); }
+    if (!confirm(`'${label || '(제목 없음)'}' 투표와 응답 ${respDocs.length}건을 영구 삭제합니다.\n(되돌릴 수 없습니다)\n\n계속할까요?`)) return;
+    try {
+        // 하위 responses 먼저 삭제 (100건씩 나눠 실행)
+        for (let i = 0; i < respDocs.length; i += 100) {
+            await Promise.all(respDocs.slice(i, i + 100).map(d => deleteDoc(d.ref)));
+        }
+        await deleteDoc(doc(db, "votes", voteId));
+        window.showNotification('지난 투표가 삭제되었습니다.');
+        renderPastVotes();
+    } catch (e) {
+        console.error('투표 삭제 실패:', e);
+        window.showNotification('삭제 실패: ' + e.message + ' (Firestore의 votes 삭제 권한 확인)', 'error');
     }
 }
 

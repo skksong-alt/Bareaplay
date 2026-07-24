@@ -4,13 +4,13 @@ import { getFirestore, collection, doc, onSnapshot, getDocs, getDoc, setDoc, del
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
 import { state, setAdmin } from './store.js?v=2';
 import * as playerMgmt from './modules/playerManagement.js?v=5';
-import * as balancer from './modules/teamBalancer.js?v=6';
-import * as lineup from './modules/lineupGenerator.js?v=6';
-import * as accounting from './modules/accounting.js?v=6';
-import * as shareMgmt from './modules/shareManagement.js?v=5';
-import * as voteMgmt from './modules/voteManagement.js?v=7';
+import * as balancer from './modules/teamBalancer.js?v=7';
+import * as lineup from './modules/lineupGenerator.js?v=7';
+import * as accounting from './modules/accounting.js?v=7';
+import * as shareMgmt from './modules/shareManagement.js?v=6';
+import * as voteMgmt from './modules/voteManagement.js?v=8';
 import * as lineupStats from './modules/lineupStats.js?v=1';
-import * as matchRecord from './modules/matchRecord.js?v=1'; // [신규] 경기기록 탭
+import * as matchRecord from './modules/matchRecord.js?v=2'; // 경기기록 탭 (v58: 팀 이름 표시)
 
 const firebaseConfig = {
     apiKey: "AIzaSyD_2tm5-hYbCeU8yi0QiWW9Oqm0O7oPBco",
@@ -129,6 +129,7 @@ const saveDailyMeetingData = window.debounce(async () => {
         teams: teamsObject,
         teamLineupCache: transformedCache,
         initialAttendeeOrder: state.initialAttendeeOrder || [],
+        teamNames: state.teamNames || [], // [v58] 🏷️ 팀 이름(Team A/B 또는 커스텀)도 날짜별 저장
         aceNames: state.aceNames || [], // [A방식] 에이스 명단도 날짜별로 함께 저장
         pinTogether: state.pinTogether || [], // [추가] 🧲 같은 팀 묶기 지정 (날짜별 저장)
         pinApart: state.pinApart || [],       // [추가] 🚧 다른 팀 나누기 지정
@@ -179,6 +180,7 @@ window.updatePlayerPref = async function(name, patch) {
 function applyMeetingData(data) {
     if (data) {
         state.teams = Object.values(data.teams || {});
+        state.teamNames = data.teamNames || []; // [v58] 팀 이름 복원
         state.initialAttendeeOrder = data.initialAttendeeOrder || [];
         state.aceNames = data.aceNames || [];
         state.pinTogether = data.pinTogether || []; // [추가] 함께/분리 지정 복원
@@ -217,6 +219,7 @@ function applyMeetingData(data) {
     } else {
         // 해당 날짜에 저장된 내용이 없으면 빈 상태로 시작 (예: 다음주 날짜)
         state.teams = [];
+        state.teamNames = []; // [v58]
         state.teamLineupCache = {};
         state.initialAttendeeOrder = [];
         state.aceNames = [];
@@ -441,6 +444,10 @@ function renderManual() {
             <li><b>\uD83D\uDD04 최근 4주 같은 팀 조합 반복 최소화</b>: 체크(기본 켜짐)하면 지난 4주 동안 자주 같은 팀이었던 사람들이 이번 주에는 되도록 다른 팀이 되도록 자동으로 섞습니다. 매주 비슷한 조합이 나오는 것을 방지합니다.</li>
             <li><b>밸런스 가중치</b>: 능력치\u00B7포지션\u00B7인원수 슬라이더로 "무엇을 더 중요하게 맞출지"를 조절합니다.</li>
             <li><b>수동 이동</b>: 자동 배정 후 마음에 안 들면 선수를 <b>드래그</b>해서 다른 팀으로 옮길 수 있습니다.</li>
+            <li><b>\uD83C\uDFF7\uFE0F 팀 이름 (v58 신규)</b>: 팀은 기본 <b>Team A\u00B7Team B</b>로 표시됩니다. 결과 카드 제목 옆 \u270F\uFE0F를 누르면 원하는 이름으로 바꿀 수 있고, 바꾼 이름은 <b>라인업 탭\u00B7공유 보드\u00B7경기기록\u00B7출력물</b>에 모두 그대로 표시됩니다. (날짜별로 저장됨)</li>
+            <li><b>\uD83D\uDCDD 직접 팀 입력 (v58 신규)</b>: 이미 정해둔 팀이 있으면 왼쪽의 <b>직접 팀 입력</b>을 열고 팀별 명단을 붙여넣은 뒤 <b>이대로 팀 만들기</b>를 누르세요. 자동 배정 없이 입력 그대로 팀이 만들어지고, 능력치 총합\u00B7포지션 통계로 밸런스도 바로 확인됩니다. 이후 라인업\u00B7공유\u00B7회비 연동은 자동 배정과 동일합니다.</li>
+            <li><b>\u2795 현장에서 늦게 온 선수 (v58 신규)</b>: <b>팀 생성을 다시 누르지 마세요!</b> 각 팀 카드 아래의 <b>선수 추가</b> 칸에 이름을 넣으면 그 팀에 바로 추가되고, <b>회비 명단\u00B7활약 투표 후보에도 자동 반영</b>됩니다. 선수 오른쪽 \u2715로 제외할 수도 있습니다. (기존 팀\u00B7라인업은 그대로 유지)</li>
+            <li><b>\uD83D\uDEE1\uFE0F 재배정 경고 (v58 신규)</b>: 이미 팀이 저장된 날짜에서 팀 생성 버튼을 다시 누르면 \"기존 팀\u00B7라인업\u00B7투표 명단이 덮어써진다\"는 확인창이 먼저 뜹니다.</li>
         </ul>
         ${warn('에이스는 <b>선수관리에 등록된 선수만</b> 인정됩니다. 또한 <b>에이스 자동 균등 배치</b>와 함께/분리 지정이 충돌하면 함께/분리가 완벽히 지켜지지 않을 수 있으니, 그 경우 드래그로 조정하세요.')}`);
 
@@ -463,12 +470,15 @@ function renderManual() {
         ${tip('자동 배정 결과의 <b>포지션 집계표</b>에서 각 선수가 공격\u00B7미들\u00B7수비\u00B7GK\u00B7휴식\u00B7출전을 몇 번 했는지 한눈에 확인할 수 있습니다. 특정인이 너무 많이 받은 포지션은 분홍색으로 표시되니 드래그로 조정하세요.')}`);
 
     const sAccounting = sec('\uD83D\uDCC8', '출석 & 회계 \u2014 참석/회비 관리', `
-        <p class="text-sm mb-2">경기 날짜별로 참석자를 체크하고 회비를 기록\u00B7정산하는 곳입니다. <b>휴대폰과 PC가 실시간으로 같은 데이터를 봅니다</b>(한쪽에서 고치면 즉시 반영). <b>이번 업그레이드에서 출석\u00B7회비 데이터와 기능은 전혀 바뀌지 않았습니다.</b></p>
+        <p class="text-sm mb-2">경기 날짜별로 참석자를 체크하고 회비를 기록\u00B7정산하는 곳입니다. <b>휴대폰과 PC가 실시간으로 같은 데이터를 봅니다</b>(한쪽에서 고치면 즉시 반영).</p>
         <ul class="list-disc pl-5 space-y-1.5 text-sm">
             <li><b>날짜 선택</b>: 위쪽 날짜를 바꾸면 그 날짜의 출석\u00B7회비 기록이 나타납니다.</li>
             <li><b>현장 휴대폰에서도 명단 자동 표시</b>: PC에서 팀배정을 해두면, 현장에서 휴대폰으로 이 탭을 열었을 때 그날 팀배정 명단이 참석자 후보로 자동으로 떠 있습니다(전원 체크 상태). 그대로 <b>선택한 날짜 출석 저장</b>만 누르면 됩니다.</li>
             <li><b>불러올 때 기본은 전원 \u2715 미납</b>: 현장에서 돈을 받은 사람만 완납으로 바꾸면 됩니다.</li>
-            <li><b>납부 상태</b>: \u25CF 완납 / \u25B3 일부 / \u2715 미납 / N 노쇼. 미납\u00B7노쇼로 바꾸면 납부액이 자동 0원이 됩니다.</li>
+            <li><b>납부 상태</b>: \u25CF 완납 / \u25B3 일부 / \u2715 미납 / N 노쇼. <b>완납(\u25CF)으로 바꾸면 회비유형에 맞는 금액(일반 50\u00B7잔디 70\u00B7학생 25/35 등)이 자동 입력</b>되고(v58), 미납\u00B7노쇼로 바꾸면 자동 0원이 됩니다. 자동 입력된 금액은 직접 고칠 수 있습니다.</li>
+            <li><b>\uD83D\uDCB3 납부방식 (v58 신규)</b>: 각 기록의 <b>현금 / 카림 / 이체 / 기타</b> 버튼을 탭해 남깁니다(다시 탭하면 해제). <b>기타</b>(면제\u00B7분할납부 등)의 상세 내용은 비고에 적어두세요 \u2014 비고는 다음 모임에 자동으로 이어 표시되므로 차주에 참고할 수 있습니다. 납부방식은 엑셀에도 함께 내려받아집니다.</li>
+            <li><b>\u2795 기타 수입 (v58 신규)</b>: 후원금\u00B7이월금처럼 회비가 아닌 수입은 회비 표 아래의 <b>기타 수입</b> 칸에 날짜\u00B7항목\u00B7금액으로 입력합니다. 총 잔액\u00B7월별 차트\u00B7엑셀(전용 시트)에 자동 반영되며, 회비 기록과 분리 저장되어 인별 집계를 오염시키지 않습니다.</li>
+            <li><b>\uD83C\uDFC3 늦게 온 선수 회비 처리 (v58)</b>: 팀배정을 다시 누르지 말고, <b>팀 배정기의 팀 카드 [선수 추가]</b>(팀에도 넣을 때) 또는 이 탭의 <b>수동 추가</b> 칸(회비만 처리할 때)을 쓰세요. 수동 추가 칸은 이름을 입력하면 등록 선수를 자동 제안합니다.</li>
             <li><b>노쇼 기록</b>: 이름 옆에 누적 노쇼 횟수가 표시되고 엑셀에도 집계됩니다.</li>
             <li><b>운영진(회비 0)은 수금 집계 제외</b>: 미수금 진행바는 실제로 돈을 내야 하는 사람만 셉니다.</li>
         </ul>
@@ -494,6 +504,7 @@ function renderManual() {
             <li><b>\uD83D\uDCCA 쿼터 스코어</b>: 운영진이 경기기록 탭에 스코어를 저장하면 공유 보드에도 자동으로 표시됩니다.</li>
             <li><b>\uD83C\uDF10 영어 보기 (v55 신규)</b>: 공유 보드 오른쪽 위 <b>English</b> 버튼을 누르면 선수 이름을 제외한 모든 문구가 영어로 바뀝니다(팀 1 \u2192 TEAM 1, 1쿼터 \u2192 Q1). 외국인 선수에게 같은 링크를 그대로 공유하면 되고, 선택한 언어는 그 기기에 기억됩니다.</li>
             <li><b>\uD83D\uDCD0 공유 보드 순서 (v55 변경)</b>: 모임 정보 \u2192 팀 배정 \u2192 쿼터 스코어 \u2192 활약 투표 \u2192 라인업 순서이며, 라인업만 기본으로 펼쳐져 있습니다. 나머지는 제목을 누르면 열립니다.</li>
+            <li><b>\uD83D\uDDD1 지난 투표 삭제 (v58 신규)</b>: <b>지난 투표 기록</b> 목록에서 각 투표 오른쪽의 휴지통 버튼으로 오래된 투표와 응답을 영구 삭제할 수 있습니다. (관리자 전용 \u00B7 진행 중인 투표는 삭제 불가 \u00B7 되돌릴 수 없음)</li>
         </ul>
         ${warn('결과를 공유할 땐 반드시 <b>"공유 링크 생성" 버튼으로 만든 링크</b>를 올리세요. 일반 주소나 투표 링크를 올리면 미리보기 제목이 "참석 투표"로 뜹니다.')}
         ${tip('카카오톡은 링크 미리보기를 며칠간 저장(캐시)합니다. 미리보기가 예전 것으로 보이면 <b>카카오 OG 캐시 리셋 도구</b>(developers.kakao.com/tool/clear/og)에 링크를 넣어 갱신하세요.')}`);
@@ -520,10 +531,10 @@ function renderManual() {
             <h3 class="font-bold text-indigo-800 mb-2">\u26A1 한눈에 보는 전체 흐름</h3>
             <ol class="list-decimal pl-5 space-y-1 text-sm text-indigo-900">
                 <li><b>모임배포</b> 탭에서 투표 링크를 만들어 단톡방에 공유 \u2192 참석 응답을 받습니다. (경기 2시간 전 자동 마감 \u00B7 마감 후 참석은 대기자로 등록)</li>
-                <li><b>팀 배정기</b>에서 명단을 넣고 팀을 나눕니다. (함께/분리 지정\u00B7최근 조합 반복 방지)</li>
+                <li><b>팀 배정기</b>에서 명단을 넣고 팀을 나눕니다. (함께/분리 지정\u00B7최근 조합 반복 방지 \u00B7 미리 짠 팀은 <b>직접 팀 입력</b>, 팀 이름은 \u270F\uFE0F로 수정)</li>
                 <li><b>라인업 생성기</b>에서 쿼터별 라인업을 만듭니다. (선수 성향 자동 반영)</li>
                 <li><b>모임배포</b>에서 최종 공유 링크를 단톡방에 뿌립니다.</li>
-                <li>경기 중\u00B7후: <b>출석 & 회계</b>에서 회비 정리, <b>경기기록</b>에서 쿼터 스코어 입력(30초), 회원들은 공유 보드에서 <b>활약 투표</b>.</li>
+                <li>경기 중\u00B7후: <b>출석 & 회계</b>에서 회비 정리(납부방식 체크\u00B7기타 수입 입력), <b>경기기록</b>에서 쿼터 스코어 입력(30초), 회원들은 공유 보드에서 <b>활약 투표</b>. 늦게 온 선수는 <b>팀 카드의 [선수 추가]</b>로!</li>
                 <li>기록이 쌓이면: 능력치 자동 보정 \u2192 다음 주 팀배정이 더 정확해지는 선순환.</li>
             </ol>
         </div>
@@ -536,11 +547,13 @@ function renderManual() {
                     <div class="bg-gray-800 text-gray-100 rounded-md p-3 mt-1 font-mono text-xs">git add .<br>git commit -m "수정 내용"<br>git push</div>
                     push하면 Vercel이 자동 배포합니다.</li>
                 <li><b>\u2757 저장 사고 주의</b>: 코드 에디터에서 여러 파일을 열어둔 채 "모두 저장"을 누르면, 새로 교체한 파일이 에디터에 열려 있던 옛날 내용으로 다시 덮어쓰일 수 있습니다. <b>파일 교체 후에는 에디터 탭을 모두 닫고 저장\u00B7push하세요.</b></li>
-                <li><b>캐시\u00B7버전 규칙</b>: 내용을 바꾼 파일은 불러오는 주소 끝 <code class="bg-amber-100 px-1 rounded">?v=숫자</code>를 한 단계 올리고, <code class="bg-amber-100 px-1 rounded">sw.js</code>의 <code class="bg-amber-100 px-1 rounded">CACHE_NAME</code> 숫자도 함께 올립니다. (이번 업그레이드 v55: app v13, voteManagement v7, 캐시 v55 \u2014 나머지 모듈은 변동 없음)</li>
+                <li><b>캐시\u00B7버전 규칙</b>: 내용을 바꾼 파일은 불러오는 주소 끝 <code class="bg-amber-100 px-1 rounded">?v=숫자</code>를 한 단계 올리고, <code class="bg-amber-100 px-1 rounded">sw.js</code>의 <code class="bg-amber-100 px-1 rounded">CACHE_NAME</code> 숫자도 함께 올립니다. (이번 업그레이드 v58: app v14, teamBalancer v7, lineupGenerator v7, accounting v7, shareManagement v6, voteManagement v8, matchRecord v2, 캐시 v58 \u2014 playerManagement\u00B7lineupStats\u00B7store는 변동 없음)</li>
                 <li><b>\uD83D\uDD14 새 버전 알림 배너 (v55 신규)</b>: 새 버전이 배포되면 화면 아래에 "새 버전이 준비되었습니다" 배너가 떠서 버튼 한 번으로 갱신됩니다. 탭을 오래 켜둔 기기도 1시간마다 자동으로 새 버전을 확인하므로, 예전처럼 구버전에 갇히는 일이 크게 줄어듭니다.</li>
                 <li><b>\uD83D\uDCC1 파일 구성</b>: <code class="bg-amber-100 px-1 rounded">js/modules/matchRecord.js</code>가 새로 추가되었습니다(경기기록 탭). 새 파일을 레포의 <code class="bg-amber-100 px-1 rounded">js/modules/</code> 폴더에 넣어야 합니다.</li>
                 <li><b>\uD83D\uDDC4\uFE0F 새 Firestore 컬렉션</b>: <code class="bg-amber-100 px-1 rounded">matchRecords</code>(쿼터 스코어, 날짜별 1문서), <code class="bg-amber-100 px-1 rounded">ratings</code>(활약 투표, 날짜별 1문서\u00B7투표자 이름 키로 덮어쓰기), <code class="bg-amber-100 px-1 rounded">adjustLogs</code>(운영진 드래그 기록). <b>기존 출석(attendance)\u00B7회비(expenses)\u00B7일일모임(dailyMeetings) 데이터 구조는 그대로이며 삭제\u00B7변경되지 않습니다.</b> (dailyMeetings\u00B7players 문서에 새 필드만 추가됨)</li>
                 <li><b>\u2757 Firestore 보안 규칙 확인</b>: <code class="bg-amber-100 px-1 rounded">ratings</code>는 회원이 <b>로그인 없이</b> 쓰는 컬렉션입니다(투표 responses와 동일). 규칙이 컬렉션별 화이트리스트 방식이라면 Firebase Console \u2192 Firestore \u2192 규칙에서 <code class="bg-amber-100 px-1 rounded">ratings</code> 쓰기 허용을 추가해야 합니다. <code class="bg-amber-100 px-1 rounded">matchRecords</code>\u00B7<code class="bg-amber-100 px-1 rounded">adjustLogs</code>는 관리자(로그인)만 쓰고, 읽기는 공개가 필요합니다(공유 보드에서 스코어\u00B7집계 표시).</li>
+                <li><b>\u2757 v58 Firestore 보안 규칙 (배포 후 꼭 확인)</b>: \u2460 새 컬렉션 <code class="bg-amber-100 px-1 rounded">incomes</code>(기타 수입)가 추가되었습니다 \u2014 <b>읽기 전원 허용\u00B7쓰기(create/update/delete)는 관리자만</b>. \u2461 지난 투표 삭제 기능을 위해 <code class="bg-amber-100 px-1 rounded">votes</code> 문서와 하위 <code class="bg-amber-100 px-1 rounded">responses</code>의 <b>delete가 관리자에게 허용</b>되어야 합니다. 규칙이 없으면 해당 기능만 오류가 뜨고 나머지 앱은 정상 동작합니다.</li>
+                <li><b>\uD83D\uDCE5 과거기록 이관 버튼 제거 (v58)</b>: 2026년 상반기 엑셀 장부 일회성 이관 버튼과 내장 데이터가 accounting.js에서 제거되었습니다. <b>이미 이관된 Firestore 데이터는 그대로 유지</b>됩니다.</li>
                 <li><b>배포 후 확인법</b>: GitHub 레포 웹에서 그 파일을 열고 <code class="bg-amber-100 px-1 rounded">Ctrl+F</code>로 바꾼 내용을 검색해 실제 반영됐는지 확인하세요.</li>
                 <li><b>운영진(관리자) 추가</b>: Firebase Console \u2192 Firestore의 <code class="bg-amber-100 px-1 rounded">admins</code> 컬렉션에 새 운영진 계정 UID를 등록해야 관리자 권한이 생깁니다.</li>
                 <li><b>공유 보드 링크 미리보기</b>: <code class="bg-amber-100 px-1 rounded">share.html</code>은 루트로 이동(redirect)하지 않고 그 페이지에서 직접 결과를 그립니다. 덕분에 카톡 미리보기가 "Barea 팀배정 및 라인업"으로 뜹니다.</li>
@@ -663,6 +676,8 @@ function renderSharePageView(shareData) {
     const POS_MAP = { '4-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 75}, {pos: 'CB', x: 65, y: 80}, {pos: 'CB', x: 35, y: 80}, {pos: 'LB', x: 15, y: 75}, {pos: 'RW', x: 85, y: 45}, {pos: 'CM', x: 65, y: 55}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 15, y: 45}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-3-3': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 88, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 12, y: 78}, {pos: 'CM', x: 50, y: 65}, {pos: 'MF', x: 70, y: 50}, {pos: 'MF', x: 30, y: 50}, {pos: 'RW', x: 80, y: 25}, {pos: 'FW', x: 50, y: 18}, {pos: 'LW', x: 20, y: 25} ], '3-5-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 75, y: 80}, {pos: 'CB', x: 50, y: 85}, {pos: 'CB', x: 25, y: 80}, {pos: 'RW', x: 90, y: 50}, {pos: 'CM', x: 65, y: 55}, {pos: 'MF', x: 50, y: 65}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 10, y: 50}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-2-3-1': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 15, y: 78}, {pos: 'MF', x: 60, y: 65}, {pos: 'MF', x: 40, y: 65}, {pos: 'RW', x: 80, y: 40}, {pos: 'MF', x: 50, y: 45}, {pos: 'LW', x: 20, y: 40}, {pos: 'FW', x: 50, y: 18} ], '3-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 80, y: 80}, {pos: 'CB', x: 50, y: 82}, {pos: 'CB', x: 20, y: 80}, {pos: 'RW', x: 85, y: 50}, {pos: 'CM', x: 60, y: 60}, {pos: 'CM', x: 40, y: 60}, {pos: 'LW', x: 15, y: 50}, {pos: 'FW', x: 65, y: 25}, {pos: 'FW', x: 35, y: 25} ], '3-4-1': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 80, y: 80}, {pos: 'CB', x: 50, y: 82}, {pos: 'CB', x: 20, y: 80}, {pos: 'RW', x: 85, y: 50}, {pos: 'CM', x: 60, y: 60}, {pos: 'CM', x: 40, y: 60}, {pos: 'LW', x: 15, y: 50}, {pos: 'FW', x: 50, y: 20} ] };
     const T = BP_I18N[__bpLang]; // [v55] 현재 언어 사전
     const { meetingInfo = {}, teams: teamsObject = {}, lineups = {}, attendance = null } = shareData || {};
+    // [v58] 🏷️ 팀 이름: 공유 데이터에 저장된 이름(Team A/B 또는 커스텀) → 없으면 언어별 '팀 N/TEAM N'
+    const tName = (i) => (shareData && Array.isArray(shareData.teamNames) && shareData.teamNames[i]) ? esc(shareData.teamNames[i]) : T.team(i + 1);
     // [수정] 명단과 라인업을 '같은 키(teamN)'로 짝지어 렌더 → 팀1↔팀2 명단이 서로 뒤바뀌던 현상 방지
     const teamKeys = Object.keys(teamsObject || {}).sort((a, b) => {
         const na = parseInt(String(a).replace(/[^0-9]/g, ''), 10) || 0;
@@ -707,7 +722,7 @@ function renderSharePageView(shareData) {
         foot += `<span><b>🛌</b> ${esc(resters.join(', ')) || T.none}</span>`;
         return `<div class="bp-quarter">
             <div class="bp-pitch">
-                <div class="bp-qtitle">${T.team((teamIdx ?? 0) + 1)} · ${T.qShort(qIndex + 1)} ${formation ? '(' + esc(formation) + ')' : ''}</div>
+                <div class="bp-qtitle">${tName(teamIdx ?? 0)} · ${T.qShort(qIndex + 1)} ${formation ? '(' + esc(formation) + ')' : ''}</div>
                 <div class="bp-line" style="top:50%;left:0;width:100%;height:1.5px"></div>
                 <div class="bp-circle" style="top:50%;left:50%;width:24%;height:17%;transform:translate(-50%,-50%)"></div>
                 <div class="bp-box" style="top:83%;left:20%;width:60%;height:17%"></div>
@@ -721,13 +736,13 @@ function renderSharePageView(shareData) {
     // [수정] 공유 보드에서 참석 현황 섹션 제거 — 투표 결과만 반영하므로 수동 추가 인원과 불일치하여 혼란 방지
     let attendHtml = '';
 
-    const teamHtml = teams.map((team, i) => `<div style="background:${colors[i % 5]};color:#fff;border-radius:12px;padding:12px"><div style="font-weight:800;border-bottom:1px solid rgba(255,255,255,.3);padding-bottom:6px;margin-bottom:6px">${T.team(i + 1)}</div>${[...team].sort((a, b) => a.name.localeCompare(b.name, 'ko-KR')).map(pp => `<div style="background:rgba(255,255,255,.18);border-radius:6px;padding:5px 8px;margin-bottom:4px">${esc(String(pp.name).replace(' (신규)', ''))}</div>`).join('')}</div>`).join('');
+    const teamHtml = teams.map((team, i) => `<div style="background:${colors[i % 5]};color:#fff;border-radius:12px;padding:12px"><div style="font-weight:800;border-bottom:1px solid rgba(255,255,255,.3);padding-bottom:6px;margin-bottom:6px">${tName(i)}</div>${[...team].sort((a, b) => a.name.localeCompare(b.name, 'ko-KR')).map(pp => `<div style="background:rgba(255,255,255,.18);border-radius:6px;padding:5px 8px;margin-bottom:4px">${esc(String(pp.name).replace(' (신규)', ''))}</div>`).join('')}</div>`).join('');
 
     const lineupHtml = teamKeys.map((teamKey, teamIdx) => {
         const lu = lineups[teamKey] || lineups[`team${teamIdx + 1}`] || lineups[teamIdx];
         let q = '';
         for (let i = 0; i < 6; i++) q += pitchHTML(lu, i, teamIdx);
-        return `<div style="margin-bottom:18px"><h3 style="font-weight:800;text-align:center;margin-bottom:8px">${T.team(teamIdx + 1)}</h3><div class="bp-qgrid">${q}</div></div>`;
+        return `<div style="margin-bottom:18px"><h3 style="font-weight:800;text-align:center;margin-bottom:8px">${tName(teamIdx)}</h3><div class="bp-qgrid">${q}</div></div>`;
     }).join('');
 
     document.title = 'Barea 팀배정 및 라인업';
@@ -795,6 +810,8 @@ function setupShareBoardExtras(shareData) {
         const T = BP_I18N[__bpLang];
         const meetingInfo = shareData.meetingInfo || {};
         const dateStr = String(meetingInfo.time || '').split(' ')[0] || window.getLocalDate();
+        // [v58] 스코어 표에도 팀 이름 반영
+        const tShort = (i) => (Array.isArray(shareData.teamNames) && shareData.teamNames[i]) ? esc(shareData.teamNames[i]) : T.teamShort(i + 1);
 
         // 그날 참가자(팀 배정 명단 전체)
         const names = [];
@@ -811,7 +828,7 @@ function setupShareBoardExtras(shareData) {
             const rows = Object.keys(qs).sort().map(k => {
                 const q = qs[k];
                 const qNum = (parseInt(k.replace(/[^0-9]/g, ''), 10) + 1) || '';
-                return `<div style="display:flex;justify-content:center;gap:12px;padding:6px 0;border-bottom:1px solid #f3f4f6;font-weight:700"><span style="color:#9ca3af;min-width:52px">${T.qShort(qNum)}</span><span>${T.teamShort((q.a ?? 0) + 1)}</span><span style="color:#4f46e5">${q.sa} : ${q.sb}</span><span>${T.teamShort((q.b ?? 1) + 1)}</span></div>`;
+                return `<div style="display:flex;justify-content:center;gap:12px;padding:6px 0;border-bottom:1px solid #f3f4f6;font-weight:700"><span style="color:#9ca3af;min-width:52px">${T.qShort(qNum)}</span><span>${tShort(q.a ?? 0)}</span><span style="color:#4f46e5">${q.sa} : ${q.sb}</span><span>${tShort(q.b ?? 1)}</span></div>`;
             }).join('');
             if (!rows) return;
             const card = document.getElementById('bp-score-card');
@@ -1111,6 +1128,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             state.attendanceLog = snapshots[0].docs.map(doc => ({ id: doc.id, ...doc.data() }));
             state.expenseLog = snapshots[1].docs.map(doc => ({ id: doc.id, ...doc.data() }));
             state.locations = snapshots[2].docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            // [v58] ➕ 기타 수입(incomes) — 보안 규칙이 아직 없어도 앱 전체가 멈추지 않도록 별도 처리
+            state.extraIncomeLog = [];
+            try {
+                const incSnap = await getDocs(collection(db, "incomes"));
+                state.extraIncomeLog = incSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            } catch (e) { console.warn('incomes 컬렉션을 읽지 못했습니다 (Firestore 규칙 확인):', e); }
             // [실시간 동기화] 선수 DB를 Firestore와 실시간 연결한다.
             // → PC에서 추가/수정/삭제한 선수가 폰 앱에 자동 반영되고, 그 반대도 자동 반영된다.
             //   (기존: localStorage에 캐시가 있으면 Firebase를 다시 안 읽어 신규 선수가 영영 안 보이던 버그 수정)
@@ -1129,6 +1152,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA');
             };
             onSnapshot(collection(db, "expenses"), (snapshot) => { state.expenseLog = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); if(!isEditingAccounting() && pages.accounting && !pages.accounting.classList.contains('hidden')) { accounting.renderForDate(); } });
+            // [v58] 기타 수입 실시간 동기화 (오류 시 앱 동작에는 영향 없음)
+            onSnapshot(collection(db, "incomes"), (snapshot) => { state.extraIncomeLog = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); if(!isEditingAccounting() && pages.accounting && !pages.accounting.classList.contains('hidden')) { accounting.renderForDate(); } }, (err) => console.warn('incomes 실시간 구독 오류 (Firestore 규칙 확인):', err));
             onSnapshot(collection(db, "attendance"), (snapshot) => { state.attendanceLog = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); if(!isEditingAccounting() && pages.accounting && !pages.accounting.classList.contains('hidden')) { accounting.renderForDate(); } if (playerMgmt) playerMgmt.renderPlayerTable(); });
             onSnapshot(doc(db, "memos", "accounting_memo"), (doc) => { const memoArea = document.getElementById('memo-area'); if (doc.exists() && memoArea && document.activeElement !== memoArea) { memoArea.value = doc.data().content; } });
             playerMgmt.renderPlayerTable();
