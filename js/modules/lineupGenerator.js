@@ -1,4 +1,6 @@
 // js/modules/lineupGenerator.js
+// [v-매치사이즈 업데이트] 9vs9(3-4-1 고정) / 10vs10(3-4-2 고정) / 11vs11(자유) 경기 인원 선택 지원
+//  - 휴식·심판 로테이션 로직은 기존과 동일 (매 쿼터 휴식 인원 = 명단 − 경기 인원)
 let state;
 let generateLineupButton, lineupDisplay, loadingLineupSpinner, placeholderLineup;
 let teamSelectTabsContainer, lineupMembersTextarea;
@@ -75,6 +77,57 @@ const posCellMap = {
     '3-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 80, y: 80}, {pos: 'CB', x: 50, y: 82}, {pos: 'CB', x: 20, y: 80}, {pos: 'RW', x: 85, y: 50}, {pos: 'CM', x: 60, y: 60}, {pos: 'CM', x: 40, y: 60}, {pos: 'LW', x: 15, y: 50}, {pos: 'FW', x: 65, y: 25}, {pos: 'FW', x: 35, y: 25} ],
     '3-4-1': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 80, y: 80}, {pos: 'CB', x: 50, y: 82}, {pos: 'CB', x: 20, y: 80}, {pos: 'RW', x: 85, y: 50}, {pos: 'CM', x: 60, y: 60}, {pos: 'CM', x: 40, y: 60}, {pos: 'LW', x: 15, y: 50}, {pos: 'FW', x: 50, y: 20} ]
 };
+
+// [v-매치사이즈] 경기 인원(9vs9 / 10vs10 / 11vs11)별 허용 포메이션
+// - 9vs9·10vs10은 쓰리백 유지: 10vs10 = 3-4-2 고정, 9vs9 = 3-4-1 고정
+// - 11vs11은 기존 4가지 포메이션 자유 선택
+let matchSize = 11;
+const FORMATIONS_BY_SIZE = {
+    11: ['4-4-2', '4-3-3', '3-5-2', '4-2-3-1'],
+    10: ['3-4-2'],
+    9: ['3-4-1']
+};
+const DEFAULT_FORMATION_BY_SIZE = { 11: '4-2-3-1', 10: '3-4-2', 9: '3-4-1' };
+
+function formationSelects() {
+    return Array.from(document.querySelectorAll('#page-lineup select[id^="formation-q"]'));
+}
+
+// 저장된 포메이션 배열에서 경기 인원 역추론 (팀 탭 전환 시 캐시 복원용)
+function matchSizeOfFormations(formations) {
+    if (!Array.isArray(formations) || formations.length === 0) return 11;
+    const f = formations[0];
+    if (FORMATIONS_BY_SIZE[9].includes(f)) return 9;
+    if (FORMATIONS_BY_SIZE[10].includes(f)) return 10;
+    return 11;
+}
+
+// 경기 인원 변경: 버튼 활성 표시 + 쿼터별 포메이션 옵션 재구성 (9·10인은 단일 옵션 고정)
+function setMatchSize(size, keepFormations = null) {
+    if (!FORMATIONS_BY_SIZE[size]) size = 11;
+    matchSize = size;
+    document.querySelectorAll('.match-size-btn').forEach(btn => {
+        const active = parseInt(btn.dataset.size, 10) === size;
+        btn.classList.toggle('bg-teal-600', active);
+        btn.classList.toggle('text-white', active);
+        btn.classList.toggle('border-teal-600', active);
+        btn.classList.toggle('bg-white', !active);
+        btn.classList.toggle('text-gray-600', !active);
+        btn.classList.toggle('border-gray-300', !active);
+    });
+    const hint = document.getElementById('match-size-hint');
+    if (hint) {
+        hint.textContent = size === 11
+            ? '11vs11 · 쿼터별 포메이션 자유 선택'
+            : (size === 10 ? '10vs10 · 쓰리백 유지 (3-4-2 고정)' : '9vs9 · 쓰리백 유지 (3-4-1 고정)');
+    }
+    const opts = FORMATIONS_BY_SIZE[size];
+    formationSelects().forEach((sel, qIndex) => {
+        const prev = keepFormations ? keepFormations[qIndex] : sel.value;
+        sel.innerHTML = opts.map(f => `<option${f === DEFAULT_FORMATION_BY_SIZE[size] ? ' selected' : ''}>${f}</option>`).join('');
+        if (opts.includes(prev)) sel.value = prev;
+    });
+}
 
 function resetLineupUI() {
     loadingLineupSpinner.classList.add('hidden');
@@ -386,16 +439,23 @@ function renderAllQuarters() {
 // [기능 2, 3] 심판 및 슈퍼 GK 로직이 반영된 실행 함수
 function executeLineupGeneration(members, formations, isSilent = false) {
     return new Promise(resolve => {
-        // [기능 1] 인원수에 따른 포메이션 자동 고정
-        if (members.length === 9) {
-            formations = Array(6).fill('3-4-1');
-            if(!isSilent) window.showNotification("9명이므로 3-4-1 포메이션으로 고정됩니다.");
-        } else if (members.length === 10) {
-            formations = Array(6).fill('3-4-2');
-            if(!isSilent) window.showNotification("10명이므로 3-4-2 포메이션으로 고정됩니다.");
-        } else if (members.length < 9 && !isSilent) {
-             window.showNotification("최소 9명의 선수가 필요합니다.", 'error');
-             resolve(null); return;
+        // [v-매치사이즈] 인원 검증 및 자동 전환
+        // - 선택한 포메이션(경기 인원)보다 명단이 적으면 한 단계 아래로 자동 전환
+        //   (10명 → 10vs10 · 3-4-2 / 9명 → 9vs9 · 3-4-1)  ※ 쓰리백 유지 규칙
+        // - 휴식·심판 로테이션은 기존 그대로: 매 쿼터 휴식 인원 = 명단 − 경기 인원
+        if (members.length < 9) {
+            if(!isSilent) window.showNotification("최소 9명의 선수가 필요합니다.", 'error');
+            resolve(null); return;
+        }
+        const requiredOnField = Math.max(...formations.map(f => (posCellMap[f] || []).length));
+        if (members.length < requiredOnField) {
+            if (members.length >= 10) {
+                formations = Array(6).fill('3-4-2');
+                if(!isSilent) window.showNotification("명단이 10명이므로 10vs10(3-4-2) 포메이션으로 자동 전환됩니다.");
+            } else {
+                formations = Array(6).fill('3-4-1');
+                if(!isSilent) window.showNotification("명단이 9명이므로 9vs9(3-4-1) 포메이션으로 자동 전환됩니다.");
+            }
         }
 
         const initialOrder = (state.initialAttendeeOrder || []).map(name => normalizeName(name));
@@ -648,6 +708,15 @@ export function init(dependencies) {
                 <div id="team-select-tabs-container" class="flex flex-wrap gap-2"><p class="text-sm text-gray-500">팀 배정기에서 먼저 팀을 생성해주세요.</p></div>
                 <textarea id="lineup-members" class="hidden"></textarea>
             </div>
+            <div class="mb-4">
+                <label class="block text-md font-semibold text-gray-700 mb-2">경기 인원</label>
+                <div id="match-size-tabs" class="flex gap-2">
+                    <button type="button" data-size="11" class="match-size-btn flex-1 p-2 rounded-lg border-2 font-semibold transition bg-teal-600 text-white border-teal-600">11vs11</button>
+                    <button type="button" data-size="10" class="match-size-btn flex-1 p-2 rounded-lg border-2 font-semibold transition bg-white text-gray-600 border-gray-300">10vs10</button>
+                    <button type="button" data-size="9" class="match-size-btn flex-1 p-2 rounded-lg border-2 font-semibold transition bg-white text-gray-600 border-gray-300">9vs9</button>
+                </div>
+                <p id="match-size-hint" class="text-xs text-gray-500 mt-1">11vs11 · 쿼터별 포메이션 자유 선택</p>
+            </div>
             <div class="grid grid-cols-2 gap-4 mb-6">
                 <div><label for="formation-q1" class="block text-sm font-medium">1쿼터</label><select id="formation-q1" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option selected>4-2-3-1</option></select></div>
                 <div><label for="formation-q2" class="block text-sm font-medium">2쿼터</label><select id="formation-q2" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option selected>4-2-3-1</option></select></div>
@@ -681,6 +750,15 @@ export function init(dependencies) {
     teamSelectTabsContainer = document.getElementById('team-select-tabs-container');
     lineupMembersTextarea = document.getElementById('lineup-members');
 
+    // [v-매치사이즈] 경기 인원 버튼 연결 (관리자 전용)
+    document.querySelectorAll('.match-size-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (pageElement.classList.contains('view-only')) return; // 비관리자 클릭은 아래 공용 핸들러가 처리
+            setMatchSize(parseInt(btn.dataset.size, 10));
+        });
+    });
+    setMatchSize(11);
+
     generateLineupButton.addEventListener('click', async () => {
         loadingLineupSpinner.classList.remove('hidden');
         lineupDisplay.classList.add('hidden');
@@ -688,9 +766,11 @@ export function init(dependencies) {
         generateLineupButton.disabled = true;
         generateLineupButton.textContent = '라인업 생성 중...';
         const members = lineupMembersTextarea.value.split('\n').map(name => name.trim().replace(' (신규)', '')).filter(Boolean);
-        const formations = Array.from(document.querySelectorAll('#page-lineup select')).map(s => s.value);
+        const formations = formationSelects().map(s => s.value);
         const result = await executeLineupGeneration(members, formations);
         if (result) {
+            // [v-매치사이즈] 인원 부족으로 자동 전환된 경우 버튼/셀렉트 UI 동기화
+            setMatchSize(matchSizeOfFormations(result.formations), result.formations);
             state.lineupResults = result;
             state.teamLineupCache[activeTeamIndex] = result;
             lineupDisplay.classList.remove('hidden');
@@ -736,10 +816,8 @@ export function renderTeamSelectTabs(teams) {
         if (state.teamLineupCache && state.teamLineupCache[index]) {
             state.lineupResults = state.teamLineupCache[index];
             if (state.lineupResults.formations && state.lineupResults.formations.length === 6) {
-                const formationSelects = document.querySelectorAll('#page-lineup select');
-                formationSelects.forEach((select, qIndex) => {
-                    select.value = state.lineupResults.formations[qIndex];
-                });
+                // [v-매치사이즈] 저장된 포메이션으로 경기 인원(9/10/11)을 역추론해 UI 복원
+                setMatchSize(matchSizeOfFormations(state.lineupResults.formations), state.lineupResults.formations);
             }
             lineupDisplay.classList.remove('hidden');
             placeholderLineup.classList.add('hidden');

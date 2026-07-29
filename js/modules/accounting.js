@@ -11,6 +11,9 @@ let collectModeBtn, collectBar, collectHideBtn;
 let grassToggle, recordDateJump, deleteRangeBtn;
 let chartInstance = null;
 let memoDoc;
+// [v59 추가] 지출 로그 정렬 상태 (null = 기본: 최신 등록순)
+let expenseSortKey = null;   // 'date' | 'item' | 'amount' | null
+let expenseSortDir = 1;      // 1 = 오름차순, -1 = 내림차순
 
 // [추가] UTC 밀림 방지용 현지(두바이/기기) 날짜 문자열
 function localDateStr(d = new Date()) {
@@ -154,12 +157,15 @@ function renderAttendanceLogTable(logs) {
     if (sortedLogs.length === 0) {
         logBody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-gray-500">해당 기간의 출석 로그가 없습니다.</td></tr>`;
         updateCollectBar(0, 0, 0, 0);
+        updatePaySummaryBar(null); // [v59] 기록 없으면 수금 요약 숨김
         return;
     }
 
     let totalAmount = 0;
     // [추가] 수금 현황 집계
     let cPaid = 0, cPartial = 0, cNoshow = 0, cCollected = 0;
+    // [v59 추가] 납부방식별 수금액 집계 (완납·일부만, payMethod 미지정은 'none')
+    const paySums = {};
     // [추가] 운영진(무료) 제외한 '실제 수금 대상' 집계 → 진행바가 운영진 때문에 부풀지 않게
     let payEligible = 0, payDone = 0;
     sortedLogs.forEach((log, index) => {
@@ -168,7 +174,12 @@ function renderAttendanceLogTable(logs) {
         if (st === '●') cPaid++;
         else if (st === '△') cPartial++;
         else if (st === NOSHOW) cNoshow++;
-        if (st === '●' || st === '△') cCollected += Number(log.paymentAmount || 0);
+        if (st === '●' || st === '△') {
+            const __amt = Number(log.paymentAmount || 0);
+            cCollected += __amt;
+            const __mk = log.payMethod || 'none';
+            paySums[__mk] = (paySums[__mk] || 0) + __amt; // [v59] 방식별 합산
+        }
         // 노쇼·운영진(무료)은 수금 대상에서 제외
         if (st !== NOSHOW && feeTypeOf(log.name) !== 'admin') {
             payEligible++;
@@ -213,6 +224,32 @@ function renderAttendanceLogTable(logs) {
 
     // [추가] 수금 진행바 갱신 (노쇼·운영진 제외한 실제 수금 대상 기준)
     updateCollectBar(payDone, payEligible, cCollected, payEligible - payDone);
+    // [v59 추가] 납부방식별 수금 요약 바 갱신 (실시간 자동)
+    updatePaySummaryBar(paySums, cCollected);
+}
+
+// [v59 추가] 💳 납부방식별 수금 요약 바 — 완납/일부로 기록된 납부액을 현금/카림/이체/기타(+미지정)별로 자동 합산해 표시
+function updatePaySummaryBar(sums, total) {
+    const bar = document.getElementById('pay-summary-bar');
+    const chips = document.getElementById('pay-summary-chips');
+    if (!bar || !chips) return;
+    if (!sums) { bar.classList.add('hidden'); chips.innerHTML = ''; return; }
+    bar.classList.remove('hidden');
+    const dotColors = { cash: '#059669', careem: '#16a34a', transfer: '#2563eb', etc: '#7c3aed', none: '#9ca3af' };
+    const chip = (label, amt, color) =>
+        `<span class="inline-flex items-center gap-1 bg-white border border-emerald-200 rounded px-2 py-0.5 text-xs font-semibold text-gray-700"><span class="inline-block w-2 h-2 rounded-full" style="background:${color}"></span>${label} <b>${Number(amt).toLocaleString()}</b></span>`;
+    let html = '';
+    PAY_METHODS.forEach(([v, label]) => {
+        const amt = Number(sums[v] || 0);
+        if (amt > 0) html += chip(label, amt, dotColors[v]);
+    });
+    if (Number(sums.none || 0) > 0) html += chip('미지정', sums.none, dotColors.none);
+    if (!html) {
+        chips.innerHTML = '<span class="text-xs text-emerald-700">아직 수금된 금액이 없습니다. (완납 ●을 누르면 여기에 자동 합산)</span>';
+        return;
+    }
+    html += `<span class="inline-flex items-center gap-1 bg-emerald-600 text-white rounded px-2 py-0.5 text-xs font-bold">합계 ${Number(total || 0).toLocaleString()} Dhs</span>`;
+    chips.innerHTML = html;
 }
 
 // [추가] 수금 진행바 텍스트/게이지 갱신
@@ -300,12 +337,56 @@ async function handleExtraIncomeSubmit(e) {
     }
 }
 
+// [v59 추가] 지출 로그 정렬 UI 갱신 — PC 헤더 화살표 + 모바일 정렬 버튼 활성 표시
+function updateExpenseSortUI() {
+    document.querySelectorAll('#expense-log-head .expense-sort-ind').forEach(el => {
+        if (el.dataset.ind === expenseSortKey) {
+            el.textContent = expenseSortDir === 1 ? '▲' : '▼';
+            el.classList.remove('text-gray-400');
+            el.classList.add('text-indigo-600');
+        } else {
+            el.textContent = '⇅';
+            el.classList.add('text-gray-400');
+            el.classList.remove('text-indigo-600');
+        }
+    });
+    document.querySelectorAll('#expense-sort-mobile .expense-sort-mbtn').forEach(btn => {
+        const on = (btn.dataset.sort || null) === expenseSortKey || (!btn.dataset.sort && !expenseSortKey);
+        btn.classList.toggle('bg-indigo-600', on);
+        btn.classList.toggle('text-white', on);
+        btn.classList.toggle('border-indigo-600', on);
+        btn.classList.toggle('bg-white', !on);
+        if (on && btn.dataset.sort) btn.textContent = btn.textContent.replace(/ [▲▼]$/, '') + (expenseSortDir === 1 ? ' ▲' : ' ▼');
+        else btn.textContent = btn.textContent.replace(/ [▲▼]$/, '');
+    });
+}
+
+// [v59 추가] 정렬 키 토글: 같은 컬럼 클릭 시 오름차순 → 내림차순 → 기본(최신 등록순) 순환
+function toggleExpenseSort(key) {
+    if (!key) { expenseSortKey = null; expenseSortDir = 1; }
+    else if (expenseSortKey === key) {
+        if (expenseSortDir === 1) expenseSortDir = -1;
+        else { expenseSortKey = null; expenseSortDir = 1; }
+    } else { expenseSortKey = key; expenseSortDir = 1; }
+    renderExpenseLog(state.expenseLog || []);
+}
+
 function renderExpenseLog(logs) {
     if(!expenseLogBody) return;
     expenseLogBody.innerHTML = '';
     expenseLogFoot.innerHTML = '';
 
-    const sortedLogs = logs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+    // [v59 수정] 정렬 상태에 따라 정렬 (기본: 최신 등록순 / 헤더 클릭: 해당 컬럼 오름·내림차순)
+    const sortedLogs = (logs || []).slice().sort((a, b) => {
+        if (!expenseSortKey) return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
+        let r = 0;
+        if (expenseSortKey === 'date') r = String(a.date || '').localeCompare(String(b.date || ''));
+        else if (expenseSortKey === 'item') r = String(a.item || '').localeCompare(String(b.item || ''), 'ko-KR');
+        else if (expenseSortKey === 'amount') r = Number(a.amount || 0) - Number(b.amount || 0);
+        if (r === 0) r = (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0);
+        return r * expenseSortDir;
+    });
+    updateExpenseSortUI(); // [v59] 헤더 화살표(▲▼)·모바일 버튼 상태 갱신
 
     if (sortedLogs.length === 0) {
         expenseLogBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-gray-500">해당 기간의 지출 로그가 없습니다.</td></tr>`;
@@ -581,7 +662,7 @@ export function init(dependencies) {
 
     const pageElement = document.getElementById('page-accounting');
     pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-1 space-y-8"><div class="bg-white p-6 rounded-2xl shadow-lg"><div class="flex justify-between items-center mb-4 border-b pb-2"><h2 class="text-2xl font-bold">출석 기록 관리</h2><button id="admin-login-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1 px-3 rounded-lg">관리자 로그인</button></div><div class="mb-3"><label for="attendance-date" class="block text-md font-semibold text-gray-700 mb-2">날짜 선택</label><input type="date" id="attendance-date" class="w-full p-2 border rounded-lg"></div><div class="mb-3"><select id="record-date-jump" class="w-full p-2 border rounded-lg bg-white text-sm text-gray-700"><option value="">📌 기록 있는 날 바로가기</option></select></div><div class="mb-4"><label class="flex items-center gap-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg cursor-pointer admin-control"><input type="checkbox" id="grass-toggle" class="w-4 h-4 text-emerald-600 rounded"><span class="text-sm font-semibold text-emerald-800">🌱 천연잔디 날 (일반 70 / 학생 35)</span></label><p class="text-xs text-gray-400 mt-1">체크 후 저장하면 이 날의 회비가 천연잔디 금액으로 자동 입력됩니다.</p></div><div class="mb-4"><div class="flex justify-between items-center mb-2"><label class="block text-md font-semibold text-gray-700">참석자 선택</label><div class="space-x-2"><button id="check-all-btn" class="text-xs text-indigo-600 hover:underline admin-control" disabled>모두 선택</button><button id="uncheck-all-btn" class="text-xs text-gray-500 hover:underline admin-control" disabled>모두 해제</button></div></div><div id="attendance-checklist" class="max-h-60 overflow-y-auto border rounded-lg p-3 space-y-2"></div><div class="flex space-x-2 mt-2"><input type="text" id="manual-attendee-name" list="attendee-name-datalist" class="flex-grow bg-gray-50 border border-gray-300 text-sm rounded-lg p-2 admin-control" placeholder="수동 추가 (늦참자·게스트)..."><datalist id="attendee-name-datalist"></datalist><button type="button" id="manual-attendee-add-btn" class="text-white bg-indigo-600 hover:bg-indigo-700 font-medium rounded-lg text-sm px-4 py-2 admin-control">추가</button></div></div><button id="record-attendance-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition-transform transform hover:scale-105 shadow-lg admin-control" disabled>선택한 날짜 출석 저장</button></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">💰 총 잔액</h2><p id="total-balance" class="text-4xl font-bold text-indigo-600">0 Dhs</p></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4">📊 월별 요약</h2><div class="w-full"><canvas id="accountingChart"></canvas></div></div><div class="bg-white p-6 rounded-2xl shadow-lg"><h2 class="text-2xl font-bold mb-4 border-b pb-2">운영진 공유사항</h2><textarea id="memo-area" class="w-full p-3 border rounded-lg admin-control bg-gray-50" rows="5" placeholder="미납자 정보, 주요 공지 등..." disabled></textarea><p class="text-xs text-gray-500 mt-2">메모는 자동으로 저장됩니다.</p>
-    </div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="border-b border-gray-200 mb-4"><nav class="flex -mb-px space-x-6" aria-label="Tabs"><button id="income-tab-btn" class="accounting-tab active text-indigo-600 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💰 회비 (수입)</button><button id="expense-tab-btn" class="accounting-tab text-gray-500 hover:text-gray-700 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💸 지출</button></nav></div><div id="income-log-section"><div class="mb-4"><div class="flex flex-wrap justify-between items-center gap-2 mb-2"><h2 class="text-2xl font-bold">회비 로그 <span id="log-range-label" class="text-base font-normal text-gray-500"></span></h2><div class="flex gap-2"><button id="collect-mode-btn" class="text-sm text-white bg-indigo-600 hover:bg-indigo-700 font-bold py-1.5 px-3 rounded-lg admin-control" disabled>수금 체크</button><button id="accounting-excel-download-btn" class="text-sm text-white bg-green-600 hover:bg-green-700 font-bold py-1.5 px-3 rounded-lg">엑셀</button><button id="delete-range-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1.5 px-3 rounded-lg admin-control" disabled>이 범위 삭제</button></div></div><div class="flex flex-wrap items-center gap-2"><div class="inline-flex rounded-lg border border-gray-300 overflow-hidden text-sm"><button id="view-day-btn" class="view-mode-btn px-3 py-1.5 font-medium">선택한 날짜</button><button id="view-all-btn" class="view-mode-btn px-3 py-1.5 font-medium border-l border-gray-300">전체</button><button id="view-range-btn" class="view-mode-btn px-3 py-1.5 font-medium border-l border-gray-300">기간 지정</button></div><div id="range-picker" class="hidden flex items-center gap-1"><input type="date" id="filter-start-date" class="p-1.5 border rounded-md text-sm bg-white"><span class="text-gray-400">~</span><input type="date" id="filter-end-date" class="p-1.5 border rounded-md text-sm bg-white"><select id="filter-period-select" class="p-1.5 border rounded-md bg-white text-sm"><option value="custom">직접 지정</option><option value="1m">최근 1개월</option><option value="3m">최근 3개월</option><option value="6m">최근 6개월</option><option value="all">전체</option></select></div></div></div><div id="collect-bar" class="hidden mb-3 p-3 rounded-lg border border-indigo-200 bg-indigo-50"><div class="flex flex-wrap items-center justify-between gap-2"><div class="text-sm font-semibold text-indigo-900">걷음 <span id="collect-done">0</span> / <span id="collect-total">0</span>명 · 걷은 금액 <span id="collect-amount">0</span> Dhs · 미수금 <span id="collect-remain">0</span>명</div><button id="collect-hide-btn" class="text-xs font-semibold text-indigo-700 bg-white border border-indigo-300 rounded px-2 py-1">안 낸 사람만 보기</button></div><div class="mt-2 h-2 w-full bg-indigo-100 rounded overflow-hidden"><div id="collect-progress-fill" class="h-full bg-indigo-600 rounded" style="width:0%"></div></div><p class="mt-1.5 text-xs text-indigo-700">표에서 이름 줄을 <b>탭하면 완납</b>(자동 금액)으로 기록됩니다. 다시 탭하면 취소. 일부만 받았으면 상태를 <b>△ 일부</b>로 두고 비고에 상세를 적으세요.</p></div><div class="overflow-x-auto max-h-[80vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">#</th> <th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">이름</th><th scope="col" class="py-3 px-4">납부 상태</th><th scope="col" class="py-3 px-4">납부액</th><th scope="col" class="py-3 px-4">납부방식</th><th scope="col" class="py-3 px-4">비고</th></tr></thead><tbody id="accounting-log-body"></tbody><tfoot id="accounting-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div><div class="mt-6 border-t pt-4"><h3 class="text-lg font-bold mb-1">➕ 기타 수입 <span class="text-sm font-normal text-gray-400">(후원금·이월금 등 회비 외 수입)</span></h3><p class="text-xs text-gray-400 mb-3">여기에 입력한 수입은 총 잔액·월별 차트·엑셀에 자동 반영됩니다. (회비 기록과는 분리 저장)</p><form id="extra-income-form" class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4 items-end"><div><label for="extra-income-date" class="block text-sm font-medium">날짜</label><input type="date" id="extra-income-date" class="mt-1 w-full p-2 border rounded-lg bg-gray-50"></div><div><label for="extra-income-item" class="block text-sm font-medium">항목</label><input type="text" id="extra-income-item" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" placeholder="예: 후원금 (홍길동)" required></div><div><label for="extra-income-amount" class="block text-sm font-medium">금액</label><input type="number" id="extra-income-amount" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><button type="submit" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 admin-control" disabled>수입 추가</button></form><div class="overflow-x-auto max-h-[40vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">항목</th><th scope="col" class="py-3 px-4">금액</th><th scope="col" class="py-3 px-4">관리</th></tr></thead><tbody id="extra-income-log-body"></tbody><tfoot id="extra-income-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div></div><div id="expense-log-section" class="hidden"><h2 class="text-2xl font-bold mb-4">지출 로그</h2><form id="expense-form" class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6 items-end"><div class="sm:col-span-2"><label for="expense-item" class="block text-sm font-medium">항목</label><input type="text" id="expense-item" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><div><label for="expense-amount" class="block text-sm font-medium">금액</label><input type="number" id="expense-amount" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><button type="submit" class="w-full bg-red-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600 admin-control" disabled>지출 추가</button></form><div class="overflow-x-auto max-h-[70vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">항목</th><th scope="col" class="py-3 px-4">금액</th><th scope="col" class="py-3 px-4">관리</th></tr></thead><tbody id="expense-log-body"></tbody><tfoot id="expense-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div></div></div>`;
+    </div></div><div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg"><div class="border-b border-gray-200 mb-4"><nav class="flex -mb-px space-x-6" aria-label="Tabs"><button id="income-tab-btn" class="accounting-tab active text-indigo-600 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💰 회비 (수입)</button><button id="expense-tab-btn" class="accounting-tab text-gray-500 hover:text-gray-700 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg">💸 지출</button></nav></div><div id="income-log-section"><div class="mb-4"><div class="flex flex-wrap justify-between items-center gap-2 mb-2"><h2 class="text-2xl font-bold">회비 로그 <span id="log-range-label" class="text-base font-normal text-gray-500"></span></h2><div class="flex gap-2"><button id="collect-mode-btn" class="text-sm text-white bg-indigo-600 hover:bg-indigo-700 font-bold py-1.5 px-3 rounded-lg admin-control" disabled>수금 체크</button><button id="accounting-excel-download-btn" class="text-sm text-white bg-green-600 hover:bg-green-700 font-bold py-1.5 px-3 rounded-lg">엑셀</button><button id="delete-range-btn" class="text-sm text-white bg-red-500 hover:bg-red-600 font-bold py-1.5 px-3 rounded-lg admin-control" disabled>이 범위 삭제</button></div></div><div class="flex flex-wrap items-center gap-2"><div class="inline-flex rounded-lg border border-gray-300 overflow-hidden text-sm"><button id="view-day-btn" class="view-mode-btn px-3 py-1.5 font-medium">선택한 날짜</button><button id="view-all-btn" class="view-mode-btn px-3 py-1.5 font-medium border-l border-gray-300">전체</button><button id="view-range-btn" class="view-mode-btn px-3 py-1.5 font-medium border-l border-gray-300">기간 지정</button></div><div id="range-picker" class="hidden flex items-center gap-1"><input type="date" id="filter-start-date" class="p-1.5 border rounded-md text-sm bg-white"><span class="text-gray-400">~</span><input type="date" id="filter-end-date" class="p-1.5 border rounded-md text-sm bg-white"><select id="filter-period-select" class="p-1.5 border rounded-md bg-white text-sm"><option value="custom">직접 지정</option><option value="1m">최근 1개월</option><option value="3m">최근 3개월</option><option value="6m">최근 6개월</option><option value="all">전체</option></select></div></div></div><div id="pay-summary-bar" class="hidden mb-3 p-3 rounded-lg border border-emerald-200 bg-emerald-50"><div class="flex flex-wrap items-center gap-2"><span class="text-sm font-bold text-emerald-900">\uD83D\uDCB3 수금 현황</span><div id="pay-summary-chips" class="flex flex-wrap items-center gap-1.5"></div></div><p class="mt-1 text-[11px] text-emerald-700">완납\u00B7일부 납부액이 납부방식별로 자동 합산됩니다. \u2018미지정\u2019은 납부방식 버튼을 아직 안 누른 금액입니다.</p></div><div id="collect-bar" class="hidden mb-3 p-3 rounded-lg border border-indigo-200 bg-indigo-50"><div class="flex flex-wrap items-center justify-between gap-2"><div class="text-sm font-semibold text-indigo-900">걷음 <span id="collect-done">0</span> / <span id="collect-total">0</span>명 · 걷은 금액 <span id="collect-amount">0</span> Dhs · 미수금 <span id="collect-remain">0</span>명</div><button id="collect-hide-btn" class="text-xs font-semibold text-indigo-700 bg-white border border-indigo-300 rounded px-2 py-1">안 낸 사람만 보기</button></div><div class="mt-2 h-2 w-full bg-indigo-100 rounded overflow-hidden"><div id="collect-progress-fill" class="h-full bg-indigo-600 rounded" style="width:0%"></div></div><p class="mt-1.5 text-xs text-indigo-700">표에서 이름 줄을 <b>탭하면 완납</b>(자동 금액)으로 기록됩니다. 다시 탭하면 취소. 일부만 받았으면 상태를 <b>△ 일부</b>로 두고 비고에 상세를 적으세요.</p></div><div class="overflow-x-auto max-h-[80vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">#</th> <th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">이름</th><th scope="col" class="py-3 px-4">납부 상태</th><th scope="col" class="py-3 px-4">납부액</th><th scope="col" class="py-3 px-4">납부방식</th><th scope="col" class="py-3 px-4">비고</th></tr></thead><tbody id="accounting-log-body"></tbody><tfoot id="accounting-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div><div class="mt-6 border-t pt-4"><h3 class="text-lg font-bold mb-1">➕ 기타 수입 <span class="text-sm font-normal text-gray-400">(후원금·이월금 등 회비 외 수입)</span></h3><p class="text-xs text-gray-400 mb-3">여기에 입력한 수입은 총 잔액·월별 차트·엑셀에 자동 반영됩니다. (회비 기록과는 분리 저장)</p><form id="extra-income-form" class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4 items-end"><div><label for="extra-income-date" class="block text-sm font-medium">날짜</label><input type="date" id="extra-income-date" class="mt-1 w-full p-2 border rounded-lg bg-gray-50"></div><div><label for="extra-income-item" class="block text-sm font-medium">항목</label><input type="text" id="extra-income-item" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" placeholder="예: 후원금 (홍길동)" required></div><div><label for="extra-income-amount" class="block text-sm font-medium">금액</label><input type="number" id="extra-income-amount" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><button type="submit" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 admin-control" disabled>수입 추가</button></form><div class="overflow-x-auto max-h-[40vh]"><table class="w-full text-sm text-left text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" class="py-3 px-4">날짜</th><th scope="col" class="py-3 px-4">항목</th><th scope="col" class="py-3 px-4">금액</th><th scope="col" class="py-3 px-4">관리</th></tr></thead><tbody id="extra-income-log-body"></tbody><tfoot id="extra-income-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div></div><div id="expense-log-section" class="hidden"><h2 class="text-2xl font-bold mb-4">지출 로그</h2><form id="expense-form" class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6 items-end"><div class="sm:col-span-2"><label for="expense-item" class="block text-sm font-medium">항목</label><input type="text" id="expense-item" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><div><label for="expense-amount" class="block text-sm font-medium">금액</label><input type="number" id="expense-amount" class="mt-1 w-full p-2 border rounded-lg bg-gray-50" required></div><button type="submit" class="w-full bg-red-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600 admin-control" disabled>지출 추가</button></form><div id="expense-sort-mobile" class="md:hidden flex flex-wrap items-center gap-1.5 mb-2"><span class="text-xs font-semibold text-gray-500">정렬:</span><button type="button" data-sort="" class="expense-sort-mbtn text-xs border rounded px-2 py-1">최신 등록</button><button type="button" data-sort="date" class="expense-sort-mbtn text-xs border rounded px-2 py-1">날짜</button><button type="button" data-sort="item" class="expense-sort-mbtn text-xs border rounded px-2 py-1">항목</button><button type="button" data-sort="amount" class="expense-sort-mbtn text-xs border rounded px-2 py-1">금액</button></div><div class="overflow-x-auto max-h-[70vh]"><table class="w-full text-sm text-left text-gray-500"><thead id="expense-log-head" class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0"><tr><th scope="col" data-sort="date" class="py-3 px-4 cursor-pointer select-none hover:bg-gray-100" title="클릭해서 정렬">날짜 <span class="expense-sort-ind text-gray-400" data-ind="date">⇅</span></th><th scope="col" data-sort="item" class="py-3 px-4 cursor-pointer select-none hover:bg-gray-100" title="클릭해서 정렬">항목 <span class="expense-sort-ind text-gray-400" data-ind="item">⇅</span></th><th scope="col" data-sort="amount" class="py-3 px-4 cursor-pointer select-none hover:bg-gray-100" title="클릭해서 정렬">금액 <span class="expense-sort-ind text-gray-400" data-ind="amount">⇅</span></th><th scope="col" class="py-3 px-4">관리</th></tr></thead><tbody id="expense-log-body"></tbody><tfoot id="expense-log-foot" class="bg-gray-100 font-bold"></tfoot></table></div></div></div></div>`;
 
     attendanceDate = document.getElementById('attendance-date');
     checklistContainer = document.getElementById('attendance-checklist');
@@ -651,6 +732,17 @@ export function init(dependencies) {
     if(incomeTabBtn) incomeTabBtn.addEventListener('click', () => switchAccountingTab(incomeTabBtn));
     if(expenseTabBtn) expenseTabBtn.addEventListener('click', () => switchAccountingTab(expenseTabBtn));
     if(expenseForm) expenseForm.addEventListener('submit', handleExpenseSubmit);
+    // [v59 추가] 지출 로그 정렬 — PC: 헤더 클릭 / 모바일: 정렬 버튼
+    const expenseLogHead = document.getElementById('expense-log-head');
+    if (expenseLogHead) expenseLogHead.addEventListener('click', (e) => {
+        const th = e.target.closest('th[data-sort]');
+        if (th) toggleExpenseSort(th.dataset.sort);
+    });
+    const expenseSortMobile = document.getElementById('expense-sort-mobile');
+    if (expenseSortMobile) expenseSortMobile.addEventListener('click', (e) => {
+        const btn = e.target.closest('.expense-sort-mbtn');
+        if (btn) toggleExpenseSort(btn.dataset.sort || null);
+    });
     // [v58] 기타 수입 폼 + 삭제
     const extraIncomeForm = document.getElementById('extra-income-form');
     if (extraIncomeForm) extraIncomeForm.addEventListener('submit', handleExtraIncomeSubmit);
