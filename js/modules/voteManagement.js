@@ -1,13 +1,15 @@
 // js/modules/voteManagement.js
 // 묶음 C: 참석 투표 (로그인 없이 링크로 참여) + 관리자 확정 → 팀 배정 연결
 import { doc, setDoc, getDoc, getDocs, addDoc, deleteDoc, collection, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
-import { renderVote } from './votePage.js?v=1';
+import { renderVote } from './votePage.js?v=2';
+import { syncMeetingInfo } from './shareManagement.js?v=8';
 
 let db, state;
 let activeVoteId = null;          // 관리자 화면에서 현재 보고 있는 투표
 let respUnsub = null;             // 응답 실시간 구독 해제 함수
 let adminResponses = [];          // 관리자 화면용 응답 캐시
 let adminVoteInfo = null;         // [추가] 현재 활성 투표의 문서 데이터(마감시각 표시용)
+export const getSelectedMeeting=()=>({id:activeVoteId,info:adminVoteInfo?{...adminVoteInfo}:null});
 
 function normName(s) {
     return (s == null ? '' : String(s)).normalize('NFC').trim();
@@ -45,9 +47,9 @@ export function init(dependencies) {
     if (!sharePage) return;
 
     const box = document.createElement('div');
-    box.className = 'bg-white p-6 rounded-2xl shadow-lg mt-8';
+    box.className = 'bg-white p-6 rounded-2xl shadow-lg match-admin';
     box.innerHTML = `
-        <h2 class="text-2xl font-bold mb-4">🗳️ 참석 투표 (관리자용)</h2>
+        <h2 class="text-2xl font-bold mb-4">참석 투표 및 모임정보</h2>
         <div class="space-y-3 max-w-lg mx-auto">
             <div id="vote-link-container" class="p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
                 <p class="text-sm font-bold text-indigo-800 mb-1">📌 회원 공유용 고정 링크</p>
@@ -62,10 +64,12 @@ export function init(dependencies) {
                 <div><label class="block text-sm font-medium">날짜</label><input type="date" id="vote-date" class="mt-1 w-full p-2 border rounded-lg"></div>
                 <div><label class="block text-sm font-medium">시간</label><input type="time" id="vote-time" class="mt-1 w-full p-2 border rounded-lg" value="20:00"></div>
             </div>
-            <div><label class="block text-sm font-medium">장소(선택)</label><input type="text" id="vote-location" class="mt-1 w-full p-2 border rounded-lg" placeholder="예: 두바이 스포츠시티"></div>
+            <div><div class="flex justify-between items-center"><label for="vote-location-saved" class="block text-sm font-medium">저장된 장소</label><button type="button" id="vote-manage-locations" class="text-sm text-indigo-600">장소 관리</button></div><select id="vote-location-saved" class="mt-1 w-full p-2 border rounded-lg"><option value="">직접 입력</option></select></div>
+            <div><label for="vote-location" class="block text-sm font-medium">장소 이름</label><input type="text" id="vote-location" class="mt-1 w-full p-2 border rounded-lg" placeholder="장소 선택 또는 직접 입력"><p class="coach-note">저장된 장소를 선택하면 기존 지도 링크가 참석 화면에 표시됩니다.</p></div>
             <button id="vote-create-btn" class="w-full bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-emerald-700">🆕 새 모임 투표 시작</button>
         </div>
         <div id="vote-status-panel" class="mt-6"></div>
+        <div id="meeting-publication-slot"></div>
         <div class="mt-8 border-t pt-4">
             <button id="past-votes-toggle" type="button" class="w-full flex items-center justify-between text-left font-bold text-gray-700 hover:text-gray-900">
                 <span>📜 지난 투표 기록</span>
@@ -75,6 +79,18 @@ export function init(dependencies) {
         </div>
     `;
     sharePage.appendChild(box);
+    const publication=document.getElementById('meeting-publication');
+    if(publication)box.querySelector('#meeting-publication-slot').append(publication);
+    const saved=box.querySelector('#vote-location-saved');
+    const populateSaved=()=>{
+        const previous=saved.value;
+        saved.innerHTML='<option value="">직접 입력</option>'+(state.locations||[]).map(loc=>`<option value="${esc(loc.name)}">${esc(loc.name)}</option>`).join('');
+        saved.value=previous;
+    };
+    populateSaved();document.addEventListener('barea:locations',populateSaved);
+    saved.onchange=()=>{if(saved.value)box.querySelector('#vote-location').value=saved.value;};
+    box.querySelector('#vote-location').addEventListener('input',()=>{saved.value=box.querySelector('#vote-location').value;});
+    box.querySelector('#vote-manage-locations').onclick=()=>document.getElementById('manage-locations-btn')?.click();
 
     // [추가] 지난 투표 기록 토글 + 로드
     const __pastToggle = document.getElementById('past-votes-toggle');
@@ -182,7 +198,9 @@ function loadAdminVote(voteId) {
     // [추가] 투표 문서(마감시각 포함)도 불러와 관리자 화면에 표시
     adminVoteInfo = null;
     getDoc(doc(db, "votes", voteId)).then(s => {
+        if(activeVoteId!==voteId)return;
         adminVoteInfo = s.exists() ? s.data() : null;
+        if(adminVoteInfo)syncMeetingInfo(adminVoteInfo);
         renderAdminStatus();
     }).catch(() => {});
     if (respUnsub) respUnsub();

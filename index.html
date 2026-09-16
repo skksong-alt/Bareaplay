@@ -18,6 +18,7 @@
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/match-hub.css?v=1">
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="favicon.ico" type="image/x-icon">
     <meta name="theme-color" content="#ffffff"> 
@@ -83,7 +84,7 @@
             <nav class="flex md:justify-center border-b border-gray-200 overflow-x-auto">
                 <button id="tab-balancer" class="tab-button active text-lg font-semibold py-4 px-6 border-b-2 border-transparent">⚖️ 팀 배정기</button>
                 <button id="tab-lineup" class="tab-button text-lg font-semibold py-4 px-6 border-b-2 border-transparent">📋 라인업 생성기</button>
-                <button id="tab-share" class="tab-button text-lg font-semibold py-4 px-6 border-b-2 border-transparent">📢 모임배포</button>
+                <button id="tab-share" class="tab-button text-lg font-semibold py-4 px-6 border-b-2 border-transparent">참석·모임정보</button>
                 <button id="tab-record" class="tab-button text-lg font-semibold py-4 px-6 border-b-2 border-transparent">🏆 경기기록</button>
                 <button id="tab-accounting" class="tab-button text-lg font-semibold py-4 px-6 border-b-2 border-transparent">📈 출석&회계</button>
                 <button id="tab-players" class="tab-button text-lg font-semibold py-4 px-6 border-b-2 border-transparent">👤 선수관리</button>
@@ -108,7 +109,7 @@
     
     <div id="print-area" class="hidden"></div>
 
-    <script type="module" src="js/app.js?v=15"></script>
+    <script type="module" src="js/app.js?v=16"></script>
     <script>
         // [v55 보강 / v58 유지] SW 등록 + 새 버전 알림 배너
         //  - 새 버전이 설치되면 화면 아래에 배너를 띄우고, 버튼 한 번으로 즉시 갱신한다.

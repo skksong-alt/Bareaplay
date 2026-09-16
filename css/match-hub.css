@@ -1,0 +1,110 @@
+/* Public match hub: deliberately scoped, independent of the admin layout/CDN. */
+#page-share .match-admin{border:1px solid #e0e7e1;border-radius:20px;box-shadow:0 5px 20px #263c2e04}
+#page-share .match-admin-publication{padding:22px;background:#f3f6ee;border:1px solid #e0e7d8;border-radius:14px;margin-top:24px}
+#page-share .match-admin-publication h3{font-size:17px;font-weight:750;margin-bottom:8px}
+#page-share #share-target-label{font-size:14px;font-weight:600;line-height:1.7}
+#page-share #generate-share-btn{background:#184f3d;color:white;border-color:#184f3d;margin-top:8px;padding:12px 22px}
+#page-share #coach-weekly{margin-top:24px}
+.match-page{margin:0;background:#f2f5f2;color:#172d29;font-family:Inter,'Noto Sans KR',sans-serif;-webkit-font-smoothing:antialiased}
+.match-page *{box-sizing:border-box}
+.match-page::before{content:'';position:fixed;inset:15% -12% auto auto;width:650px;height:900px;border:1px solid #2157450b;border-radius:8px;transform:rotate(22deg);background:linear-gradient(transparent 49.9%,#2157450b 50%,transparent 50.1%),radial-gradient(circle at center,transparent 110px,#2157450b 111px,transparent 113px);pointer-events:none;z-index:-1}
+.match-shell{max-width:1160px;margin:auto;padding:32px 32px 24px}
+.match-header{display:flex;align-items:center;justify-content:space-between;gap:20px;padding-bottom:25px;border-bottom:1px solid #dbe4de;margin-bottom:32px}
+.match-brand{display:flex;align-items:center;gap:12px}
+.match-crest{display:grid;place-items:center;width:44px;height:48px;background:#123f33;color:#e4edbd;clip-path:polygon(0 0,100% 0,100% 74%,50% 100%,0 74%);font-size:22px;font-weight:800;font-style:italic}
+.match-brand strong{display:block;font-size:23px;letter-spacing:-1px;line-height:1.1}
+.match-brand small{display:block;font-size:9px;letter-spacing:2px;margin-top:6px;color:#60766a}
+.match-page .language-button{border:1px solid #c9d7ce;border-radius:30px;background:transparent;padding:9px 16px;font-size:12px;font-weight:600;cursor:pointer;min-height:40px;color:#294b3e}
+.match-intro{display:flex;justify-content:space-between;align-items:end;gap:24px;margin-bottom:26px}
+.match-kicker{font-size:10px;letter-spacing:2px;font-weight:700;color:#628070;margin:0 0 8px}
+.match-intro h1{font-size:clamp(25px,3vw,34px);line-height:1.35;letter-spacing:-1.2px;margin:0;font-weight:800;overflow-wrap:anywhere}
+.match-intro p:last-child{font-size:13px;color:#607568;margin:10px 0 0;line-height:1.6}
+.match-round{font-size:11px;letter-spacing:1px;color:#75877b;white-space:nowrap;padding-bottom:4px}
+.match-layout{display:grid;grid-template-columns:minmax(0,0.94fr) minmax(0,1.16fr);gap:24px;align-items:start}
+.match-page .coach-card{margin:0;border:1px solid #e0e7e1;box-shadow:0 5px 20px #263c2e04;border-radius:20px;padding:26px;min-width:0}
+.match-page .coach-card h2{font-size:18px;letter-spacing:-.5px;margin:0;font-weight:750}
+.match-card-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:20px}
+.match-section-number{font-size:11px;color:#859588;font-variant-numeric:tabular-nums}
+.match-info{padding:18px;background:#f5f7f3;border-radius:12px;margin-bottom:18px}
+.match-info p{font-size:14px;line-height:1.7!important;margin:0!important;overflow-wrap:anywhere}
+.match-info .match-timezone{font-size:10px;color:#748175;margin-top:4px!important}
+.match-page a{color:inherit}
+.match-location{display:flex;align-items:center;gap:8px;margin-top:5px;font-size:13px;color:#526454;flex-wrap:wrap}
+.match-map-link{font-size:11px!important;text-decoration:underline;text-underline-offset:3px}
+.match-page .lineup-link{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:12px 0 0;margin-top:12px;border-top:1px solid #e0e6db;text-decoration:none;font-size:12px;color:#284f3e}
+.lineup-state{border-radius:5px;padding:4px 7px;background:#e8ece5;color:#62715e;font-size:10px;white-space:nowrap}
+a.lineup-link .lineup-state{background:#dcecdf;color:#1c6044}
+.match-name-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:20px 0 9px;flex-wrap:wrap}
+.match-page .match-name-row label{font-size:13px;margin:0;font-weight:700}
+.match-review-link{font-size:11px;color:#536c5b!important;text-decoration:underline;text-underline-offset:3px;min-height:28px;display:inline-flex;align-items:center}
+.match-page .coach-card input,.match-page .coach-card select{border-color:#ccd8cf;border-radius:10px;min-height:48px;font-size:14px;padding:12px;background:#fff}
+.match-page .coach-card input:focus,.match-page .coach-card select:focus{outline:2px solid #397e58;outline-offset:2px}
+.match-page .coach-note{font-size:11px;line-height:1.75;color:#64776a;margin:10px 0 18px}
+.match-page .coach-grid{gap:8px}
+.match-page .coach-grid button{margin:0;min-height:48px;font-size:13px;border-radius:10px;background:#fff;border:1px solid #d6dfd7;color:#53665a;transition:background .15s,box-shadow .15s}
+.match-page .coach-grid .coach-primary{color:#fff;background:#184f3d;border-color:#184f3d}
+.match-page .coach-grid button:hover:not(:disabled){box-shadow:0 3px 9px #174b321c;background:#eaf1e9}
+.match-page .coach-grid .coach-primary:hover:not(:disabled){background:#0e3b2b}
+.match-page button:disabled{cursor:not-allowed;opacity:.5}
+.match-page .coach-status{font-size:12px;line-height:1.65;min-height:0;margin:0}
+.match-page .coach-status:not(:empty){margin-top:12px;padding:10px;background:#eff6ec;border-radius:8px}
+.match-deadline{font-size:11px;color:#657366;margin:0!important;padding-top:14px;line-height:1.6}
+.match-live{display:flex;align-items:center;gap:5px;font-size:10px;color:#497452;white-space:nowrap}
+.match-live::before{content:'';width:5px;height:5px;border-radius:50%;background:#508863}
+.attendance-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:22px}
+.attendance-stat{padding:12px 4px;text-align:center;border-radius:10px;background:#f5f7f4;color:#667666}
+.attendance-stat strong{display:block;font-size:25px;letter-spacing:-1px;font-weight:700;line-height:1.2;font-variant-numeric:tabular-nums}
+.attendance-stat span{display:block;margin-top:5px;font-size:10px}
+.attendance-stat.attend{background:#eaf2e7;color:#27563a}
+.attendance-stat.wait{background:#fbf3e5;color:#886128}
+.attendance-roster{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:22px}
+.attendance-group{min-width:0}
+.attendance-group h3,.attendance-group summary{font-size:12px;font-weight:700;margin:0 0 8px;display:flex;justify-content:space-between;gap:8px;color:#3c5747}
+.attendance-group h3 span,.attendance-group summary span{font-weight:400;color:#7b887d}
+.attendance-group ol{list-style:none;margin:0;padding:0;counter-reset:roster}
+.attendance-group li{display:flex;align-items:center;gap:8px;min-height:35px;border-bottom:1px solid #f0f3ed;font-size:12px;overflow-wrap:anywhere;counter-increment:roster}
+.attendance-group li::before{content:counter(roster,decimal-leading-zero);font-size:10px;color:#8e9c8c;min-width:17px;font-variant-numeric:tabular-nums}
+.attendance-group li .roster-name{min-width:0;flex:1}
+.attendance-group li small{font-size:8px;letter-spacing:.4px;color:#827a4b;background:#f3f1e6;padding:2px 4px;border-radius:3px}
+.attendance-side{display:grid;gap:20px;align-content:start}
+.attendance-empty{font-size:11px!important;color:#899488;padding:8px 0;margin:0!important}
+.attendance-group.wait{margin-top:20px;padding:12px;background:#fffaf0;border-radius:8px}
+.attendance-footnote{font-size:10px!important;color:#869082;margin:18px 0 0!important}
+.match-resources{grid-column:1/-1}
+.match-page .preparation-card{padding:0;overflow:hidden}
+.preparation-card>summary{display:flex;align-items:center;gap:16px;padding:22px 26px;list-style:none;cursor:pointer}
+.preparation-card>summary::-webkit-details-marker{display:none}
+.preparation-icon{display:grid;place-items:center;flex:0 0 40px;height:40px;background:#f0f4e8;border-radius:12px;color:#597044;font-size:16px}
+.preparation-title{flex:1;min-width:0}
+.preparation-title strong{display:block;font-size:15px;letter-spacing:-.3px}
+.preparation-title small{display:block;font-weight:400;font-size:11px;color:#7c8776;margin-top:5px;line-height:1.6}
+.preparation-chevron{font-size:18px;color:#64755a;transition:transform .15s}
+.preparation-card[open] .preparation-chevron{transform:rotate(90deg)}
+.preparation-content{padding:0 26px 26px;border-top:1px solid #eef1e8}
+.preparation-description{font-size:12px;color:#6b7864;padding:18px 0 8px;line-height:1.8}
+.video-guidelines{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:30px}
+.video-guideline{display:flex;gap:14px;padding:18px 0;border-bottom:1px solid #edf0e7;min-width:0}
+.video-number{font-size:11px;color:#829376;padding-top:3px;font-variant-numeric:tabular-nums}
+.video-guideline a{font-size:14px;line-height:1.7;font-weight:650;text-decoration:none;overflow-wrap:anywhere}
+.video-guideline a::after{content:' ↗';color:#7b8c6e;font-size:12px;white-space:nowrap}
+.video-guideline a:hover{text-decoration:underline;text-underline-offset:4px;color:#28613f}
+.video-guideline small{display:block;margin-bottom:4px;color:#77846b;font-size:10px;letter-spacing:.4px}
+.practice-block{margin-top:24px;border-radius:12px;background:#f4f6ef;padding:18px 20px}
+.practice-block h3{font-size:13px;margin:0 0 8px;color:#3e5d37}
+.practice-block p{font-size:12px!important;color:#62715b;margin:0!important;line-height:1.9!important}
+.match-footer{display:flex;justify-content:space-between;gap:20px;padding-top:30px;font-size:9px;letter-spacing:1px;color:#899784}
+.match-review-screen{max-width:740px;margin:auto}
+.match-back{display:inline-flex;align-items:center;min-height:44px;font-size:13px;font-weight:600;margin-bottom:16px;text-decoration:none}
+.match-review-screen .coach-card h2{line-height:1.65;text-wrap:balance}
+.match-review-screen #review-picks{display:flex;flex-wrap:wrap;gap:6px;margin:20px 0}
+.match-review-screen #review-picks button{min-height:42px;font-size:12px;margin:0;background:#f5f7f3;border-color:#d9e1d5}
+.match-review-screen #review-save{min-height:46px;width:100%;margin:0}
+.match-review-screen #review-result{margin-top:18px;font-size:12px}
+.review-video{margin:18px 0 22px;padding:16px 18px;background:#f3f6ee;border-radius:12px}
+.review-video a{display:inline-flex;align-items:center;min-height:32px;font-size:13px;font-weight:700;text-decoration:underline;text-underline-offset:4px;color:#315d3f}
+.review-video p{font-size:11px!important;line-height:1.75!important;color:#667760;margin:6px 0 0!important}
+.match-page :is(a,button,summary):focus-visible{outline:2px solid #398260;outline-offset:4px}
+@media(min-width:900px){.attendance-group.attend ol{max-height:350px;overflow:auto;padding-right:5px;scrollbar-width:thin;scrollbar-color:#d0dccb transparent}}
+@media(max-width:760px){.match-shell{padding:20px 18px}.match-header{margin-bottom:26px;padding-bottom:19px}.match-intro{margin-bottom:22px}.match-round{display:none}.match-layout{grid-template-columns:minmax(0,1fr);gap:16px}.match-page .coach-card{padding:22px}.match-page .preparation-card{padding:0}.preparation-card>summary{padding:20px}.preparation-content{padding:0 20px 20px}.video-guidelines{grid-template-columns:minmax(0,1fr)}.match-footer{letter-spacing:.5px;font-size:8px}.match-brand strong{font-size:21px}.match-intro h1{font-size:27px}}
+@media(max-width:360px){.match-shell{padding:16px 12px}.match-page .coach-card{padding:18px}.match-page .preparation-card{padding:0}.attendance-roster{gap:14px}.match-name-row{align-items:start}.match-review-link{font-size:10px}.match-intro h1{font-size:24px}}
+@media(prefers-reduced-motion:reduce){.match-page *{transition:none!important;scroll-behavior:auto!important}}

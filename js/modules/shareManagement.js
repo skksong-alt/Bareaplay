@@ -29,6 +29,7 @@ function populateLocations() {
     if (currentVal) {
         shareLocationSelect.value = currentVal;
     }
+    document.dispatchEvent(new Event('barea:locations'));
 }
 
 function renderLocationList() {
@@ -49,6 +50,7 @@ function renderLocationList() {
 }
 
 async function generateShareableLink() {
+    if(generateShareBtn?.disabled)return;
     if (!state.isAdmin) {
         window.promptForAdminPassword();
         return;
@@ -57,6 +59,26 @@ async function generateShareableLink() {
         window.showNotification("팀 배정 결과가 없습니다. 먼저 팀을 생성해주세요.", "error");
         return;
     }
+
+    // Publication belongs to the selected RSVP, never to unsaved new-vote inputs.
+    const selected=window.voteMgmt?.getSelectedMeeting?.();
+    if(!selected?.info) { window.showNotification('먼저 참석 투표를 만들거나 불러오세요.', 'error'); return; }
+    if(document.getElementById('balancer-date')?.value!==selected.info.date) {
+        window.showNotification('참석 투표 날짜와 팀 배정 날짜가 다릅니다. 같은 경기의 배정을 먼저 불러오세요.', 'error');return;
+    }
+    try {
+        const latest=await getDoc(doc(db,'votes',selected.id));
+        if(!latest.exists() || ['date','time','location'].some(k=>String(latest.data()[k]||'')!==String(selected.info[k]||''))) {
+            window.showNotification('모임정보가 변경되었습니다. 새로고침 후 다시 확인하세요.', 'error');return;
+        }
+    } catch { window.showNotification('모임정보를 확인할 수 없어 공개하지 않았습니다.', 'error');return; }
+    if(generateShareBtn.disabled)return;
+    if(window.voteMgmt?.getSelectedMeeting?.().id!==selected.id || document.getElementById('balancer-date')?.value!==selected.info.date) {
+        window.showNotification('선택한 경기가 변경되었습니다. 다시 확인해 주세요.', 'error');return;
+    }
+    if(!confirm(`${selected.info.date} ${selected.info.time || ''}\n현재 팀·라인업을 확정하여 공개할까요? 기존 공유 링크는 유지됩니다.`))return;
+    generateShareBtn.disabled=true;
+    syncMeetingInfo(selected.info);
 
     const loadingOverlay = document.getElementById('loading-overlay');
     loadingOverlay.style.display = 'flex';
@@ -106,9 +128,8 @@ async function generateShareableLink() {
         // [추가] 활성 투표의 참석현황을 스냅샷으로 함께 저장 (보드에 참석/미정/불참 표시)
         let attendanceSnapshot = null;
         try {
-            const avSnap = await getDoc(doc(db, "settings", "activeVote"));
-            if (avSnap.exists() && avSnap.data().voteId) {
-                const rs = await getDocs(collection(db, "votes", avSnap.data().voteId, "responses"));
+            if (selected.id) {
+                const rs = await getDocs(collection(db, "votes", selected.id, "responses"));
                 const all = rs.docs.map(d => d.data());
                 const since = (a, b) => ((a.attendingSince && a.attendingSince.seconds ? a.attendingSince.seconds : 1e15) - (b.attendingSince && b.attendingSince.seconds ? b.attendingSince.seconds : 1e15));
                 const pick = r => ({ name: r.name, guest: !!r.guest });
@@ -153,7 +174,7 @@ async function generateShareableLink() {
         const shareLinkAnchor = document.getElementById('share-link-anchor');
         shareLinkContainer.classList.remove('hidden');
         shareLinkAnchor.href = shareUrl;
-        shareLinkAnchor.textContent = shareUrl;
+        shareLinkAnchor.textContent = '공개된 팀·라인업 보기 ↗';
 
         navigator.clipboard.writeText(shareUrl).then(() => {
             window.showNotification("공유 링크가 생성되어 클립보드에 복사되었습니다!");
@@ -165,6 +186,7 @@ async function generateShareableLink() {
         console.error("Share link generation failed: ", error);
         window.showNotification("공유 링크 생성에 실패했습니다.", "error");
     } finally {
+        generateShareBtn.disabled=false;
         loadingOverlay.style.opacity = 0;
         setTimeout(() => loadingOverlay.style.display = 'none', 300);
     }
@@ -342,24 +364,38 @@ export function generatePrintView(shareData) {
     setTimeout(()=>printWindow.print(), 500);
 }
 
+export function syncMeetingInfo(info) {
+    if(!shareDate || !info)return;
+    shareDate.value=info.date || '';shareTime.value=info.time || '';
+    const name=info.location || '';
+    if(![...shareLocationSelect.options].some(o=>o.value===name)) {
+        const option=document.createElement('option');option.value=name;option.textContent=name;shareLocationSelect.append(option);
+    }
+    shareLocationSelect.value=name;
+    const label=document.getElementById('share-target-label');
+    if(label)label.textContent=[info.date,info.time,info.location].filter(Boolean).join(' · ');
+    document.getElementById('share-link-container')?.classList.add('hidden');
+}
+
 export function init(dependencies) {
     db = dependencies.db;
     state = dependencies.state;
     
     const pageElement = document.getElementById('page-share');
-    pageElement.innerHTML = `<div class="bg-white p-6 rounded-2xl shadow-lg">
-        <h2 class="text-2xl font-bold mb-4">📢 모임 정보 및 공유 (관리자용)</h2>
-        <div class="space-y-4 max-w-lg mx-auto">
+    pageElement.innerHTML = `<section id="meeting-publication" class="match-admin-publication">
+        <h3>팀·라인업 확정 및 공개</h3><p id="share-target-label">참석 투표를 먼저 불러오세요.</p>
+        <p class="coach-note">불러온 참석 투표의 모임정보를 사용합니다. 새 모임 입력 중인 내용은 공개되지 않습니다.</p>
+        <div class="hidden" aria-hidden="true">
             <div><label for="share-date" class="block text-sm font-medium">날짜</label><input type="date" id="share-date" class="mt-1 w-full p-2 border rounded-lg"></div>
             <div><label for="share-time" class="block text-sm font-medium">시간</label><input type="time" id="share-time" class="mt-1 w-full p-2 border rounded-lg"></div>
             <div>
                 <div class="flex justify-between items-center"><label for="share-location-select" class="block text-sm font-medium">장소 선택</label><button id="manage-locations-btn" class="text-sm text-indigo-600 hover:underline">장소 관리</button></div>
                 <select id="share-location-select" class="w-full p-2 border rounded-lg bg-white mt-1"></select>
             </div>
-            <div class="mt-6"><button id="generate-share-btn" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700">공유 링크 생성</button></div>
-            <div id="share-link-container" class="mt-4 p-4 bg-gray-100 rounded-lg hidden"><p class="text-sm font-semibold mb-2">생성된 링크:</p><a id="share-link-anchor" href="#" target="_blank" class="text-blue-600 break-all hover:underline"></a></div>
         </div>
-    </div>`;
+        <button id="generate-share-btn" class="coach-button coach-primary">배정 확정·공개</button>
+        <div id="share-link-container" class="mt-4 hidden"><a id="share-link-anchor" href="#" target="_blank" rel="noopener noreferrer" class="coach-link"></a></div>
+    </section>`;
     
     generateShareBtn = document.getElementById('generate-share-btn');
     shareLinkContainer = document.getElementById('share-link-container');

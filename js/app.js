@@ -7,10 +7,10 @@ import * as playerMgmt from './modules/playerManagement.js?v=5';
 import * as balancer from './modules/teamBalancer.js?v=8';
 import * as lineup from './modules/lineupGenerator.js?v=8';
 import * as accounting from './modules/accounting.js?v=7';
-import * as shareMgmt from './modules/shareManagement.js?v=7';
-import * as voteMgmt from './modules/voteManagement.js?v=9';
+import * as shareMgmt from './modules/shareManagement.js?v=8';
+import * as voteMgmt from './modules/voteManagement.js?v=10';
 import * as lineupStats from './modules/lineupStats.js?v=2';
-import * as coachWorkspace from './modules/coachWorkspace.js?v=1';
+import * as coachWorkspace from './modules/coachWorkspace.js?v=2';
 import { roleTip } from './modules/coachCore.js?v=1';
 import * as matchRecord from './modules/matchRecord.js?v=2'; // 경기기록 탭 (v58: 팀 이름 표시)
 
@@ -786,7 +786,6 @@ function renderSharePageView(shareData) {
         ${attendHtml}
         <details class="bp-card"><summary>${T.teamAssign}</summary><div class="bp-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">${teamHtml}</div></details>
         <details class="bp-card" id="bp-score-card" style="display:none"><summary>${T.scoreTitle}</summary><div class="bp-body" id="bp-score-body"></div></details>
-        <div class="bp-card"><a href="/?vote=current" style="font-weight:800;color:#087f63">${__bpLang==='en'?'Next match RSVP · Previous match appreciation →':'다음 경기 참석 신청 · 지난 경기 활약 투표 →'}</a></div>
         <details class="bp-card" open><summary>${T.lineupTitle}</summary><div class="bp-body">${lineupHtml}</div></details>
         <footer style="text-align:center;padding:16px;color:#9ca3af;font-size:.8rem">${T.footerNote}</footer>
     </div>`;

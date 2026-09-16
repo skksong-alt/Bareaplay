@@ -1,6 +1,6 @@
 import { collection, doc, getDocs, getDoc, setDoc, serverTimestamp, addDoc } from 'https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js';
 import { cleanName, escapeHtml as esc, recentHistory, ROLES, validateLineup, lineupSummary, locate } from './coachCore.js?v=1';
-import { lessonFor, lessonHtml, addCoachStyles } from './weeklyContent.js?v=1';
+import { lessonFor, lessonHtml, addCoachStyles, TEAM_VIDEOS, parseGuidelines } from './weeklyContent.js?v=2';
 let db, state;
 const dateNow = () => document.getElementById('balancer-date')?.value || window.getLocalDate();
 const requireAdmin = () => { if(!state.isAdmin) throw new Error('관리자 로그인이 필요합니다.'); };
@@ -23,20 +23,29 @@ export function init(dependencies) {
     window.coachReason='temporary';
     const share=document.getElementById('page-share'), players=document.getElementById('page-players'), lineup=document.getElementById('page-lineup');
     const make=(parent,id,html)=>{const node=document.createElement('section');node.id=id;node.className='coach-card';node.innerHTML=html;parent?.append(node);return node;};
-    const weekly=make(share,'coach-weekly',`<h2>이번 주 목표·영상·지난 경기 투표</h2><p class="coach-note">기본 자료는 경기 날짜에 따라 4주 순환합니다. 여기서 날짜별 내용을 바꿀 수 있습니다. 기존 참석 투표는 변경하지 않습니다.</p><label>대상 경기 날짜<input type="date" id="coach-week-date"></label><button id="coach-week-load">불러오기</button><div id="coach-week-editor"></div>`);
+    const weekly=make(share,'coach-weekly',`<h2>경기 전 참고 영상 · 15분 연습</h2><p class="coach-note">핵심 지침을 누르면 영상이 열립니다. 날짜별로 4~6개를 정리해 주세요. 기본 영상은 감독 제공 모음이며 자동으로 새 영상을 선정하지 않습니다. 기존 참석 투표는 변경하지 않습니다.</p><label>대상 경기 날짜<input type="date" id="coach-week-date"></label><button id="coach-week-load">불러오기</button><div id="coach-week-editor"></div>`);
     weekly.querySelector('input').value=window.getLocalDate();
     weekly.querySelector('button').onclick=()=>guard(async()=>{
         requireAdmin(); const date=weekly.querySelector('input').value;if(!date)throw new Error('날짜를 선택하세요.');
         const custom=await read('coachWeeks',date), l=lessonFor(date,custom);
-        const fields=[['ko','목표 · 한국어'],['en','목표 · English'],['actionKo','실천 행동 · 한국어'],['actionEn','실천 행동 · English'],['url','영상 URL (YouTube 또는 FIFA Training Centre)'],['segmentKo','추천 구간·설명 · 한국어'],['segmentEn','추천 구간·설명 · English'],['drillKo','현장 연습 · 한국어'],['drillEn','현장 연습 · English']];
+        if(!Object.keys(custom).length){
+            l.segmentKo=TEAM_VIDEOS.map(v=>`[${v.ko}](${v.url})`).join('\n');
+            l.segmentEn=TEAM_VIDEOS.map(v=>`[${v.en}](${v.url})`).join('\n');
+        }
+        const fields=[['segmentKo','영상별 핵심 지침 · 한국어'],['segmentEn','영상별 핵심 지침 · English'],['drillKo','15분 현장 연습 · 한국어'],['drillEn','15분 현장 연습 · English']];
+        const legacyFields=[['ko','단일 자료 제목 · 한국어'],['en','단일 자료 제목 · English'],['actionKo','실천 행동 · 한국어'],['actionEn','실천 행동 · English'],['url','단일 자료 URL']];
         const box=weekly.querySelector('#coach-week-editor');
-        box.innerHTML=`<p>편집 대상: <b>${esc(date)}</b></p>${fields.map(([k,label])=>`<label>${label}<input data-field="${k}" value="${esc(l[k]||'')}" maxlength="600"></label>`).join('')}<label>평가할 지난 경기 날짜<input type="date" id="coach-review-date" value="${esc(custom.reviewDate==='none'?'':custom.reviewDate||'')}"></label><label><input type="checkbox" id="coach-review-off" ${custom.reviewDate==='none'?'checked':''}> 지난 경기 투표 숨기기</label><p class="coach-note">날짜가 비어 있으면 현재 경기 이전의 가장 최근 배정일(오늘 제외)을 찾습니다. 취소된 경기라면 실제 진행된 날짜를 지정하세요.</p><button id="coach-week-preview">미리보기</button><button id="coach-week-save" class="coach-primary">이 날짜의 콘텐츠 저장</button><div id="coach-week-sample"></div>`;
+        box.innerHTML=`<p>편집 대상: <b>${esc(date)}</b></p><p class="coach-note">영상은 한 줄에 하나씩 [핵심 지침](영상 주소) 형식으로 입력하세요. YouTube·FIFA HTTPS 링크만 표시하며 최대 6개입니다. 기존 일반 설명도 유지됩니다.</p>${fields.map(([k,label])=>`<label>${label}<textarea data-field="${k}" rows="${k.startsWith('segment')?6:3}" maxlength="6000">${esc(l[k]||'')}</textarea></label>`).join('')}<details><summary>기존 단일 자료 설정</summary>${legacyFields.map(([k,label])=>`<label>${label}<input data-field="${k}" value="${esc(l[k]||'')}" maxlength="600"></label>`).join('')}</details><label>평가할 지난 경기 날짜<input type="date" id="coach-review-date" value="${esc(custom.reviewDate==='none'?'':custom.reviewDate||'')}"></label><label><input type="checkbox" id="coach-review-off" ${custom.reviewDate==='none'?'checked':''}> 지난 경기 투표 숨기기</label><p class="coach-note">날짜가 비어 있으면 현재 경기 이전의 가장 최근 배정일(오늘 제외)을 찾습니다. 취소된 경기라면 실제 진행된 날짜를 지정하세요.</p><button id="coach-week-preview">미리보기</button><button id="coach-week-save" class="coach-primary">이 날짜의 콘텐츠 저장</button><div id="coach-week-sample"></div>`;
         const payload=()=>Object.fromEntries([...box.querySelectorAll('[data-field]')].map(input=>[input.dataset.field,input.value.trim()]));
         box.querySelector('#coach-week-preview').onclick=()=>{box.querySelector('#coach-week-sample').innerHTML=lessonHtml(date,payload(),'ko')+lessonHtml(date,payload(),'en');};
         box.querySelector('#coach-week-save').onclick=()=>guard(async()=>{
             requireAdmin(); const values=payload(); const {validVideoUrl}=await import('./coachCore.js?v=1');
             if(!values.ko || !values.en || !values.actionKo || !values.actionEn)throw new Error('한국어·영어 목표와 실천 행동을 입력하세요.');
             if(values.url && !validVideoUrl(values.url))throw new Error('YouTube 또는 FIFA의 HTTPS 주소를 입력하세요.');
+            for(const field of ['segmentKo','segmentEn']) {
+                const lines=values[field].split('\n').filter(line=>line.trim());
+                if(lines.some(line=>/https?:|\]\(/i.test(line)) && (lines.length>6 || lines.some(line=>parseGuidelines(line).length!==1 || !/^\[[^\]\n]+\]\(https:\/\/[^\s)]+\)$/.test(line.trim()))))throw new Error('영상 목록은 [핵심 지침](HTTPS 주소) 한 줄씩, 최대 6개로 입력하세요.');
+            }
             const review=box.querySelector('#coach-review-date').value;
             if(review && review>=date)throw new Error('평가 날짜는 대상 경기보다 이전이어야 합니다.');
             await setDoc(doc(db,'coachWeeks',date),{...values,date,reviewDate:box.querySelector('#coach-review-off').checked?'none':review,updatedAt:serverTimestamp()},{merge:true});notify('주간 콘텐츠를 저장했습니다.');

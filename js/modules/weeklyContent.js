@@ -22,14 +22,42 @@ export function lessonFor(date, custom = {}) {
     const index = Number.isFinite(day) ? ((Math.floor((day - Date.UTC(2026,8,14)) / 604800000) % 4) + 4) % 4 : 0;
     return { ...LESSONS[index], ...Object.fromEntries(Object.entries(custom).filter(([,v]) => typeof v === 'string' && v.trim())) };
 }
+// Coach-supplied titles/links, not independently verified video summaries.
+// Static defaults only: loading a page never seeds or changes Firestore content.
+export const TEAM_VIDEOS = [
+    {roleKo:'미드필더',roleEn:'MIDFIELD',ko:'볼만 잡으면 급해지는 이유와 여유 찾는 핵심 원리',en:'Find composure when you receive the ball',url:'https://youtu.be/0iG32VGPXMo'},
+    {roleKo:'미드필더',roleEn:'MIDFIELD',ko:'중원에서 패스 줄 곳 없을 때 공간 여는 오프더볼',en:'Move off the ball to open a passing option',url:'https://youtu.be/mVadyA4s5Ag'},
+    {roleKo:'풀백 · 윙백',roleEn:'FULLBACK',ko:'뚫기 힘든 사이드백의 수비 자세와 거리 조절',en:'Fullback defending: body position and distance',url:'https://youtu.be/iQ61I5pGWg8'},
+    {roleKo:'센터백',roleEn:'CENTRE BACK',ko:'위험지역 걷어내기의 기본과 방향 선택',en:'Clear danger: choose the direction of your clearance',url:'https://youtu.be/mb9-khxwc5I'},
+    {roleKo:'공격수',roleEn:'FORWARD',ko:'실전에서 강하고 정확한 슈팅을 만드는 기본 원리',en:'The basics of powerful, accurate shooting',url:'https://youtu.be/cRM7MVt6GS8'},
+    {roleKo:'공격수',roleEn:'FORWARD',ko:'원터치 연계로 찬스 만드는 스트라이커 움직임',en:'Create chances with one-touch combinations',url:'https://youtu.be/JSIUxMPkfxc'}
+];
+// Reuse the existing optional string fields; plain legacy descriptions remain valid.
+// Only a small, safe link format is supported, never arbitrary HTML/Markdown.
+export function parseGuidelines(text = '') {
+    return [...String(text).matchAll(/\[([^\]\n]{1,240})\]\((https:\/\/[^\s)]+)\)/g)]
+        .map(([,title,url])=>({title,url:validVideoUrl(url)})).filter(x=>x.url).slice(0,6);
+}
+export function guidelinesFor(date, custom = {}, lang = 'ko') {
+    const en=lang==='en', own=parseGuidelines(en?custom.segmentEn:custom.segmentKo);
+    if(own.length) return own;
+    const fallback=parseGuidelines(en?custom.segmentKo:custom.segmentEn);
+    if(fallback.length) return fallback;
+    // Previously saved single-resource lessons must not be replaced by the defaults.
+    if(custom.url || custom.ko || custom.en || custom.actionKo || custom.actionEn || custom.segmentKo || custom.segmentEn) {
+        const l=lessonFor(date,custom),url=validVideoUrl(l.url);
+        return url?[{title:en?l.en:l.ko,url}]:[];
+    }
+    return TEAM_VIDEOS.map(v=>({title:en?v.en:v.ko,role:en?v.roleEn:v.roleKo,url:v.url}));
+}
 export function lessonHtml(date, custom, lang = 'ko') {
-    const l = lessonFor(date, custom), en = lang === 'en';
-    const url = validVideoUrl(l.url);
-    return `<section class="coach-card"><p class="coach-eyebrow">${en ? 'THIS WEEK · ONE ACTION' : '이번 주 · 행동 하나'}</p>
-      <h2>${esc(en ? l.en : l.ko)}</h2><p>${esc(en ? l.actionEn : l.actionKo)}</p>
-      ${url ? `<a class="coach-link" href="${esc(url)}" target="_blank" rel="noopener noreferrer">▶ ${en ? 'Open video / coaching session' : '영상·훈련 자료 보기'}</a>` : ''}
-      <p class="coach-note">${esc(en ? l.segmentEn || 'Watch the demonstration that matches this action. FIFA youth sessions are adapted here for adult beginners.' : l.segmentKo || '이번 행동에 해당하는 시범 장면을 참고하세요. FIFA 유소년 자료를 성인 초보팀에 맞춰 활용합니다.')}</p>
-      <details><summary>${en ? '15-minute practice idea (after warm-up)' : '준비운동 후 15분 연습 아이디어'}</summary><p>${esc(en ? l.drillEn : l.drillKo)}</p></details></section>`;
+    const l = lessonFor(date, custom), en = lang === 'en', videos=guidelinesFor(date,custom,lang);
+    const note=en?custom?.segmentEn:custom?.segmentKo;
+    return `<details class="coach-card preparation-card"><summary><span class="preparation-icon" aria-hidden="true">▷</span><span class="preparation-title"><strong>${en?'Before the match':'경기 전 참고 영상'}</strong><small>${esc(date)} · ${en?`${videos.length} resources · 15-minute practice`:`참고 자료 ${videos.length}개 · 15분 연습`}</small></span><span class="preparation-chevron" aria-hidden="true">›</span></summary>
+      <div class="preparation-content"><p class="preparation-description">${en?'Start with one or two that fit your position. Tap a guideline to open the video or session.':'내 포지션에 맞는 영상 1~2개부터 가볍게. 핵심 지침을 누르면 영상·훈련 자료가 열립니다.'}</p>
+      <ol class="video-guidelines">${videos.map((v,i)=>`<li class="video-guideline"><span class="video-number" aria-hidden="true">${String(i+1).padStart(2,'0')}</span><div>${v.role?`<small>${esc(v.role)}</small>`:''}<a href="${esc(v.url)}" target="_blank" rel="noopener noreferrer">${esc(v.title)}</a></div></li>`).join('')}</ol>
+      ${note && !parseGuidelines(note).length?`<p class="coach-note">${esc(note)}</p>`:''}
+      <div class="practice-block"><h3>${en?'After warm-up · 15-minute practice':'준비운동 후 · 15분 연습 아이디어'}</h3><p>${esc(en ? l.drillEn : l.drillKo)}</p></div></div></details>`;
 }
 export function addCoachStyles() {
     if (document.getElementById('coach-css')) return;
