@@ -4,12 +4,14 @@ import { getFirestore, collection, doc, onSnapshot, getDocs, getDoc, setDoc, del
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
 import { state, setAdmin } from './store.js?v=2';
 import * as playerMgmt from './modules/playerManagement.js?v=5';
-import * as balancer from './modules/teamBalancer.js?v=7';
-import * as lineup from './modules/lineupGenerator.js?v=7';
+import * as balancer from './modules/teamBalancer.js?v=8';
+import * as lineup from './modules/lineupGenerator.js?v=8';
 import * as accounting from './modules/accounting.js?v=7';
-import * as shareMgmt from './modules/shareManagement.js?v=6';
-import * as voteMgmt from './modules/voteManagement.js?v=8';
-import * as lineupStats from './modules/lineupStats.js?v=1';
+import * as shareMgmt from './modules/shareManagement.js?v=7';
+import * as voteMgmt from './modules/voteManagement.js?v=9';
+import * as lineupStats from './modules/lineupStats.js?v=2';
+import * as coachWorkspace from './modules/coachWorkspace.js?v=1';
+import { roleTip } from './modules/coachCore.js?v=1';
 import * as matchRecord from './modules/matchRecord.js?v=2'; // 경기기록 탭 (v58: 팀 이름 표시)
 
 const firebaseConfig = {
@@ -153,6 +155,7 @@ window.logAdjustment = function(entry) {
     try {
         addDoc(collection(db, "adjustLogs"), {
             ...entry,
+            reason: window.coachReason || 'temporary',
             date: selectedMeetingDate || window.getLocalDate(),
             at: serverTimestamp()
         }).catch(() => {});
@@ -538,6 +541,7 @@ function renderManual() {
                 <li>기록이 쌓이면: 능력치 자동 보정 \u2192 다음 주 팀배정이 더 정확해지는 선순환.</li>
             </ol>
         </div>
+        <section class="mb-8 p-4 bg-emerald-50 rounded-xl"><h3 class="text-xl font-bold mb-3">⚽ 코칭 도구 업데이트</h3><p class="text-sm mb-2">참석 페이지에서 한국어/English 전환, 지난 경기 활약 투표, 이번 주 목표와 영상 자료를 이용할 수 있습니다. 활약 투표는 선택 참여이며 기존 점수 집계를 유지합니다.</p><p class="text-sm mb-2">모임배포 탭 아래에서 날짜별 주간 콘텐츠를 편집하고, 선수관리 탭 아래에서 역할·안내 선수·게스트 정보를 지정하세요. 라인업 탭의 감독 보드에서 최근 4회 배정 이력, 팀·포지션 고정, 부분 재배정 미리보기, 상대 비교를 사용합니다.</p><p class="text-sm">최근 이력은 실제 출전 시간이 아닌 배정 기록입니다. 희망 횟수는 최적화 목표입니다. 수동 변경 중 ‘지속적으로 적합한 역할’로 표시한 기록만 성향 제안에 사용합니다. 아래 내용은 기존 기능 설명이며 코칭 도구와 겹치는 항목은 이 안내를 우선합니다.</p></section>
         ${sLogin}${sVote}${sBalancer}${sLineup}${sAccounting}${sRecord}${sShare}${sPlayers}
         <div class="bg-amber-50 border border-amber-200 rounded-xl p-5 mt-10">
             <h3 class="text-xl font-bold mb-3 text-amber-900">\uD83D\uDEE0\uFE0F 인수인계 (기술 담당용)</h3>
@@ -714,7 +718,7 @@ function renderSharePageView(shareData) {
             else if (['LB', 'RB', 'CB', 'DF'].includes(fc.pos)) { icon = '🛡'; bg = '#03A9F4'; }
             else if (['MF', 'CM'].includes(fc.pos)) { icon = '⚙'; bg = '#FBC02D'; }
             else if (['LW', 'RW', 'FW'].includes(fc.pos)) { icon = '🎯'; bg = '#FB8C00'; }
-            marks += `<div class="bp-marker" style="left:${fc.x}%;top:${fc.y}%"><div class="bp-icon" style="background:${bg}">${name === '미배정' ? '❓' : icon}</div><div class="bp-name">${name === '미배정' ? '-' : esc(name)}</div></div>`;
+            marks += `<div class="bp-marker" title="${esc(roleTip(fc.pos, formation, __bpLang))}" style="left:${fc.x}%;top:${fc.y}%"><div class="bp-icon" style="background:${bg}">${name === '미배정' ? '❓' : icon}</div><div class="bp-name">${name === '미배정' ? '-' : esc(name)}</div></div>`;
             counters[fc.pos]++;
         });
         let foot = '';
@@ -730,6 +734,7 @@ function renderSharePageView(shareData) {
                 ${marks}
             </div>
             <div class="bp-foot">${foot}</div>
+            <details style="font-size:.75rem;padding:6px;background:#fff;border-radius:6px"><summary>${__bpLang==='en'?'My role this quarter':'이번 쿼터 역할'}</summary>${Object.entries(lineup).map(([pos,names])=>`<p style="margin:8px 0"><b>${esc(names.join(', '))} · ${esc(pos)}</b><br>${esc(roleTip(pos,formation,__bpLang))}</p>`).join('')}</details>
         </div>`;
     }
 
@@ -781,7 +786,7 @@ function renderSharePageView(shareData) {
         ${attendHtml}
         <details class="bp-card"><summary>${T.teamAssign}</summary><div class="bp-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px">${teamHtml}</div></details>
         <details class="bp-card" id="bp-score-card" style="display:none"><summary>${T.scoreTitle}</summary><div class="bp-body" id="bp-score-body"></div></details>
-        <details class="bp-card" id="bp-rate-card"><summary><span style="min-width:0">${T.rateTitle}<span class="bp-sub">${T.rateSub}</span></span></summary><div class="bp-body"><p style="font-size:.8rem;color:#6b7280;margin:0 0 10px">${T.rateExplain}</p><div id="bp-rate-body"></div></div></details>
+        <div class="bp-card"><a href="/?vote=current" style="font-weight:800;color:#087f63">${__bpLang==='en'?'Next match RSVP · Previous match appreciation →':'다음 경기 참석 신청 · 지난 경기 활약 투표 →'}</a></div>
         <details class="bp-card" open><summary>${T.lineupTitle}</summary><div class="bp-body">${lineupHtml}</div></details>
         <footer style="text-align:center;padding:16px;color:#9ca3af;font-size:.8rem">${T.footerNote}</footer>
     </div>`;
@@ -836,120 +841,6 @@ function setupShareBoardExtras(shareData) {
             if (card && body) { body.innerHTML = rows; card.style.display = ''; }
         }).catch(() => {});
 
-        // ── 오늘의 활약 투표 (3명 지목: 1순위 3점 / 2순위 2점 / 3순위 1점)
-        const rateBody = document.getElementById('bp-rate-body');
-        if (!rateBody) return;
-        if (names.length === 0) {
-            rateBody.innerHTML = `<p style="color:#9ca3af;font-size:.85rem">${T.rateNoRoster}</p>`;
-            return;
-        }
-        let myName = localStorage.getItem('bp_myName') || '';
-        if (myName && !names.includes(myName)) myName = ''; // 오늘 참가자가 아니면 다시 선택
-        let picks = [];
-        let latestVotes = {};
-        let resultHtml = '';
-        const medal = (i) => T.medals[i];
-
-        function renderResultArea() {
-            let el = document.getElementById('bp-rate-result');
-            if (!el) {
-                el = document.createElement('div');
-                el.id = 'bp-rate-result';
-                el.style.marginTop = '14px';
-                rateBody.parentNode.appendChild(el);
-            }
-            el.innerHTML = resultHtml;
-        }
-
-        function render() {
-            if (!myName) {
-                rateBody.innerHTML = `
-                    <p style="font-size:.9rem;color:#374151;margin:0 0 10px">${T.ratePickMe}</p>
-                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px">
-                        ${names.map(n => `<button class="bp-me-btn" data-n="${esc(n)}" style="padding:9px 4px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;font-size:.85rem">${esc(n)}</button>`).join('')}
-                    </div>`;
-                rateBody.querySelectorAll('.bp-me-btn').forEach(b => b.onclick = () => {
-                    const n = b.dataset.n;
-                    if (!confirm(T.rateConfirmMe(n))) return;
-                    myName = n;
-                    localStorage.setItem('bp_myName', n);
-                    const prev = latestVotes[myName];
-                    picks = (prev && Array.isArray(prev.picks)) ? [...prev.picks] : [];
-                    render();
-                });
-                renderResultArea();
-                return;
-            }
-            const cands = names.filter(n => n !== myName); // 자기 자신은 후보에서 제외
-            rateBody.innerHTML = `
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                    <span style="font-size:.9rem">${T.ratePick3(esc(myName))}</span>
-                    <button id="bp-me-change" style="font-size:.75rem;color:#6b7280;background:none;border:none;text-decoration:underline;cursor:pointer">${T.rateChangeName}</button>
-                </div>
-                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px;margin-bottom:10px">
-                    ${cands.map(n => {
-                        const i = picks.indexOf(n);
-                        const on = i > -1;
-                        return `<button class="bp-pick-btn" data-n="${esc(n)}" style="padding:9px 4px;border:1.5px solid ${on ? '#4f46e5' : '#d1d5db'};border-radius:8px;background:${on ? '#eef2ff' : '#fff'};cursor:pointer;font-size:.85rem;font-weight:${on ? '800' : '400'}">${esc(n)}${on ? `<br><span style="font-size:.7rem;color:#4f46e5">${medal(i)}</span>` : ''}</button>`;
-                    }).join('')}
-                </div>
-                <button id="bp-rate-submit" style="width:100%;padding:12px;border:0;border-radius:10px;background:${picks.length === 3 ? '#4f46e5' : '#c7d2fe'};color:#fff;font-weight:800;cursor:pointer" ${picks.length === 3 ? '' : 'disabled'}>${latestVotes[myName] ? T.rateUpdate : T.rateSubmit} (${picks.length}/3)</button>
-                <p id="bp-rate-msg" style="text-align:center;font-weight:700;min-height:20px;margin:8px 0 0;font-size:.85rem"></p>`;
-            document.getElementById('bp-me-change').onclick = () => {
-                if (!confirm(T.rateConfirmChange)) return;
-                myName = '';
-                localStorage.removeItem('bp_myName');
-                picks = [];
-                render();
-            };
-            rateBody.querySelectorAll('.bp-pick-btn').forEach(b => b.onclick = () => {
-                const n = b.dataset.n;
-                const i = picks.indexOf(n);
-                if (i > -1) picks.splice(i, 1);
-                else {
-                    if (picks.length >= 3) { alert(T.rateMax3); return; }
-                    picks.push(n);
-                }
-                render();
-            });
-            const submitBtn = document.getElementById('bp-rate-submit');
-            if (submitBtn) submitBtn.onclick = async () => {
-                if (picks.length !== 3) return;
-                const msgEl = document.getElementById('bp-rate-msg');
-                try {
-                    // 문서 키 = 투표자 이름 → 재제출 시 덮어쓰기 (중복 투표 불가)
-                    await setDoc(doc(db, "ratings", dateStr), { date: dateStr, votes: { [myName]: { picks: [...picks], at: Date.now() } } }, { merge: true });
-                    if (msgEl) { msgEl.style.color = '#16a34a'; msgEl.textContent = T.rateSaved; }
-                } catch (e) {
-                    console.error(e);
-                    if (msgEl) { msgEl.style.color = '#ef4444'; msgEl.textContent = T.rateFail; }
-                }
-            };
-            renderResultArea();
-        }
-
-        // 실시간 집계 (익명: 점수 합계만 공개) — [v55] 구독 핸들 보관
-        __bpRateUnsub = onSnapshot(doc(db, "ratings", dateStr), (snap) => {
-            latestVotes = (snap.exists() && snap.data().votes) || {};
-            const pts = {};
-            Object.values(latestVotes).forEach(v => ((v && v.picks) || []).forEach((n, i) => { pts[n] = (pts[n] || 0) + (3 - i); }));
-            const ranked = Object.keys(pts).sort((a, b) => pts[b] - pts[a]);
-            const voters = Object.keys(latestVotes).length;
-            if (ranked.length === 0) { resultHtml = ''; renderResultArea(); }
-            else {
-                const max = pts[ranked[0]] || 1;
-                resultHtml = `<div style="border-top:1px solid #eee;padding-top:10px"><p style="font-weight:800;margin:0 0 8px;font-size:.9rem">${T.rateTally} <span style="color:#9ca3af;font-weight:400">${T.rateTallySub(voters)}</span></p>
-                    ${ranked.slice(0, 7).map(n => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:.85rem"><span style="width:64px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(n)}</span><div style="flex:1;background:#f3f4f6;border-radius:4px;height:14px"><div style="width:${Math.round(pts[n] / max * 100)}%;background:#818cf8;height:14px;border-radius:4px"></div></div><span style="width:44px;text-align:right;font-weight:800;color:#4f46e5">${pts[n]}${T.pts}</span></div>`).join('')}</div>`;
-                renderResultArea();
-            }
-            // 내 기존 투표 복원 (아직 아무것도 안 골랐을 때만 → 편집 중 방해 금지)
-            if (myName && picks.length === 0 && latestVotes[myName] && Array.isArray(latestVotes[myName].picks)) {
-                picks = [...latestVotes[myName].picks];
-                render();
-            }
-        });
-
-        render();
     } catch (e) { console.error('share board extras error:', e); }
 }
 
@@ -990,7 +881,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    const modules = { playerMgmt, balancer, lineup, accounting, shareMgmt, voteMgmt, lineupStats, matchRecord };
+    const modules = { playerMgmt, balancer, lineup, accounting, shareMgmt, voteMgmt, lineupStats, matchRecord, coachWorkspace };
     const dependencies = { db, state };
     window.playerMgmt = playerMgmt;
     window.accounting = accounting;

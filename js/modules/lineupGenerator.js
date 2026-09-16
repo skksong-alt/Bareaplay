@@ -1,6 +1,7 @@
 // js/modules/lineupGenerator.js
 // [v-매치사이즈 업데이트] 9vs9(3-4-1 고정) / 10vs10(3-4-2 고정) / 11vs11(자유) 경기 인원 선택 지원
 //  - 휴식·심판 로테이션 로직은 기존과 동일 (매 쿼터 휴식 인원 = 명단 − 경기 인원)
+import { roleTip, applyLocks, validateLineup, historyBonus, candidateCost, effectivePlayer } from './coachCore.js?v=1';
 let state;
 let generateLineupButton, lineupDisplay, loadingLineupSpinner, placeholderLineup;
 let teamSelectTabsContainer, lineupMembersTextarea;
@@ -183,7 +184,16 @@ function findInLineup(lineup, name) {
 }
 
 // [수정] 선수 교체 공통 함수 (드래그와 탭이 함께 사용)
-function performSwap(qIndex, dragInfo, targetInfo) {
+async function performSwap(qIndex, dragInfo, targetInfo) {
+    if (!state.isAdmin) return;
+    const teamAtStart=activeTeamIndex;
+    try { if(window.prepareCoach) await window.prepareCoach(); }
+    catch(error) {window.showNotification(error.message || '고정 조건 조회 실패', 'error');return;}
+    if(teamAtStart!==activeTeamIndex)return;
+    const locks = state.coachDate === document.getElementById('balancer-date')?.value ? state.coachPlan?.lineupLocks?.[activeTeamIndex] || [] : [];
+    if (locks.some(l => l.q === qIndex && [dragInfo.name,targetInfo.name].includes(l.name))) {
+        window.showNotification('고정된 선수입니다. 감독 보드에서 해당 쿼터 고정을 해제하세요.', 'error'); return;
+    }
     const lineup = state.lineupResults.lineups[qIndex];
     const resters = state.lineupResults.resters[qIndex];
 
@@ -430,6 +440,15 @@ function renderAllQuarters() {
         restPanel.innerHTML = `${refHtml}<div class="text-xs font-bold text-gray-600 mb-1 text-center">휴식 / 대기</div>${restHtml}`;
         quarterBlock.appendChild(restPanel);
 
+        const instructions = document.createElement('details');
+        instructions.className = 'text-xs mt-2 p-2 bg-white rounded';
+        const summary = document.createElement('summary'); summary.textContent = '이번 쿼터 역할'; instructions.append(summary);
+        Object.entries(lineup).forEach(([pos,names]) => {
+            const p = document.createElement('p'); p.className='mt-2';
+            p.textContent = `${names.join(', ')} (${pos}): ${roleTip(pos,formation)}`; instructions.append(p);
+        });
+        quarterBlock.append(instructions);
+
         lineupDisplay.appendChild(quarterBlock);
     }
     // [중요] 렌더링 후 드래그 핸들러 연결
@@ -437,8 +456,9 @@ function renderAllQuarters() {
 }
 
 // [기능 2, 3] 심판 및 슈퍼 GK 로직이 반영된 실행 함수
-function executeLineupGeneration(members, formations, isSilent = false) {
+function executeLineupGeneration(members, formations, isSilent = false, options = {}) {
     return new Promise(resolve => {
+        if(new Set(members).size!==members.length || members.some(n=>!n) || formations.length!==6) { resolve(null);return; }
         // [v-매치사이즈] 인원 검증 및 자동 전환
         // - 선택한 포메이션(경기 인원)보다 명단이 적으면 한 단계 아래로 자동 전환
         //   (10명 → 10vs10 · 3-4-2 / 9명 → 9vs9 · 3-4-1)  ※ 쓰리백 유지 규칙
@@ -468,7 +488,7 @@ function executeLineupGeneration(members, formations, isSilent = false) {
         });
 
         const localPlayerDB = {};
-        members.forEach(name => { localPlayerDB[name] = state.playerDB[name] || { name, pos1: [], s1: 65, pos2: [], s2: 0 }; });
+        members.forEach(name => { localPlayerDB[name] = effectivePlayer(state.playerDB[name] || { name, pos1: [], s1: 65, pos2: [], s2: 0 }, state.coachProfiles); });
 
         const primaryGks = members.filter(m => (localPlayerDB[m].pos1 || []).includes('GK'));
         const secondaryGks = members.filter(m => !(localPlayerDB[m].pos1 || []).includes('GK') && (localPlayerDB[m].pos2 || []).includes('GK'));
@@ -621,6 +641,7 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                         //          → 실제 주포지션과 달라도 '즐기고 가는' 쿼터가 자동으로 확보됨
                         const wq = player.wishQuota || 0;
                         if (wq > 0 && (player.wishPos || []).includes(pos) && (wishUsage[playerName] || 0) < wq) val += 380;
+                        val += historyBonus(playerName, pos, state.coachHistory || {}, player);
                         // [성향 2] 좌/우 선호: L*/R* 자리(LW·LB / RW·RB)에서 선호측이면 가산, 반대측이면 감점
                         const sd = player.side || '';
                         if (sd && (pos[0] === 'L' || pos[0] === 'R')) {
@@ -686,11 +707,19 @@ function executeLineupGeneration(members, formations, isSilent = false) {
                 if (wq > 0) wishShort += Math.max(0, wq - (wishUsage[m] || 0));
             });
 
-            const totalCost = guaranteeShort * 1000 + gkGuaranteeShort * 800 + gkOverShort * 600 + wishShort * 250 + qualityCost + preferShort * 15;
+            let totalCost = guaranteeShort * 1000 + gkGuaranteeShort * 800 + gkOverShort * 600 + wishShort * 250 + qualityCost + preferShort * 15;
+            let candidate = { lineups, resters, referees, members, formations, score: balance, guaranteeShort, preferShort };
+            if (options.original) {
+                candidate = applyLocks(candidate, options.original, options.locks || []);
+                if (!candidate || !validateLineup(candidate, members)) continue;
+                totalCost = candidateCost(candidate,localPlayerDB,state.coachHistory || {},options.original);
+                const scores=candidate.lineups.map(l=>Object.values(l).flat().reduce((s,n)=>s+(localPlayerDB[n]?.s1 ?? 65),0));
+                candidate.score=Math.max(...scores)-Math.min(...scores);
+            }
 
             if (totalCost < bestCost) {
                 bestCost = totalCost;
-                bestLineup = { lineups, resters, referees, members, formations, score: balance, guaranteeShort, preferShort };
+                bestLineup = candidate;
             }
         }
         resolve(bestLineup);
@@ -760,6 +789,9 @@ export function init(dependencies) {
     setMatchSize(11);
 
     generateLineupButton.addEventListener('click', async () => {
+        if (!state.isAdmin) { window.promptForAdminPassword(); return; }
+        try { if (window.prepareCoach) await window.prepareCoach(); }
+        catch(error) { window.showNotification(error.message || '고정 조건을 불러오지 못했습니다.', 'error'); return; }
         loadingLineupSpinner.classList.remove('hidden');
         lineupDisplay.classList.add('hidden');
         placeholderLineup.classList.add('hidden');
@@ -767,7 +799,10 @@ export function init(dependencies) {
         generateLineupButton.textContent = '라인업 생성 중...';
         const members = lineupMembersTextarea.value.split('\n').map(name => name.trim().replace(' (신규)', '')).filter(Boolean);
         const formations = formationSelects().map(s => s.value);
-        const result = await executeLineupGeneration(members, formations);
+        const locks = state.coachPlan?.lineupLocks?.[activeTeamIndex] || [];
+        const original = state.teamLineupCache?.[activeTeamIndex];
+        if (locks.length && !original) { window.showNotification('고정할 기존 라인업이 없습니다. 고정 조건을 확인하세요.', 'error'); resetLineupUI(); return; }
+        const result = await executeLineupGeneration(members, formations, false, locks.length ? { locks, original } : {});
         if (result) {
             // [v-매치사이즈] 인원 부족으로 자동 전환된 경우 버튼/셀렉트 UI 동기화
             setMatchSize(matchSizeOfFormations(result.formations), result.formations);
@@ -780,7 +815,10 @@ export function init(dependencies) {
                 window.shareMgmt.updateLineupData(state.lineupResults, result.formations);
             }
             if(window.saveDailyMeetingData) window.saveDailyMeetingData();
-            window.showNotification(`라인업 생성 완료! (실력차: ${result.score.toFixed(1)})`);
+            window.showNotification(`라인업 생성 완료! (우리 팀 쿼터별 점수 편차: ${result.score.toFixed(1)})`);
+        } else {
+            window.showNotification('조건을 만족하는 라인업을 찾지 못했습니다. 기존 배정을 유지합니다.', 'error');
+            if (original) { state.lineupResults=original; lineupDisplay.classList.remove('hidden'); renderAllQuarters(); }
         }
         resetLineupUI();
         renderPrefSuggestions(); // [학습] 쌓인 드래그 기록에서 반복 패턴을 찾아 제안 카드 표시
@@ -890,7 +928,7 @@ async function renderPrefSuggestions() {
     // 선수별 이동 집계: 어느 라인으로/어느 측면으로 옮겨졌는지, 서로 다른 날짜 기준으로 센다
     const acc = {}; // name -> { line: {DEF: Set(dates)...}, pos: {CB: n...}, side: {L: Set, R: Set} }
     logs.forEach(log => {
-        if (log.kind !== 'lineup-swap' || !Array.isArray(log.moves)) return;
+        if (log.kind !== 'lineup-swap' || log.reason !== 'roleFit' || !Array.isArray(log.moves)) return;
         log.moves.forEach(mv => {
             const name = normalizeName(mv.name);
             const to = String(mv.to || '').toUpperCase();

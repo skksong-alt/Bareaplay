@@ -1,5 +1,6 @@
 // js/modules/teamBalancer.js
 import { state } from '../store.js?v=2'; // [중요] ?v=2를 붙여서 app.js와 주소를 통일함
+import { rolePenalty, effectivePlayer } from './coachCore.js?v=1';
 import { collection, getDocs } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js"; // [추가] 최근 같은팀 조합 조회용
 
 let db; // [추가] Firestore 핸들 (최근 조합 반복 방지용)
@@ -112,7 +113,7 @@ function handlePlayerDragStart(e, playerName, fromTeamIndex) {
 }
 
 
-function handleTeamDrop(e, toTeamIndex) {
+async function handleTeamDrop(e, toTeamIndex) {
     e.preventDefault();
     e.currentTarget.classList.remove('team-drop-target');
     
@@ -122,6 +123,13 @@ function handleTeamDrop(e, toTeamIndex) {
     try {
         const { playerName, fromTeamIndex } = JSON.parse(dataString);
         if (fromTeamIndex === toTeamIndex) return;
+        if (!state.isAdmin) return;
+        const teamsBefore=JSON.stringify(state.teams);
+        if (window.prepareCoach) await window.prepareCoach();
+        if (teamsBefore!==JSON.stringify(state.teams)) throw new Error('명단이 변경되었습니다. 다시 시도하세요.');
+        const locked=state.coachPlan?.teamLocks?.[playerName];
+        if (locked!==undefined && locked!==toTeamIndex) throw new Error('팀이 고정된 선수입니다. 감독 보드에서 고정을 해제하세요.');
+        if (Object.values(state.coachPlan?.lineupLocks || {}).some(list=>list.some(l=>l.name===playerName))) throw new Error('포지션이 고정된 선수입니다. 감독 보드에서 고정을 해제하세요.');
 
         const fromTeam = state.teams[fromTeamIndex];
         const toTeam = state.teams[toTeamIndex];
@@ -138,6 +146,7 @@ function handleTeamDrop(e, toTeamIndex) {
         }
     } catch (err) {
         console.error("Drop Error: ", err);
+        window.showNotification(err.message || '이동 실패', 'error');
     }
 }
 
@@ -315,7 +324,12 @@ function calculateScore(teamArr, W) {
         });
     }
 
-    return (avgMaxMin * W.SKILL * 5) + (posDiffSum * W.POS) + (sizeMaxMin * W.SIZE * 5) + (pinPenalty * 100000) + (repeatPenalty * 12);
+    let mentorPenalty = 0;
+    teamArr.forEach((team,i) => team.forEach(p => {
+        const mentor = state.coachProfiles?.[normalizeName(p.name)]?.mentor;
+        if (mentor && teamOf[mentor] !== undefined && teamOf[mentor] !== i) mentorPenalty += 10000;
+    }));
+    return (avgMaxMin * W.SKILL * 5) + (posDiffSum * W.POS) + (sizeMaxMin * W.SIZE * 5) + (pinPenalty * 100000) + (repeatPenalty * 12) + rolePenalty(teamArr, state.coachProfiles) + mentorPenalty;
 }
 
 // [추가] 최근 28일간의 dailyMeetings에서 '같은 팀이었던 쌍'을 집계 (팀 생성 직전에 호출)
@@ -429,6 +443,7 @@ function executeTeamAssignmentGA() {
     
     state.initialAttendeeOrder = [...attendNames];
     const teamCount = parseInt(teamCountSelect.value, 10);
+    if (attendNames.length < teamCount) throw new Error('참가자 수가 팀 수보다 적습니다.');
     ensureTeamNames(teamCount); // [v58] 팀 이름 기본값 보장 (기존 커스텀 이름은 유지)
     const W = { SKILL: Number(sliders.skill.value), POS: Number(sliders.pos.value), SIZE: Number(sliders.size.value) };
 
@@ -437,7 +452,6 @@ function executeTeamAssignmentGA() {
     currentPinApart = parsePinLines(pinApartTextarea);
     
     let knownPlayers = []; 
-    let unknownPlayers = [];
     
     // 3. DB 매칭 (이제 state.playerDB가 제대로 채워져 있을 것입니다)
     attendNames.forEach(name => { 
@@ -449,9 +463,10 @@ function executeTeamAssignmentGA() {
         }
 
         if (dbPlayer) {
-            knownPlayers.push({ ...dbPlayer }); 
+            knownPlayers.push({ ...dbPlayer });
         } else {
-            unknownPlayers.push(name); 
+            // Guests participate in the same optimisation instead of being appended afterwards.
+            knownPlayers.push(effectivePlayer({ name, s1:65, pos1:[] }, state.coachProfiles));
         }
     });
     
@@ -471,13 +486,20 @@ function executeTeamAssignmentGA() {
     // [추가] 에이스를 스네이크 드래프트로 각 팀에 균등 배치 → 인원차 ≤ 1, 실력 순으로 교차 배분
     //   예) 에이스 6명·2팀 → 3:3, 5명(홀수)·2팀 → 3:2 (남는 1명은 실력 흐름상 가장 약한 팀으로)
     const aceBase = Array.from({ length: teamCount }, () => []);
+    const locks = state.coachPlan?.teamLocks || {};
+    if (Object.values(locks).some(i => !Number.isInteger(i) || i < 0 || i >= teamCount)) throw new Error('팀 수와 고정 조건이 맞지 않습니다. 감독 보드에서 고정 조건을 수정하세요.');
     const sortedAces = [...aces].sort((a, b) => (b.s1 || 0) - (a.s1 || 0));
     sortedAces.forEach((p, i) => {
         const round = Math.floor(i / teamCount);
         const pos = i % teamCount;
         const teamIdx = (round % 2 === 0) ? pos : (teamCount - 1 - pos);
-        aceBase[teamIdx].push(p);
+        aceBase[locks[p.name] ?? teamIdx].push(p);
     });
+    regulars = regulars.filter(p => {
+        if (locks[p.name] === undefined) return true;
+        aceBase[locks[p.name]].push(p); return false;
+    });
+    if (aceBase.some(t=>t.length>Math.ceil(knownPlayers.length/teamCount))) throw new Error('한 팀에 고정된 인원이 너무 많습니다. 고정 조건을 줄이세요.');
 
     // [추가] 에이스가 먼저 배치된 팀 위에 일반 선수를 '가장 적은 팀'부터 채워 전체 인원을 균형화하는 헬퍼
     const buildTeams = (regularOrder) => {
@@ -546,12 +568,15 @@ function executeTeamAssignmentGA() {
         bestOverallTeams = Array.from({ length: teamCount }, () => []);
     }
 
-    // 5. 신규 선수 배정
-    unknownPlayers.forEach(nm => {
-        let minIndex = bestOverallTeams.reduce((minIdx, team, i, arr) => team.length < arr[minIdx].length ? i : minIdx, 0);
-        bestOverallTeams[minIndex].push({ name: nm, s1: 65, pos1: [] }); // [수정] 이름에 (신규)를 박지 않음 → NEW 여부는 렌더 시 playerDB로 판정
-    });
+    const assignedNames=bestOverallTeams.flat().map(p=>normalizeName(p.name));
+    if(assignedNames.length!==attendNames.length || new Set(assignedNames).size!==attendNames.length || attendNames.some(n=>!assignedNames.includes(n))) throw new Error('배정 명단 검증 실패. 기존 팀을 유지합니다.');
 
+    const assignedTeam = Object.fromEntries(bestOverallTeams.flatMap((t,i)=>t.map(p=>[normalizeName(p.name),i])));
+    const violations = [];
+    currentPinTogether.forEach(g=>{const ids=g.filter(n=>assignedTeam[n]!==undefined).map(n=>assignedTeam[n]);if(new Set(ids).size>1)violations.push('같은 팀 지정');});
+    currentPinApart.forEach(g=>{const ids=g.filter(n=>assignedTeam[n]!==undefined).map(n=>assignedTeam[n]);if(new Set(ids).size<ids.length)violations.push('다른 팀 지정');});
+    bestOverallTeams.flat().forEach(p=>{const m=state.coachProfiles?.[p.name]?.mentor;if(m && assignedTeam[m]!==undefined && assignedTeam[m]!==assignedTeam[p.name])violations.push(`${p.name} 안내 선수 조합`);});
+    if (violations.length && !confirm(`동시에 만족하지 못한 조건: ${[...new Set(violations)].join(', ')}.\n이 후보를 적용할까요? 취소하면 기존 팀을 유지합니다.`)) { renderResults(state.teams); resetUI(); return; }
     renderResults(bestOverallTeams);
     
     // 타 모듈 데이터 연동
@@ -725,6 +750,7 @@ export function init(dependencies) {
     });
 
     generateButton.addEventListener('click', () => {
+        if (!state.isAdmin) { window.promptForAdminPassword(); return; }
         if (!confirmExistingOverwrite()) return; // [v58] 기존 배정 덮어쓰기 경고
         loadingSpinner.classList.remove('hidden');
         placeholder.classList.add('hidden');
@@ -732,8 +758,12 @@ export function init(dependencies) {
         generateButton.textContent = '팀 생성 중...';
         if(resultContainer) resultContainer.innerHTML = ''; // 버튼 클릭 즉시 결과창 초기화
         setTimeout(async () => {
-            await loadRecentPairCounts(); // [추가] 최근 4주 같은팀 조합 집계 후 GA 실행
-            executeTeamAssignmentGA();
+            try {
+                if (window.prepareCoach) await window.prepareCoach();
+                if (Object.values(state.coachPlan?.lineupLocks || {}).some(locks=>locks.length)) throw new Error('포지션 고정 조건이 있습니다. 부분 라인업 재배정을 사용하거나 감독 보드에서 고정을 해제하세요.');
+                await loadRecentPairCounts();
+                executeTeamAssignmentGA();
+            } catch (error) { renderResults(state.teams); resetUI(); window.showNotification(error.message || '배정 실패', 'error'); }
         }, 100);
     });
     

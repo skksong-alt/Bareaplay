@@ -2,24 +2,11 @@
 // 라인업 포지션 집계표 (운영진 전용) — 당일 라인업에서 각 선수가
 // 공격/미들/수비/GK/휴식을 각각 몇 번 맡는지 표시. 드래그로 바뀌면 자동 갱신.
 
+import { positionGroup } from './coachCore.js?v=1';
 let state;
 let statsContainer = null;
 let observer = null;
 let isRendering = false;
-
-// 포지션 → 큰 분류 매핑 (선수정보 기준: 공격 FW/LW/RW, 미들 CM/MF 등, 수비 CB/LB/RB)
-const FWD = new Set(['FW', 'ST', 'CF', 'LW', 'RW', 'SS', 'LF', 'RF']);
-const MID = new Set(['MF', 'CM', 'CAM', 'CDM', 'DM', 'AM', 'LM', 'RM', 'LCM', 'RCM']);
-const DEF = new Set(['CB', 'LB', 'RB', 'LWB', 'RWB', 'WB', 'DF', 'SW', 'LCB', 'RCB']);
-
-function categoryOf(pos) {
-    const p = String(pos || '').toUpperCase();
-    if (p === 'GK') return 'GK';
-    if (FWD.has(p)) return 'FWD';
-    if (MID.has(p)) return 'MID';
-    if (DEF.has(p)) return 'DEF';
-    return 'MID'; // 알 수 없는 포지션은 미들로 간주
-}
 
 export function init(dependencies) {
     state = dependencies.state;
@@ -68,7 +55,8 @@ function renderStats() {
         for (let q = 0; q < quarters; q++) {
             const lineup = results.lineups[q] || {};
             Object.keys(lineup).forEach(pos => {
-                const cat = categoryOf(pos);
+                const group = positionGroup(pos, results.formations?.[q]);
+                const cat = group === 'ATT' ? 'FWD' : group === 'MID' ? 'MID' : group;
                 (lineup[pos] || []).forEach(name => {
                     const c = ensure(name);
                     if (c) { c[cat] += 1; c.total += 1; }

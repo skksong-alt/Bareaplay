@@ -1,6 +1,6 @@
 // js/modules/shareManagement.js
 import { doc, setDoc, collection, onSnapshot, addDoc, getDoc, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
-import { getPosCellMap } from './lineupGenerator.js?v=7'; // [정리] 포메이션 좌표 단일화
+import { getPosCellMap } from './lineupGenerator.js?v=8'; // [정리] 포메이션 좌표 단일화
 
 let db, state;
 let addLocationBtn, shareDate, shareTime, shareLocationSelect;
@@ -63,17 +63,19 @@ async function generateShareableLink() {
     loadingOverlay.style.opacity = 1;
 
     try {
+        if (window.prepareCoach) await window.prepareCoach();
         const allTeamLineups = {};
         const lineupPromises = state.teams.map((team, i) => {
             if (state.teamLineupCache && state.teamLineupCache[i]) {
                 return Promise.resolve(state.teamLineupCache[i]);
             }
             const teamMembers = team.map(p => p.name.replace(' (신규)', ''));
-            const formations = Array.from(document.querySelectorAll('#page-lineup select')).map(s => s.value);
+            const formations = Array.from(document.querySelectorAll('#page-lineup select[id^="formation-q"]')).map(s => s.value);
             return window.lineup.executeLineupGeneration(teamMembers, formations, true);
         });
 
         const lineups = await Promise.all(lineupPromises);
+        if (lineups.some(l => !l)) throw new Error('모든 팀의 라인업을 먼저 생성하세요. 기존 공유 결과는 유지됩니다.');
         
         lineups.forEach((originalLineup, i) => {
             if (originalLineup) {

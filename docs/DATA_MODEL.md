@@ -1,5 +1,22 @@
 # BareaPlay Firestore 데이터 모델
 
+## 2026-09-16 추가: 코칭 기능 (기존 데이터 이관 없음)
+
+아래는 새 코드의 경로이며 운영 문서의 존재를 의미하지 않는다. 사용자 저장 동작 전에는 생성하지 않는다.
+
+| 경로 | 주요 필드 | 관계 / 쓰기 시점 |
+|---|---|---|
+| `coachWeeks/{YYYY-MM-DD}` | `date`, `ko`, `en`, `actionKo`, `actionEn`, `url`, `segmentKo`, `segmentEn`, `drillKo`, `drillEn`, `reviewDate`, `updatedAt` | 대상 경기 날짜별 콘텐츠. 관리자가 콘텐츠 저장 시 merge. `reviewDate`는 평가할 과거 `dailyMeetings`/`ratings` 날짜, 빈 값은 자동 선택, `none`은 숨김 |
+| `coachPlayers/{name}` | `name`, `roles: string[]`, `mentor`, `guest`, `date?`, `skill?`, `positions?: string[]`, `updatedAt` | 기존 선수의 이름 키를 참조. 관리자가 역할 저장 시 merge. 게스트는 `date` 일치 시에만 임시 능력치 사용 |
+| `coachPlans/{YYYY-MM-DD}` | `date`, `teamLocks: {name: teamIndex}`, `lineupLocks: {teamIndex: [{name,q}]}`, `updatedAt` | 팀 인덱스는 0부터. `q`는 0~5. 고정은 현재 저장 라인업의 자리/휴식에 적용. 체크 해제 시 고정 맵/해당 팀 배열만 명시 교체 |
+| `coachAdjustments/{autoId}` | `date`, `team`, `reason`, `kind: partial-lineup`, `changes: string[]`, `at` | 사용자가 미리보기 후보를 실제 적용한 경우에만 추가 |
+
+`adjustLogs`의 **새 조정**에는 `reason`을 추가한다 (`temporary`, `condition`, `wish`, `learning`, `roleFit`). 기존 로그를 수정하지 않는다. `roleFit`만 반복 성향 제안에 사용한다.
+
+활약 투표를 새 페이지에서 제출해도 기존 `ratings/{date}.votes.{name}.{picks,at}` 구조를 사용한다. 신규 `ratings/.../votes` 하위 컬렉션으로 이관하지 않는다. 참석 투표 역시 기존 응답 문서에 필요한 필드만 merge한다.
+
+이하 문서는 도입 전 기준점 기록이다.
+
 확인일: 2026-08-30
 
 ## 표기 기준
