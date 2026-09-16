@@ -31,12 +31,15 @@
 .match-page a{color:inherit}
 .match-location{display:flex;align-items:center;gap:8px;margin-top:5px;font-size:13px;color:#526454;flex-wrap:wrap}
 .match-map-link{font-size:11px!important;text-decoration:underline;text-underline-offset:3px}
-.match-page .lineup-link{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:12px 0 0;margin-top:12px;border-top:1px solid #e0e6db;text-decoration:none;font-size:12px;color:#284f3e}
-.lineup-state{border-radius:5px;padding:4px 7px;background:#e8ece5;color:#62715e;font-size:10px;white-space:nowrap}
-a.lineup-link .lineup-state{background:#dcecdf;color:#1c6044}
+.match-page .lineup-link{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:13px 14px;margin-top:14px;border:1px solid #b9cfc2;border-radius:10px;background:#e5efe7;text-decoration:none;font-size:14px;font-weight:750;color:#204d38}
+.lineup-state{border-radius:6px;padding:5px 8px;background:#f7faf5;color:#52694f;font-size:12px;font-weight:700;white-space:nowrap}
+a.lineup-link{box-shadow:0 2px 5px #214e3510}
+a.lineup-link .lineup-state{background:#24573e;color:#fff}
+a.lineup-link:hover{background:#d7e8da}
 .match-name-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:20px 0 9px;flex-wrap:wrap}
 .match-page .match-name-row label{font-size:13px;margin:0;font-weight:700}
-.match-review-link{font-size:11px;color:#536c5b!important;text-decoration:underline;text-underline-offset:3px;min-height:28px;display:inline-flex;align-items:center}
+.match-review-link{font-size:12px;font-weight:750;color:#70521f!important;background:#fbf2de;border:1px solid #e7d4a7;border-radius:8px;padding:8px 10px;text-decoration:none;min-height:36px;display:inline-flex;align-items:center;gap:4px}
+.match-review-link:hover{background:#f4e7c9}
 .match-page .coach-card input,.match-page .coach-card select{border-color:#ccd8cf;border-radius:10px;min-height:48px;font-size:14px;padding:12px;background:#fff}
 .match-page .coach-card input:focus,.match-page .coach-card select:focus{outline:2px solid #397e58;outline-offset:2px}
 .match-page .coach-note{font-size:11px;line-height:1.75;color:#64776a;margin:10px 0 18px}
@@ -51,12 +54,12 @@ a.lineup-link .lineup-state{background:#dcecdf;color:#1c6044}
 .match-deadline{font-size:11px;color:#657366;margin:0!important;padding-top:14px;line-height:1.6}
 .match-live{display:flex;align-items:center;gap:5px;font-size:10px;color:#497452;white-space:nowrap}
 .match-live::before{content:'';width:5px;height:5px;border-radius:50%;background:#508863}
-.attendance-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:22px}
+.attendance-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:22px;align-items:stretch}
 .attendance-stat{padding:12px 4px;text-align:center;border-radius:10px;background:#f5f7f4;color:#667666}
 .attendance-stat strong{display:block;font-size:25px;letter-spacing:-1px;font-weight:700;line-height:1.2;font-variant-numeric:tabular-nums}
 .attendance-stat span{display:block;margin-top:5px;font-size:10px}
 .attendance-stat.attend{background:#eaf2e7;color:#27563a}
-.attendance-stat.wait{background:#fbf3e5;color:#886128}
+.attendance-stat .waitlist-count{display:inline-block;font-size:10px;font-weight:650;line-height:1.6;margin-top:7px;padding:2px 7px;border-radius:5px;background:#fbefcf;color:#81571c}
 .attendance-roster{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:22px}
 .attendance-group{min-width:0}
 .attendance-group h3,.attendance-group summary{font-size:12px;font-weight:700;margin:0 0 8px;display:flex;justify-content:space-between;gap:8px;color:#3c5747}
@@ -92,6 +95,13 @@ a.lineup-link .lineup-state{background:#dcecdf;color:#1c6044}
 .practice-block{margin-top:24px;border-radius:12px;background:#f4f6ef;padding:18px 20px}
 .practice-block h3{font-size:13px;margin:0 0 8px;color:#3e5d37}
 .practice-block p{font-size:12px!important;color:#62715b;margin:0!important;line-height:1.9!important}
+.practice-block .practice-instructions{display:grid;gap:10px;margin-top:14px}
+.practice-block .practice-instructions p{padding-bottom:10px;border-bottom:1px solid #e1e7d9;overflow-wrap:anywhere}
+.practice-block .practice-instructions p:last-child{padding-bottom:0;border-bottom:0}
+.practice-block .practice-source{display:inline-block;font-size:10px;color:#6b7e59;margin-top:14px;text-decoration:underline;text-underline-offset:3px}
+#coach-planner .coach-help{margin:14px 0;padding:14px 16px;background:#f4f7f1;border:1px solid #e0e7d8;border-radius:10px;font-size:13px;line-height:1.8}
+#coach-planner .coach-help ol{padding-left:20px;list-style:decimal;margin:10px 0}
+#coach-planner .coach-help li{margin:6px 0}
 .match-footer{display:flex;justify-content:space-between;gap:20px;padding-top:30px;font-size:9px;letter-spacing:1px;color:#899784}
 .match-review-screen{max-width:740px;margin:auto}
 .match-back{display:inline-flex;align-items:center;min-height:44px;font-size:13px;font-weight:600;margin-bottom:16px;text-decoration:none}
@@ -106,5 +116,5 @@ a.lineup-link .lineup-state{background:#dcecdf;color:#1c6044}
 .match-page :is(a,button,summary):focus-visible{outline:2px solid #398260;outline-offset:4px}
 @media(min-width:900px){.attendance-group.attend ol{max-height:350px;overflow:auto;padding-right:5px;scrollbar-width:thin;scrollbar-color:#d0dccb transparent}}
 @media(max-width:760px){.match-shell{padding:20px 18px}.match-header{margin-bottom:26px;padding-bottom:19px}.match-intro{margin-bottom:22px}.match-round{display:none}.match-layout{grid-template-columns:minmax(0,1fr);gap:16px}.match-page .coach-card{padding:22px}.match-page .preparation-card{padding:0}.preparation-card>summary{padding:20px}.preparation-content{padding:0 20px 20px}.video-guidelines{grid-template-columns:minmax(0,1fr)}.match-footer{letter-spacing:.5px;font-size:8px}.match-brand strong{font-size:21px}.match-intro h1{font-size:27px}}
-@media(max-width:360px){.match-shell{padding:16px 12px}.match-page .coach-card{padding:18px}.match-page .preparation-card{padding:0}.attendance-roster{gap:14px}.match-name-row{align-items:start}.match-review-link{font-size:10px}.match-intro h1{font-size:24px}}
+@media(max-width:360px){.match-shell{padding:16px 12px}.match-page .coach-card{padding:18px}.match-page .preparation-card{padding:0}.attendance-roster{gap:14px}.match-name-row{align-items:start}.match-intro h1{font-size:24px}}
 @media(prefers-reduced-motion:reduce){.match-page *{transition:none!important;scroll-behavior:auto!important}}

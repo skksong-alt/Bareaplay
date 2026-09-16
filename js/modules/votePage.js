@@ -1,6 +1,6 @@
 import { doc, getDoc, getDocs, collection, query, where, setDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js';
 import { cleanName, escapeHtml as esc, chooseReviewDate } from './coachCore.js?v=1';
-import { lessonHtml, addCoachStyles } from './weeklyContent.js?v=2';
+import { lessonHtml, addCoachStyles } from './weeklyContent.js?v=3';
 let dispose = () => {};
 const readLang = () => { try { return localStorage.getItem('bp_lang') === 'en' ? 'en' : 'ko'; } catch { return 'ko'; } };
 const dubaiToday = () => new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
@@ -105,7 +105,7 @@ export async function renderVote(db, voteId) {
                 return {status,label,list};
             });
             const roster=({status,label,list})=>`<section class="attendance-group ${status}"><h3>${label}<span>${list.length}</span></h3>${list.length?`<ol>${list.map(r=>`<li><span class="roster-name">${esc(r.name)}</span>${r.guest?`<small aria-label="${t('게스트','Guest')}">GUEST</small>`:''}</li>`).join('')}</ol>`:`<p class="attendance-empty">${t('아직 없어요','None yet')}</p>`}</section>`;
-            document.getElementById('v-list').innerHTML=`<div class="attendance-stats">${grouped.map(g=>`<div class="attendance-stat ${g.status}"><strong>${g.list.length}</strong><span>${g.label}</span></div>`).join('')}</div><div class="attendance-roster"><div>${roster(grouped[0])}${grouped[1].list.length?roster(grouped[1]):''}</div><div class="attendance-side">${roster(grouped[2])}${roster(grouped[3])}</div></div><p class="attendance-footnote">${t('참석 신청순 · GUEST 게스트','In RSVP order · GUEST visiting player')}</p>`;
+            document.getElementById('v-list').innerHTML=`<div class="attendance-stats">${grouped.filter(g=>g.status!=='wait').map(g=>`<div class="attendance-stat ${g.status}"><strong>${g.list.length}</strong><span>${g.label}</span>${g.status==='attend'&&grouped[1].list.length?`<small class="waitlist-count">${t('대기 '+grouped[1].list.length+'명',grouped[1].list.length+' waitlisted')}</small>`:''}</div>`).join('')}</div><div class="attendance-roster"><div>${roster(grouped[0])}${grouped[1].list.length?roster(grouped[1]):''}</div><div class="attendance-side">${roster(grouped[2])}${roster(grouped[3])}</div></div><p class="attendance-footnote">${t('키퍼·휴식·심판 배정에 참석 신청 순서와 포지션·배정 횟수를 함께 반영합니다.','GK, rest and referee assignments consider RSVP order, positions and rotation counts.')}</p>`;
             document.getElementById('v-live').textContent=t('실시간','Live');
         },()=>{ if(alive) { document.getElementById('v-list').textContent=t('명단을 불러오지 못했습니다.','Could not load the list.');document.getElementById('v-live').textContent=t('연결 확인 필요','Connection unavailable'); } }));
         // Independent enhancements must never prevent attendance submission.

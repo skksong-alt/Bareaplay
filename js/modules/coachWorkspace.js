@@ -1,6 +1,6 @@
 import { collection, doc, getDocs, getDoc, setDoc, serverTimestamp, addDoc } from 'https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js';
 import { cleanName, escapeHtml as esc, recentHistory, ROLES, validateLineup, lineupSummary, locate } from './coachCore.js?v=1';
-import { lessonFor, lessonHtml, addCoachStyles, TEAM_VIDEOS, parseGuidelines } from './weeklyContent.js?v=2';
+import { lessonFor, lessonHtml, addCoachStyles, TEAM_VIDEOS, parseGuidelines } from './weeklyContent.js?v=3';
 let db, state;
 const dateNow = () => document.getElementById('balancer-date')?.value || window.getLocalDate();
 const requireAdmin = () => { if(!state.isAdmin) throw new Error('관리자 로그인이 필요합니다.'); };
@@ -69,6 +69,12 @@ export function init(dependencies) {
     });
     const panel=make(lineup,'coach-planner',`<h2>감독 보드 · 최근 이력과 부분 재배정</h2><p class="coach-note">팀 배정 탭에서 선택한 날짜를 사용합니다. 최근 4회는 실제 출전 시간이 아닌 저장된 배정 기록입니다.</p><button id="coach-load">선택 날짜 불러오기</button><label>이번 수동 수정의 이유<select id="coach-reason"><option value="temporary">오늘만 팀 사정</option><option value="condition">컨디션</option><option value="wish">희망 반영</option><option value="learning">역할 학습</option><option value="roleFit">지속적으로 적합한 역할</option></select></label><div id="coach-planner-body"></div>`);
     panel.querySelector('#coach-reason').onchange=e=>window.coachReason=e.target.value;
+    const help=document.createElement('details');help.className='coach-help';
+    help.innerHTML='<summary>처음이라면 · 감독 보드 사용 순서</summary><ol><li><b>팀 배정 탭</b>에서 경기 날짜를 선택하고 팀·라인업을 먼저 준비합니다.</li><li><b>선택 날짜 불러오기</b>를 누르면 최근 배정 이력, 고정 설정, 팀 비교가 아래에 나타납니다. 불러오기만으로 배정이 바뀌거나 저장되지는 않습니다.</li><li><b>그대로 둘 선수·쿼터</b>를 체크합니다. 예: 1쿼터의 특정 선수 자리는 유지하고 싶다면 그 칸만 체크합니다. 다음 생성에도 유지하려면 포지션 고정 조건을 저장하세요.</li><li><b>고정 유지 · 나머지 재배정 미리보기</b>로 후보를 확인합니다. 마음에 들 때만 <b>이 후보 적용·저장</b>을 누르세요. 미리보기만으로 기존 라인업은 바뀌지 않습니다.</li></ol><p>최근 4회는 실제 경기 출전 시간이 아닌 저장된 배정 기록입니다. 단순히 기존 라인업을 직접 수정할 때는 이 보드를 꼭 사용할 필요는 없습니다.</p>';
+    panel.querySelector('#coach-load').before(help);
+    const reasonHelp=document.createElement('p');reasonHelp.className='coach-note';
+    reasonHelp.textContent='수정 이유는 다음 수동 조정을 기록할 때 붙이는 분류입니다. 선택만으로 배정·저장이 실행되지는 않습니다. 일시적인 사정은 “오늘만 팀 사정”, 반복해서 그 역할이 잘 맞는 경우만 “지속적으로 적합한 역할”을 선택하세요. 후자만 반복 성향 제안에 활용합니다.';
+    panel.querySelector('#coach-reason').closest('label').after(reasonHelp);
     panel.querySelector('#coach-load').onclick=()=>guard(async()=>{await prepareCoach();renderPlanner(panel);});
     // Make the board easy to find, before the six pitches.
     const display=document.getElementById('lineup-display');if(display)display.before(panel);

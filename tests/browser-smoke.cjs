@@ -50,6 +50,11 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   assert.equal(await page.locator('#review-name').count(),0,'ratings must have a separate screen');
   assert.equal(await page.locator('.preparation-card').getAttribute('open'),null,'resources start collapsed');
   assert.equal(await page.locator('.video-guideline a').count(),6);
+  assert.equal(await page.locator('.attendance-stat').count(),3,'only going/maybe/absent summary cards');
+  assert.equal(await page.locator('.attendance-stat.wait').count(),0);
+  assert.equal(await page.locator('.waitlist-count').count(),0,'hide waiting badge when empty');
+  assert.match(await page.locator('.attendance-footnote').textContent(),/키퍼·휴식·심판/);
+  assert.doesNotMatch(await page.locator('.attendance-footnote').textContent(),/GUEST/);
   assert.equal(await page.locator('#v-board a').getAttribute('href'),'/share.html?shareId=test-share');
   await page.locator('#v-map a').waitFor();
   // Reads failing or a different venue must never look like a confirmed assignment.
@@ -85,6 +90,10 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   assert.equal(await page.evaluate(()=>__fixture['votes/test-vote/responses/Test 01'].attendingSince.seconds),10);
   assert.equal(await page.evaluate(()=>__fixture['votes/test-vote/responses/Test 01'].paymentSentinel),'unchanged');
   await page.locator('#v-name').fill('Late Guest');await page.locator('[data-status="attend"]').click();await page.waitForFunction(()=>__fixture['votes/test-vote/responses/Late Guest']?.waitlist===true);
+  assert.equal(await page.locator('.attendance-stat').count(),3);
+  assert.match(await page.locator('.attendance-stat.attend .waitlist-count').textContent(),/1 waitlisted/);
+  assert.equal(await page.locator('.attendance-stat.attend strong').textContent(),'2','waitlisted player is not counted as confirmed');
+  assert.equal(await page.locator('.attendance-group.wait li').count(),1,'waiting roster preserved');
   await page.evaluate(async()=>{const f=await import('https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js');await f.setDoc(f.doc({},'votes','test-vote'),{closed:true},{merge:true});});
   assert.equal(await page.locator('[data-status="attend"]').isDisabled(),true);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'mobile horizontal overflow');
@@ -95,6 +104,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   await page.locator('#v-lang').click();await page.waitForSelector('.match-review-link');
   await page.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-vote-desktop.png'),fullPage:true});
   await page.locator('.preparation-card>summary').click();
+  assert.equal(await page.locator('.practice-instructions p').count(),5);
   await page.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-vote-resources.png'),fullPage:true});
   await page.setViewportSize({width:320,height:740});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'320px expanded overflow');
@@ -102,6 +112,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   await page.locator('#v-lang').click();await page.waitForSelector('.match-review-link');
   await page.goto(base+'/');await page.waitForFunction(()=>window.lineup && document.getElementById('coach-load'));
   await page.waitForTimeout(1500);assert.equal(await page.evaluate(()=>__writes.length),0,'admin load must not write');
+  assert.match(await page.locator('#coach-planner .coach-help').textContent(),/미리보기만으로 기존 라인업은 바뀌지 않습니다/);
   await page.locator('#tab-share').click();await page.locator('#vote-location-saved').selectOption('Test pitch');
   assert.equal(await page.locator('#vote-location').inputValue(),'Test pitch');
   assert.equal(await page.locator('#meeting-publication-slot #generate-share-btn').count(),1);
@@ -142,7 +153,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   await page.evaluate(()=>localStorage.setItem('bp_lang','ko'));
   await page.goto(base+'/?vote=current');await page.waitForSelector('.match-review-link');
   await page.evaluate(ns=>{ns.slice(1,18).forEach((name,i)=>{__fixture['votes/test-vote/responses/'+name]={name,status:i<13?'attend':i<15?'maybe':'absent',guest:false,waitlist:false,attendingSince:{seconds:11+i}};});},names);
-  await page.evaluate(async()=>{const m=await import('/js/modules/votePage.js?v=2');await m.renderVote({},'test-vote');});await page.waitForSelector('.match-review-link');
+  await page.evaluate(async()=>{const m=await import('/js/modules/votePage.js?v=3');await m.renderVote({},'test-vote');});await page.waitForSelector('.match-review-link');
   assert.equal(await page.locator('.attendance-group.attend li').count(),14);
   assert.equal(await page.evaluate(()=>__writes.length),0);
   await page.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-vote-mobile-preview.png'),fullPage:true});

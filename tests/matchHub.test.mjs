@@ -1,7 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { guidelinesFor, lessonHtml, parseGuidelines } from '../js/modules/weeklyContent.js';
+import { guidelinesFor, lessonHtml, parseGuidelines, lessonFor } from '../js/modules/weeklyContent.js';
+
+test('all four practices explain setup, timed stages and coaching cues in both languages',()=>{
+    for(const date of ['2026-09-16','2026-09-23','2026-09-30','2026-10-07']){
+        const lesson=lessonFor(date);
+        for(const key of ['drillKo','drillEn'])assert.equal(lesson[key].split('\n').length,5);
+        assert.match(lesson.drillKo,/준비 \|/);assert.match(lesson.drillKo,/0–5분/);assert.match(lesson.drillKo,/5–10분/);assert.match(lesson.drillKo,/10–15분/);assert.match(lesson.drillKo,/감독 한마디/);
+        assert.match(lessonHtml(date,{}),/다른 포지션을 이해하면/);
+        assert.doesNotMatch(lessonHtml(date,{}),/내 포지션에 맞는 영상 1~2개/);
+        assert.match(lessonHtml(date,{}),/class="practice-source"/);
+    }
+    const custom={drillKo:'감독이 저장한 연습\n세부 지침 <변경 금지>'};
+    const html=lessonHtml('2026-09-16',custom);
+    assert.match(html,/감독이 저장한 연습/);assert.match(html,/&lt;변경 금지&gt;/);
+    assert.doesNotMatch(html,/0–5분|class="practice-source"/);
+    assert.equal(custom.drillKo,'감독이 저장한 연습\n세부 지침 <변경 금지>');
+});
 
 test('guidelines link the instruction itself; defaults are six coach-supplied resources',()=>{
     const list=guidelinesFor('2026-09-23');
@@ -35,8 +51,8 @@ test('optional legacy text fields accept safe link lists, with language fallback
 
 test('match resources stylesheet is versioned and included in the offline cache',()=>{
     const root=new URL('../',import.meta.url);
-    assert.match(readFileSync(new URL('index.html',root),'utf8'),/css\/match-hub\.css\?v=1/);
-    assert.match(readFileSync(new URL('sw.js',root),'utf8'),/'\/css\/match-hub\.css\?v=1'/);
+    assert.match(readFileSync(new URL('index.html',root),'utf8'),/css\/match-hub\.css\?v=2/);
+    assert.match(readFileSync(new URL('sw.js',root),'utf8'),/'\/css\/match-hub\.css\?v=2'/);
     const shared=readFileSync(new URL('js/app.js',root),'utf8');
     assert.doesNotMatch(shared,/Next match RSVP · Previous match appreciation/);
 });
