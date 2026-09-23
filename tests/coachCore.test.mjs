@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { recentHistory, positionGroup, roleTip, rolePenalty, applyLocks, validateLineup, chooseReviewDate, validVideoUrl, effectivePlayer, historyBonus } from '../js/modules/coachCore.js';
 import { lessonFor } from '../js/modules/weeklyContent.js';
-import { planDuties } from '../js/modules/dutyRotation.js';
+import { planDuties, sharedRefereesFromLineups } from '../js/modules/dutyRotation.js';
 const lineup=(names)=>({lineups:Array.from({length:6},()=>({GK:[names[0]],CB:[names[1]],FW:[names[2]]})),resters:Array.from({length:6},()=>[names[3]]),formations:Array(6).fill('4-3-3'),referees:Array(6).fill(names[3])});
 test('formation-aware wide roles and bilingual instructions',()=>{
     assert.equal(positionGroup('RW','4-4-2'),'MID');assert.equal(positionGroup('RW','4-3-3'),'ATT');assert.match(roleTip('RW','3-5-2','en'),/centre-back/);
@@ -44,7 +44,7 @@ test('real lineup generator: 9/10/11 players, substitutions, fixed slots',async(
     const core=await import('../js/modules/coachCore.js');
     let source=readFileSync(new URL('../js/modules/lineupGenerator.js',import.meta.url),'utf8');
     source=source.replace(/^import .*;\r?\n/gm,'').replace(/export /g,'').replace(/^\{ executeLineupGeneration \};\r?\n/gm,'');
-    const context=vm.createContext({...core,planDuties,Math,Set,Promise,window:{showNotification(){}},document:{},localStorage:{getItem(){return null;}},console});
+    const context=vm.createContext({...core,planDuties,sharedRefereesFromLineups,Math,Set,Promise,window:{showNotification(){}},document:{},localStorage:{getItem(){return null;}},console});
     vm.runInContext(source+'\nglobalThis.generate=executeLineupGeneration; globalThis.assignState=(s)=>state=s;',context);
     for(const [count,formation] of [[9,'3-4-1'],[10,'3-4-2'],[11,'4-4-2'],[13,'4-4-2']]){
         const members=Array.from({length:count},(_,i)=>`Test ${i}`), playerDB=Object.fromEntries(members.map((name,i)=>[name,{name,s1:60+i,pos1:[['GK','CB','CM','FW'][i%4]],pos2:['CB','CM'],wishPos:['FW'],wishQuota:1}]));

@@ -5,16 +5,17 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, setPe
 import { state, setAdmin } from './store.js?v=2';
 import * as playerMgmt from './modules/playerManagement.js?v=5';
 import * as balancer from './modules/teamBalancer.js?v=9';
-import * as lineup from './modules/lineupGenerator.js?v=9';
+import * as lineup from './modules/lineupGenerator.js?v=10';
 import * as accounting from './modules/accounting.js?v=7';
-import * as shareMgmt from './modules/shareManagement.js?v=9';
-import * as voteMgmt from './modules/voteManagement.js?v=19';
+import * as shareMgmt from './modules/shareManagement.js?v=10';
+import * as voteMgmt from './modules/voteManagement.js?v=20';
 import * as lineupStats from './modules/lineupStats.js?v=2';
 import * as coachWorkspace from './modules/coachWorkspace.js?v=4';
 import * as adminWorkflow from './modules/adminWorkflow.js?v=1';
 import { renderPositionSurvey, mountPreferenceAdmin } from './modules/positionPreferences.js?v=5';
 import { roleTip } from './modules/coachCore.js?v=1';
 import * as matchRecord from './modules/matchRecord.js?v=2'; // 경기기록 탭 (v58: 팀 이름 표시)
+import { sharedRefereesFromLineups } from './modules/dutyRotation.js?v=2';
 
 const firebaseConfig = {
     apiKey: "AIzaSyD_2tm5-hYbCeU8yi0QiWW9Oqm0O7oPBco",
@@ -101,6 +102,9 @@ const saveDailyMeetingData = window.debounce(async () => {
     });
 
     const transformedCache = {};
+    // Do not silently rewrite historical referee records during an unrelated edit.
+    const sharedReferees = today >= window.getLocalDate()
+        ? sharedRefereesFromLineups(state.teamLineupCache || {}, state.initialAttendeeOrder || []) : [];
     Object.keys(state.teamLineupCache || {}).forEach(teamIndex => {
         const originalLineup = state.teamLineupCache[teamIndex];
         if (originalLineup && Array.isArray(originalLineup.resters)) {
@@ -112,7 +116,7 @@ const saveDailyMeetingData = window.debounce(async () => {
             const refereesObject = {};
             if (Array.isArray(originalLineup.referees)) {
                 originalLineup.referees.forEach((ref, qIndex) => {
-                    refereesObject[`q_${qIndex}`] = ref;
+                    refereesObject[`q_${qIndex}`] = sharedReferees[qIndex]?.name ?? ref;
                 });
             }
             // [추가] 수동 지정 심판도 객체로 변환하여 저장

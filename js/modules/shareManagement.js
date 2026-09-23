@@ -1,8 +1,9 @@
 // js/modules/shareManagement.js
 import { doc, setDoc, collection, onSnapshot, addDoc, getDoc, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
-import { getPosCellMap } from './lineupGenerator.js?v=9'; // [정리] 포메이션 좌표 단일화
+import { getPosCellMap } from './lineupGenerator.js?v=10'; // [정리] 포메이션 좌표 단일화
 import { compareResponseTime } from './voteOrder.js?v=1';
-import { planDuties } from './dutyRotation.js?v=1';
+import { sharedRefereesFromLineups } from './dutyRotation.js?v=2';
+import { validateLineup } from './coachCore.js?v=1';
 
 let db, state;
 let addLocationBtn, shareDate, shareTime, shareLocationSelect;
@@ -102,16 +103,18 @@ async function generateShareableLink() {
         if (lineups.some(l => !l)) throw new Error('모든 팀의 라인업을 먼저 생성하세요. 기존 공유 결과는 유지됩니다.');
         const order=await window.voteMgmt.getDutyOrder(selected.info.date);
         const squads=state.teams.map(team=>team.map(p=>normalizeName(String(p.name).replace(' (신규)',''))));
-        const counts=lineups.map(l=>l.lineups.map(q=>Object.values(q).flat().length));
-        const dedicated=squads.flat().filter(n=>state.playerDB[n]?.pos1?.includes('GK')&&state.playerDB[n]?.pos2?.includes('GK'));
-        const duties=planDuties(squads,order,counts,dedicated);
-        if(lineups.some((l,t)=>l.lineups.some((q,i)=>q.GK?.[0]!==duties.teams[t].gks[i] || JSON.stringify([...(l.resters[i]||[])].sort())!==JSON.stringify([...duties.teams[t].resters[i]].sort()) || l.referees[i]!==duties.teams[t].referees[i]))) {
-            throw new Error('현재 투표순과 다른 키퍼·심판·휴식 배정이 있습니다. 양 팀 라인업을 다시 생성한 뒤 공개하세요. 기존 공개 결과는 유지됩니다.');
+        if(lineups.some((l,t)=>!validateLineup(l,squads[t]) || l.lineups.some((q,i)=>Object.values(q).flat().length!==(posCellMap[l.formations?.[i]]||[]).length))) {
+            throw new Error('라인업 인원·포메이션이 맞지 않습니다. 기존 공개 결과는 유지됩니다.');
         }
+        // A previously saved lineup may use the old same-team referee rotation.
+        // Keep every field position and off-field player; only reconcile who referees.
+        const sharedReferees=selected.info.date >= window.getLocalDate()
+            ? sharedRefereesFromLineups(lineups,order) : null;
         
         lineups.forEach((originalLineup, i) => {
             if (originalLineup) {
                 const lineup = JSON.parse(JSON.stringify(originalLineup));
+                if(sharedReferees)lineup.referees=sharedReferees.map(ref=>ref?.name||null);
 
                 const restersObject = {};
                 const refereesObject = {};

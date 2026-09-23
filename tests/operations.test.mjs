@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { compareResponseTime, confirmGuest } from '../js/modules/voteOrder.js';
-import { planDuties } from '../js/modules/dutyRotation.js';
+import { planDuties, sharedRefereesFromLineups } from '../js/modules/dutyRotation.js';
 import { REFEREE_LESSONS, refereeLessonIndex, refereeLessonHtml } from '../js/modules/refereeEducation.js';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
@@ -57,17 +57,27 @@ test('coach summary combines legacy CM with DM without editing saved answers',()
     assert.equal(surveyRoleCode('CM'),'DM');
     assert.equal(JSON.stringify(responses),before);
 });
-test('referees follow global order; GK/rest follow team queues, with no same-quarter overlap',()=>{
+test('referees alternate teams; GK/rest follow team queues, with no same-quarter overlap',()=>{
     const A=Array.from({length:12},(_,i)=>`A${i+1}`),B=Array.from({length:12},(_,i)=>`B${i+1}`),teams=[A,B],order=[...A,...B];
     const p=planDuties(teams,order,[Array(6).fill(11),Array(6).fill(11)]);
     assert.equal(p.teams[0].referees[0],'B12');assert.equal(p.teams[1].gks[0],'B11');assert.deepEqual(p.teams[1].resters[0],['B12']);
     assert.equal(p.teams[0].gks[0],'A12');assert.deepEqual(p.teams[0].resters[0],['A11']);
-    assert.equal(p.teams[0].referees[1],'B11');assert.equal(p.teams[0].gks[1],'A10');
-    for(let q=0;q<6;q++)for(let t=0;t<2;t++){assert.equal(p.teams[t].resters[q].length,1);assert.ok(!p.teams[t].resters[q].includes(p.teams[t].gks[q]));assert.equal(p.teams[t].referees[q],p.teams[0].referees[q]);}
+    assert.equal(p.teams[0].referees[1],'A12');
+    for(let q=0;q<6;q++)for(let t=0;t<2;t++){assert.equal(p.teams[t].resters[q].length,1);assert.ok(!p.teams[t].resters[q].includes(p.teams[t].gks[q]));assert.equal(p.teams[t].referees[q],p.teams[0].referees[q]);assert.ok(p.teams[q%2===0?1:0].resters[q].includes(p.teams[t].referees[q]));}
     const dedicated=planDuties(teams,order,[Array(6).fill(11),Array(6).fill(11)],['A12','B12']);
     assert.ok(dedicated.teams[0].gks.every(n=>n==='A12'));assert.ok(dedicated.teams[1].gks.every(n=>n==='B12'));
     assert.ok(dedicated.teams[0].referees.every(n=>n!=='A12'&&n!=='B12'));
     assert.throws(()=>planDuties(teams,order.slice(1),[Array(6).fill(11),Array(6).fill(11)]),/투표 시각/);
+});
+test('22-player 10v10 repair alternates referee without changing saved A positions or resters',()=>{
+    const A=Array.from({length:11},(_,i)=>`A${i+1}`),B=Array.from({length:11},(_,i)=>`B${i+1}`),order=[...B,...A];
+    const planned=planDuties([A,B],order,[Array(6).fill(10),Array(6).fill(10)]);
+    assert.deepEqual(planned.teams[0].referees.map(n=>n?.startsWith('A')), [true,false,true,false,true,false]);
+    const saved={0:{lineups:Array.from({length:6},(_,q)=>({GK:[A[q]],FW:A.filter(n=>n!==A[q]&&n!==A[10-q])})),resters:Array.from({length:6},(_,q)=>[A[10-q]]),referees:Array.from({length:6},(_,q)=>A[10-q])},1:{resters:Array.from({length:6},(_,q)=>[B[10-q]]),referees:Array.from({length:6},(_,q)=>A[10-q])}};
+    const before=JSON.stringify(saved), shared=sharedRefereesFromLineups(saved,order);
+    assert.deepEqual(shared.map(item=>item.team),[0,1,0,1,0,1]);
+    assert.deepEqual(shared.map(item=>item.name),[A[10],B[9],A[8],B[7],A[6],B[5]]);
+    assert.equal(JSON.stringify(saved),before,'existing A field positions and rests remain untouched');
 });
 test('no spare player means no invented referee; education has eight topics including two throw-ins',()=>{
     const names=Array.from({length:11},(_,i)=>String(i));
@@ -83,7 +93,7 @@ test('actual generator uses timestamp-derived order even when the editable roste
     const playerDB=Object.fromEntries(names.map(name=>[name,{name,pos1:['CM'],pos2:['CB'],s1:60}]));
     const state={playerDB,teams:teams.map(ns=>ns.map(n=>playerDB[n])),initialAttendeeOrder:[...names].reverse(),teamLineupCache:{}};
     const notifications=[];
-    const context=vm.createContext({...core,planDuties,Math,Set,Promise,window:{voteMgmt:{getDutyOrder:async()=>names},showNotification:(text)=>notifications.push(text)},document:{getElementById:()=>({value:'2026-09-23'})},console});
+    const context=vm.createContext({...core,planDuties,sharedRefereesFromLineups,Math,Set,Promise,window:{voteMgmt:{getDutyOrder:async()=>names},showNotification:(text)=>notifications.push(text)},document:{getElementById:()=>({value:'2026-09-23'})},console});
     const source=readFileSync(new URL('../js/modules/lineupGenerator.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/export /g,'').replace(/^\{ executeLineupGeneration \};\r?\n/gm,'');
     vm.runInContext(source+'\nglobalThis.generate=executeLineupGeneration;globalThis.assignState=s=>state=s;globalThis.shared=applySharedReferees;',context);context.assignState(state);
     for(let i=0;i<2;i++)state.teamLineupCache[i]=await context.generate(teams[i],Array(6).fill('4-4-2'),true);

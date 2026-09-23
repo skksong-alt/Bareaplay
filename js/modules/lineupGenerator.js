@@ -2,7 +2,7 @@
 // [v-매치사이즈 업데이트] 9vs9(3-4-1 고정) / 10vs10(3-4-2 고정) / 11vs11(자유) 경기 인원 선택 지원
 //  - 휴식·심판 로테이션 로직은 기존과 동일 (매 쿼터 휴식 인원 = 명단 − 경기 인원)
 import { roleTip, applyLocks, validateLineup, historyBonus, candidateCost, effectivePlayer } from './coachCore.js?v=1';
-import { planDuties } from './dutyRotation.js?v=1';
+import { planDuties, sharedRefereesFromLineups } from './dutyRotation.js?v=2';
 let state;
 let generateLineupButton, lineupDisplay, loadingLineupSpinner, placeholderLineup;
 let teamSelectTabsContainer, lineupMembersTextarea;
@@ -27,19 +27,19 @@ const LINE_KO = { DEF: '수비', MID: '미들', ATT: '공격', GK: 'GK' };
 
 // Display saved/generated shared referees without rewriting historical lineups on load.
 function applySharedReferees() {
-    const cache = state.teamLineupCache || {};
-    return Array.from({length:6},(_,q)=>{
-        for(const result of Object.values(cache)) {
-            const name=Array.isArray(result.referees)?result.referees[q]:result.referees?.[`q${q+1}`]||result.referees?.[`q_${q}`];
-            if(!name)continue;
-            const team=Object.keys(cache).find(t=>{
-                const rests=cache[t].resters;
-                return (Array.isArray(rests)?rests[q]:rests?.[`q${q+1}`]||rests?.[`q_${q}`])?.includes(name);
-            });
-            if(team!==undefined)return {name,team:Number(team)};
-        }
-        return null;
-    });
+    const cache=state.teamLineupCache || {};
+    const date=document.getElementById('balancer-date')?.value;
+    if(date && window.getLocalDate?.() && date<window.getLocalDate()) {
+        return Array.from({length:6},(_,q)=>{
+            for(const [index,result] of Object.entries(cache)) {
+                const name=Array.isArray(result.referees)?result.referees[q]:result.referees?.[`q_${q}`];
+                const rests=Array.isArray(result.resters)?result.resters[q]:result.resters?.[`q_${q}`];
+                if(name && rests?.includes(name))return {name,team:Number(index)};
+            }
+            return null;
+        });
+    }
+    return sharedRefereesFromLineups(cache,state.initialAttendeeOrder || []);
 }
 
 // [기능 1] 9인(3-4-1), 10인(3-4-2) 포메이션 좌표 추가
@@ -367,7 +367,8 @@ function renderAllQuarters() {
 
     const sharedReferees = applySharedReferees(); // [수정] 양팀 공동 심판 계산
     const dutyNote=document.createElement('p');dutyNote.className='coach-note';dutyNote.style.gridColumn='1 / -1';
-    dutyNote.textContent='심판: 전체 투표순 · 키퍼/휴식: 팀별 투표순 · 늦은 신청부터 순환 · 전담 GK 예외. '+(state.dutyNotes||[]).join(' ');
+    const isHistorical=document.getElementById('balancer-date')?.value < window.getLocalDate?.();
+    dutyNote.textContent=(isHistorical?'심판: 당시 저장된 배정':'심판: 양 팀 번갈아')+' · 키퍼/휴식: 팀별 투표순 · 늦은 신청부터 순환 · 전담 GK 예외. '+(state.dutyNotes||[]).join(' ');
     lineupDisplay.append(dutyNote);
 
     for (let qIndex = 0; qIndex < 6; qIndex++) {
