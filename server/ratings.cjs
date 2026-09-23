@@ -23,7 +23,11 @@ function productionServices(env,req) {
     // it in a file, response, log, or process-wide Firebase client.
     const token=req.headers['x-vercel-oidc-token'];
     const {GCP_PROJECT_ID:projectId,GCP_PROJECT_NUMBER:projectNumber,GCP_SERVICE_ACCOUNT_EMAIL:account,GCP_WORKLOAD_IDENTITY_POOL_ID:pool,GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID:provider}=env;
-    if(typeof token!=='string'||!token||!projectId||!/^\d+$/.test(projectNumber||'')||!account||!pool||!provider||!env.BAREA_RATING_VERSION_SECRET||env.BAREA_RATING_VERSION_SECRET.length<32)throw failure('unavailable',503);
+    const invalid=[];
+    if(typeof token!=='string'||!token)invalid.push('oidc-token');
+    if(!projectId||!/^\d+$/.test(projectNumber||'')||!account||!pool||!provider)invalid.push('connection-config');
+    if(!env.BAREA_RATING_VERSION_SECRET||env.BAREA_RATING_VERSION_SECRET.length<32)invalid.push('version-secret-length');
+    if(invalid.length)throw Object.assign(failure('unavailable',503),{diagnostic:invalid.join(',')});
     const {ExternalAccountClient,GoogleAuth}=require('google-auth-library');
     const {Firestore,FieldValue}=require('@google-cloud/firestore');
     const client=ExternalAccountClient.fromJSON({
@@ -86,6 +90,14 @@ function createHandler({env=process.env,services=req=>productionServices(env,req
         } catch(error) {
             // Do not echo SDK errors, request contents, credentials or ballot data.
             const known=['request','changed','unavailable'].includes(error.code);
+            if(env.VERCEL==='1'&&(!known||error.diagnostic)) {
+                // Allow-listed categories only. Never log SDK messages, response bodies,
+                // request names, token values or environment-variable contents.
+                const categories=['invalid_grant','invalid_target','unauthorized_client','invalid_request'];
+                const oauthCode=error.response?.data?.error;
+                console.warn('ratings-connection',error.diagnostic||
+                    (categories.includes(oauthCode)?oauthCode:Number.isInteger(error.code)?`rpc-${error.code}`:'sdk-error'));
+            }
             return send(known?error.status:503,{error:known?error.code:'unavailable'});
         } finally {
             // Best-effort cleanup; never turn a completed vote into an error.
