@@ -6,7 +6,16 @@ import { REFEREE_LESSONS, refereeLessonIndex, refereeLessonHtml } from '../js/mo
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import * as core from '../js/modules/coachCore.js';
-import { validatePreference,preferenceSummary } from '../js/modules/positionPreferencesCore.js';
+import { POSITIONS,PREFERENCE_PITCH,validatePreference,preferenceSummary } from '../js/modules/positionPreferencesCore.js';
+
+test('position survey pitch displays 4-2-3-1 without changing stored roles',()=>{
+    assert.equal(PREFERENCE_PITCH.length,11);
+    const rows=Object.groupBy(PREFERENCE_PITCH,p=>p[2]);
+    assert.deepEqual(Object.values(rows).map(row=>row.length),[1,3,2,4,1]);
+    assert.equal(PREFERENCE_PITCH.filter(p=>p[0]==='CB').length,2);
+    assert.deepEqual([...new Set(PREFERENCE_PITCH.map(p=>p[0]))].sort(),POSITIONS.map(p=>p[0]).sort());
+    assert.equal(preferenceSummary([]).rows.filter(r=>r.code==='CB').length,1);
+});
 
 test('RSVP categories sort by their own server timestamps, including subsecond precision',()=>{
     for(const status of ['attend','maybe','absent']) {

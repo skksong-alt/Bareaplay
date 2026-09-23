@@ -75,8 +75,13 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
     assert.match(await page.locator('#preference-purpose-title').textContent(),/Why are we asking/);
     await page.locator('#preference-login').click();await page.waitForSelector('#preference-name');
     await page.locator('#preference-name').selectOption('Test 01');
-    await page.locator('[data-position="CB"]').click();await page.locator('#preference-same').click();
-    await page.locator('#preference-stable').check();await page.locator('#preference-note').fill('Learn positioning');
+    assert.equal(await page.locator('.preference-pitch button').count(),11);
+    assert.equal(await page.locator('#preference-same, #preference-stable, #preference-flexible').count(),0);
+    assert.match(await page.locator('.preference-choice-guide').textContent(),/Want to try two roles/);
+    assert.match(await page.locator('.preference-choice-guide').textContent(),/Prefer to focus on one role/);
+    await page.locator('[data-position="CB"]').first().click();await page.locator('[data-position="CB"]').last().click();
+    assert.equal(await page.locator('[data-position="CB"][data-ranks="1-2"]').count(),2);
+    await page.locator('#preference-note').fill('Learn positioning');
     await page.locator('#preference-save').click();await page.waitForFunction(()=>__writes.length===1);
     assert.equal(await page.evaluate(()=>__writes[0].path),'privatePositionPreferences/test-admin');
     assert.deepEqual(await page.evaluate(()=>[__writes[0].value.name,__writes[0].value.first,__writes[0].value.second]),['Test 01','CB','CB']);
@@ -84,17 +89,31 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
     assert.ok(await page.evaluate(()=>__reads.filter(p=>p.startsWith('privatePositionPreferences')).every(p=>p==='privatePositionPreferences/test-admin')));
     assert.deepEqual(await page.evaluate(()=>__fixture['players/Test 01']),data['players/Test 01']);
     const savedPreference=await page.evaluate(()=>__fixture['privatePositionPreferences/test-admin']);
+    assert.equal(savedPreference.stable,false);assert.equal(savedPreference.flexible,false);
+    // Simulate a legacy response: hidden fields must survive a preference edit.
+    savedPreference.stable=true;savedPreference.flexible=true;
     await context.addInitScript(value=>{window.__fixture['privatePositionPreferences/test-admin']=value;},savedPreference);
     await page.reload();await page.waitForSelector('#preference-name');
     assert.equal(await page.locator('#preference-name').inputValue(),'Test 01');
     assert.equal(await page.locator('#preference-name').isDisabled(),true);
     assert.match(await page.locator('[data-rank="first"]').textContent(),/Centre back/);
     await page.locator('[data-rank="second"]').click();await page.locator('[data-position="FW"]').click();
+    assert.equal(await page.locator('[data-position="CB"][data-ranks="1"]').count(),2);
+    assert.equal(await page.locator('[data-position="FW"][data-ranks="2"]').count(),1);
     await page.locator('#preference-save').click();await page.waitForFunction(()=>__writes.length===1);
     assert.equal(await page.evaluate(()=>__writes[0].value.second),'FW','returning respondent can change their own preference');
+    assert.deepEqual(await page.evaluate(()=>[__writes[0].value.stable,__writes[0].value.flexible]),[true,true]);
     await page.setViewportSize({width:320,height:740});
     await page.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-position-survey-mobile.png'),fullPage:true});
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'survey fits a narrow phone');
+    assert.equal(await page.locator('.preference-pitch button').evaluateAll(buttons=>{
+      const boxes=buttons.map(b=>b.getBoundingClientRect());
+      return boxes.every((a,i)=>boxes.every((b,j)=>i===j||a.right<=b.left||b.right<=a.left||a.bottom<=b.top||b.bottom<=a.top));
+    }),true,'four defenders remain separate tap targets on a narrow phone');
+    await page.locator('#preference-language').click();await page.waitForSelector('#preference-name');
+    assert.match(await page.locator('.preference-choice-guide').textContent(),/두 자리 모두 해보고 싶다면/);
+    assert.match(await page.locator('.preference-choice-guide').textContent(),/한 자리에서 집중/);
+    await page.locator('.preference-pitch').screenshot({path:path.join(process.env.TEMP||root,'bareaplay-survey-pitch-mobile.png')});
     await page.setViewportSize({width:1280,height:900});
     await page.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-position-survey-desktop.png'),fullPage:true});
     assert.deepEqual(errors,[]);console.log('PASS: bilingual survey purpose, Google sign-in, registered name, same-position preference, own-response access, preserved players and narrow-screen layout.');
@@ -196,7 +215,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   if(process.argv.includes('--operations')) {
     await page.evaluate(async()=>{
       for(const [status,ns] of [['maybe',['Test 02','Test 03']],['absent',['Test 04','Test 05']]])ns.forEach((name,i)=>{__fixture['votes/test-vote/responses/'+name]={name,status,updatedAt:{seconds:2,nanoseconds:i?1:9},attendingSince:{seconds:i?90:1}};});
-      const m=await import('/js/modules/votePage.js?v=8');await m.renderVote({},'test-vote');
+      const m=await import('/js/modules/votePage.js?v=9');await m.renderVote({},'test-vote');
     });
     await page.waitForSelector('.attendance-group.maybe li');
     assert.deepEqual(await page.locator('.attendance-group.maybe .roster-name').allTextContents(),['Test 03','Test 02']);
@@ -228,7 +247,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
     enableSurveyForTest=true;await page.reload();await page.waitForSelector('#preference-name');
     await page.locator('#preference-signout').click();await page.locator('#preference-login').click();await page.waitForSelector('#preference-name');
     await page.locator('#preference-name').selectOption('Test 01');
-    await page.locator('[data-position="CB"]').click();await page.locator('#preference-same').click();
+    await page.locator('[data-position="CB"]').first().click();await page.locator('[data-position="CB"]').first().click();
     await page.locator('#preference-save').click();await page.waitForFunction(()=>__writes.length===1);
     assert.equal(await page.evaluate(()=>__writes[0].path),'privatePositionPreferences/test-admin');
     assert.deepEqual(await page.evaluate(()=>[__writes[0].value.name,__writes[0].value.first,__writes[0].value.second]),['Test 01','CB','CB']);
@@ -322,7 +341,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   await page.evaluate(()=>localStorage.setItem('bp_lang','ko'));
   await page.goto(base+'/?vote=current');await page.waitForSelector('.match-review-link');
   await page.evaluate(ns=>{ns.slice(1,18).forEach((name,i)=>{__fixture['votes/test-vote/responses/'+name]={name,status:i<13?'attend':i<15?'maybe':'absent',guest:false,waitlist:false,attendingSince:{seconds:11+i}};});},names);
-  await page.evaluate(async()=>{const m=await import('/js/modules/votePage.js?v=8');await m.renderVote({},'test-vote');});await page.waitForSelector('.match-review-link');
+  await page.evaluate(async()=>{const m=await import('/js/modules/votePage.js?v=9');await m.renderVote({},'test-vote');});await page.waitForSelector('.match-review-link');
   assert.equal(await page.locator('.attendance-group.attend li').count(),14);
   assert.equal(await page.evaluate(()=>__writes.length),0);
   await page.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-vote-mobile-preview.png'),fullPage:true});
