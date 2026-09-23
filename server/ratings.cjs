@@ -98,8 +98,12 @@ function createHandler({env=process.env,services=req=>productionServices(env,req
                 // request names, token values or environment-variable contents.
                 const categories=['invalid_grant','invalid_target','unauthorized_client','invalid_request'];
                 const oauthCode=error.response?.data?.error;
+                const numericCode=/^\d{1,3}$/.test(String(error.code))?String(error.code):null;
+                const httpStatus=error.response?.status;
+                const errorKind=['TypeError','RangeError','SyntaxError'].includes(error.name)?error.name:'sdk';
                 console.warn('ratings-connection',error.diagnostic||
-                    (categories.includes(oauthCode)?oauthCode:Number.isInteger(error.code)?`rpc-${error.code}`:'sdk-error'));
+                    (categories.includes(oauthCode)?oauthCode:numericCode?`code-${numericCode}`:
+                        Number.isInteger(httpStatus)?`http-${httpStatus}`:errorKind));
             }
             return send(known?error.status:503,{error:known?error.code:'unavailable'});
         } finally {
