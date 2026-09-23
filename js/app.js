@@ -4,13 +4,15 @@ import { getFirestore, collection, doc, onSnapshot, getDocs, getDoc, setDoc, del
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
 import { state, setAdmin } from './store.js?v=2';
 import * as playerMgmt from './modules/playerManagement.js?v=5';
-import * as balancer from './modules/teamBalancer.js?v=8';
-import * as lineup from './modules/lineupGenerator.js?v=8';
+import * as balancer from './modules/teamBalancer.js?v=9';
+import * as lineup from './modules/lineupGenerator.js?v=9';
 import * as accounting from './modules/accounting.js?v=7';
-import * as shareMgmt from './modules/shareManagement.js?v=8';
-import * as voteMgmt from './modules/voteManagement.js?v=11';
+import * as shareMgmt from './modules/shareManagement.js?v=9';
+import * as voteMgmt from './modules/voteManagement.js?v=13';
 import * as lineupStats from './modules/lineupStats.js?v=2';
-import * as coachWorkspace from './modules/coachWorkspace.js?v=3';
+import * as coachWorkspace from './modules/coachWorkspace.js?v=4';
+import * as adminWorkflow from './modules/adminWorkflow.js?v=1';
+import { renderPositionSurvey, mountPreferenceAdmin } from './modules/positionPreferences.js?v=1';
 import { roleTip } from './modules/coachCore.js?v=1';
 import * as matchRecord from './modules/matchRecord.js?v=2'; // 경기기록 탭 (v58: 팀 이름 표시)
 
@@ -849,6 +851,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // [중요] 투표/보드 링크는 메인 앱을 그리기 전에 즉시 처리 -> 메인 화면 깜빡임 방지
     {
         const __p = new URLSearchParams(window.location.search);
+        if(__p.has('preferences')) {
+            if(loadingOverlay)loadingOverlay.style.display='none';
+            renderPositionSurvey(db,auth);return;
+        }
         const __voteId = __p.get('voteId');
         const __shareId = __p.get('shareId');
         const __voteCurrent = __p.get('vote'); // 고정 링크 ?vote=current
@@ -880,7 +886,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    const modules = { playerMgmt, balancer, lineup, accounting, shareMgmt, voteMgmt, lineupStats, matchRecord, coachWorkspace };
+    const modules = { playerMgmt, balancer, lineup, accounting, shareMgmt, voteMgmt, lineupStats, matchRecord, coachWorkspace, adminWorkflow };
     const dependencies = { db, state };
     window.playerMgmt = playerMgmt;
     window.accounting = accounting;
@@ -895,6 +901,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             modules[moduleName].init(dependencies);
         }
     }
+    mountPreferenceAdmin(db,state);
     
     const urlParams = new URLSearchParams(window.location.search);
     const shareId = urlParams.get('shareId');

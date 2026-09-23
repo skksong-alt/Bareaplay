@@ -1,6 +1,6 @@
 import { collection, doc, getDocs, getDoc, setDoc, serverTimestamp, addDoc } from 'https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js';
 import { cleanName, escapeHtml as esc, recentHistory, ROLES, validateLineup, lineupSummary, locate } from './coachCore.js?v=1';
-import { lessonFor, lessonHtml, addCoachStyles, TEAM_VIDEOS, parseGuidelines } from './weeklyContent.js?v=3';
+import { lessonFor, lessonHtml, addCoachStyles, TEAM_VIDEOS, parseGuidelines } from './weeklyContent.js?v=4';
 let db, state;
 const dateNow = () => document.getElementById('balancer-date')?.value || window.getLocalDate();
 const requireAdmin = () => { if(!state.isAdmin) throw new Error('관리자 로그인이 필요합니다.'); };
@@ -22,7 +22,7 @@ export function init(dependencies) {
     window.prepareCoach=prepareCoach;
     window.coachReason='temporary';
     const share=document.getElementById('page-share'), players=document.getElementById('page-players'), lineup=document.getElementById('page-lineup');
-    const make=(parent,id,html)=>{const node=document.createElement('section');node.id=id;node.className='coach-card';node.innerHTML=html;parent?.append(node);return node;};
+    const make=(parent,id,html)=>{const node=document.createElement(id==='coach-planner'?'details':'section');node.id=id;node.className='coach-card';node.innerHTML=html;if(id==='coach-planner'){const summary=document.createElement('summary');summary.append(node.querySelector('h2'));node.prepend(summary);}parent?.append(node);return node;};
     const weekly=make(share,'coach-weekly',`<h2>경기 전 참고 영상 · 15분 연습</h2><p class="coach-note">핵심 지침을 누르면 영상이 열립니다. 날짜별로 4~6개를 정리해 주세요. 기본 영상은 감독 제공 모음이며 자동으로 새 영상을 선정하지 않습니다. 기존 참석 투표는 변경하지 않습니다.</p><label>대상 경기 날짜<input type="date" id="coach-week-date"></label><button id="coach-week-load">불러오기</button><div id="coach-week-editor"></div>`);
     weekly.querySelector('input').value=window.getLocalDate();
     weekly.querySelector('button').onclick=()=>guard(async()=>{
@@ -37,6 +37,27 @@ export function init(dependencies) {
         const box=weekly.querySelector('#coach-week-editor');
         box.innerHTML=`<p>편집 대상: <b>${esc(date)}</b></p><p class="coach-note">영상은 한 줄에 하나씩 [핵심 지침](영상 주소) 형식으로 입력하세요. YouTube·FIFA HTTPS 링크만 표시하며 최대 6개입니다. 기존 일반 설명도 유지됩니다.</p>${fields.map(([k,label])=>`<label>${label}<textarea data-field="${k}" rows="${k.startsWith('segment')?6:3}" maxlength="6000">${esc(l[k]||'')}</textarea></label>`).join('')}<details><summary>기존 단일 자료 설정</summary>${legacyFields.map(([k,label])=>`<label>${label}<input data-field="${k}" value="${esc(l[k]||'')}" maxlength="600"></label>`).join('')}</details><label>평가할 지난 경기 날짜<input type="date" id="coach-review-date" value="${esc(custom.reviewDate==='none'?'':custom.reviewDate||'')}"></label><label><input type="checkbox" id="coach-review-off" ${custom.reviewDate==='none'?'checked':''}> 지난 경기 투표 숨기기</label><p class="coach-note">날짜가 비어 있으면 현재 경기 이전의 가장 최근 배정일(오늘 제외)을 찾습니다. 취소된 경기라면 실제 진행된 날짜를 지정하세요.</p><button id="coach-week-preview">미리보기</button><button id="coach-week-save" class="coach-primary">이 날짜의 콘텐츠 저장</button><div id="coach-week-sample"></div>`;
         const payload=()=>Object.fromEntries([...box.querySelectorAll('[data-field]')].map(input=>[input.dataset.field,input.value.trim()]));
+        // Separate title/link inputs; preserve the existing segment fields and plain descriptions.
+        const videoEditor=document.createElement('div');videoEditor.className='video-editor';
+        const rawEditor=document.createElement('details');rawEditor.innerHTML='<summary>영상 원문 편집 · 기존 일반 설명 (선택)</summary>';
+        videoEditor.innerHTML='<h3>영상 제목·링크 입력</h3><p class="coach-note">핵심 지침과 주소를 나눠 입력하세요. 기존 일반 설명은 아래 원문 입력칸에서 유지할 수 있습니다.</p>';
+        for(const [key,label] of [['segmentKo','한국어'],['segmentEn','English']]) {
+            const original=box.querySelector(`[data-field="${key}"]`), list=parseGuidelines(original.value);
+            const details=document.createElement('details');details.innerHTML=`<summary>${label} · 영상 최대 6개</summary>`;
+            details.open=key==='segmentKo';
+            if(list.length===0&&original.value.trim())details.insertAdjacentHTML('beforeend','<p class="coach-note">현재는 일반 설명입니다. 아래에 영상을 입력하면 해당 언어의 설명 대신 영상 목록을 저장합니다.</p>');
+            for(let i=0;i<6;i++) {
+                const row=document.createElement('div');row.className='video-editor-row';
+                row.innerHTML=`<label>${i+1}. 핵심 지침<input data-title maxlength="300" value="${esc(list[i]?.title||'')}"></label><label>영상 링크<input data-url type="url" maxlength="600" value="${esc(list[i]?.url||'')}"></label>`;
+                details.append(row);
+            }
+            details.addEventListener('input',()=>{original.value=[...details.querySelectorAll('.video-editor-row')].map(row=>{const title=row.querySelector('[data-title]').value.trim(),url=row.querySelector('[data-url]').value.trim();return title||url?`[${title}](${url})`:'';}).filter(Boolean).join('\n');});
+            original.addEventListener('input',()=>{const parsed=parseGuidelines(original.value);details.querySelectorAll('.video-editor-row').forEach((row,i)=>{row.querySelector('[data-title]').value=parsed[i]?.title||'';row.querySelector('[data-url]').value=parsed[i]?.url||'';});});
+            videoEditor.append(details);
+            rawEditor.append(original.closest('label'));
+        }
+        videoEditor.append(rawEditor);
+        box.prepend(videoEditor);
         box.querySelector('#coach-week-preview').onclick=()=>{box.querySelector('#coach-week-sample').innerHTML=lessonHtml(date,payload(),'ko')+lessonHtml(date,payload(),'en');};
         box.querySelector('#coach-week-save').onclick=()=>guard(async()=>{
             requireAdmin(); const values=payload(); const {validVideoUrl}=await import('./coachCore.js?v=1');
@@ -104,9 +125,9 @@ function renderPlanner(panel) {
         body.querySelector('#coach-partial-result').innerHTML='';
         if(!result){grid.textContent='먼저 이 팀의 라인업을 생성하세요.';return;}
         const locks=plan.lineupLocks?.[i] || [];
-        grid.innerHTML=`<p class="coach-note">선택한 칸의 현재 선수·포지션·휴식을 유지합니다. 전체 생성에서도 저장된 고정 조건이 적용됩니다.</p><div style="overflow:auto"><table class="coach-table"><tr><th>선수</th>${Array.from({length:6},(_,q)=>`<th>Q${q+1}</th>`).join('')}</tr>${(teams[i]||[]).map(p=>`<tr><td>${esc(p.name)}</td>${Array.from({length:6},(_,q)=>{const loc=locate(result,q,p.name);return `<td><label><input type="checkbox" data-lock-name="${esc(p.name)}" data-q="${q}" ${locks.some(l=>l.name===p.name&&l.q===q)?'checked':''} ${loc?'':'disabled'}> ${esc(loc?.pos||'—')}</label></td>`;}).join('')}</tr>`).join('')}</table></div>`;
+        grid.innerHTML=`<p class="coach-note">필드 포지션 고정만 적용합니다. 투표순으로 정해지는 심판·키퍼·휴식은 고정보다 우선합니다.</p><div style="overflow:auto"><table class="coach-table"><tr><th>선수</th>${Array.from({length:6},(_,q)=>`<th>Q${q+1}</th>`).join('')}</tr>${(teams[i]||[]).map(p=>`<tr><td>${esc(p.name)}</td>${Array.from({length:6},(_,q)=>{const loc=locate(result,q,p.name);return `<td><label><input type="checkbox" data-lock-name="${esc(p.name)}" data-q="${q}" ${locks.some(l=>l.name===p.name&&l.q===q)?'checked':''} ${loc&&!['GK','REST'].includes(loc.pos)?'':'disabled'}> ${esc(loc?.pos||'—')}</label></td>`;}).join('')}</tr>`).join('')}</table></div>`;
     };teamSelect.onchange=drawLocks;drawLocks();
-    const selectedLocks=()=>[...body.querySelectorAll('[data-lock-name]:checked')].map(el=>({name:el.dataset.lockName,q:Number(el.dataset.q)}));
+    const selectedLocks=()=>[...body.querySelectorAll('[data-lock-name]:checked:not(:disabled)')].map(el=>({name:el.dataset.lockName,q:Number(el.dataset.q)}));
     body.querySelector('#coach-save-locks').onclick=()=>guard(async()=>{
         checkDate();const i=Number(teamSelect.value), locks=selectedLocks();
         await setDoc(doc(db,'coachPlans',date),{date,lineupLocks:{[i]:locks},updatedAt:serverTimestamp()},{merge:true});
@@ -139,6 +160,6 @@ function renderPlanner(panel) {
         body.querySelector('#coach-comparison').innerHTML=`<div style="overflow:auto"><table class="coach-table"><tr><th>쿼터</th><th>평균 A / B</th><th>차이</th><th>역할 점검</th></tr>${A.map((x,q)=>{
             const y=B[q],notes=[];for(const [label,r] of [['A',x],['B',y]]){if(!r.roleCounts.connector)notes.push(`${label}: 연결 역할 미지정/부재`);if(r.roleCounts.learner&&!r.roleCounts.mentor)notes.push(`${label}: 학습 선수의 안내 역할 부재`);}
             return `<tr><td>Q${q+1}</td><td>${x.average.toFixed(1)} / ${y.average.toFixed(1)}</td><td>${Math.abs(x.average-y.average).toFixed(1)}</td><td>${notes.join(' · ')||'등록된 역할 기준 특이사항 없음'}</td></tr>`;
-        }).join('')}</table></div><p class="coach-note">차이가 큰 쿼터는 안내·연결 선수의 휴식 순서를 바꾸는 후보를 검토하세요. 실제 대진이 다른 쿼터는 해당 대진으로 다시 비교하세요.</p>`;
+        }).join('')}</table></div><p class="coach-note">휴식 순번은 유지하며, 차이가 큰 쿼터의 필드 포지션이나 팀 구성을 검토하세요. 실제 대진이 다른 쿼터는 해당 대진으로 다시 비교하세요.</p>`;
     });
 }

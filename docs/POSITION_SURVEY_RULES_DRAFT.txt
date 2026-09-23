@@ -1,0 +1,39 @@
+// REVIEW FRAGMENT ONLY — NOT a complete ruleset. Do not replace existing rules with this file.
+// Insert inside the existing match /databases/{database}/documents after approval.
+// Replace the placeholder with the verified coach UID privately before deployment.
+// Existing recursive/global allows MUST be inspected: an overlapping public read allow
+// would override this restriction. Do not enable the app feature until this is resolved.
+// Google login binds an answer to an account, NOT to a verified legal/team name.
+
+function positionSurveySignedIn() {
+  return request.auth != null
+    && request.auth.token.firebase.sign_in_provider == 'google.com';
+}
+function positionSurveyCoach() {
+  return positionSurveySignedIn()
+    && request.auth.uid == 'REPLACE_WITH_VERIFIED_COACH_UID';
+}
+function validPositionPreference() {
+  let d = request.resource.data;
+  return d.keys().hasOnly(['name', 'first', 'second', 'stable', 'flexible', 'note', 'updatedAt'])
+    && d.keys().hasAll(['name', 'first', 'second', 'stable', 'flexible', 'note', 'updatedAt'])
+    && d.name is string && d.name.size() > 0 && d.name.size() <= 100
+    && d.name.matches('^[^/]+$')
+    && exists(/databases/$(database)/documents/players/$(d.name))
+    && d.first in ['GK','LB','CB','RB','DM','CM','AM','LW','RW','FW']
+    && d.second in ['GK','LB','CB','RB','DM','CM','AM','LW','RW','FW']
+    && d.stable is bool && d.flexible is bool
+    && d.note is string && d.note.size() <= 500
+    && d.updatedAt == request.time;
+}
+match /privatePositionPreferences/{uid} {
+  allow get: if positionSurveyCoach()
+    || (positionSurveySignedIn() && request.auth.uid == uid);
+  allow list: if positionSurveyCoach();
+  allow create: if positionSurveySignedIn() && request.auth.uid == uid
+    && validPositionPreference();
+  allow update: if positionSurveySignedIn() && request.auth.uid == uid
+    && request.resource.data.name == resource.data.name
+    && validPositionPreference();
+  allow delete: if false;
+}

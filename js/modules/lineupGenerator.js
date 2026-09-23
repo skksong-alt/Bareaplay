@@ -2,10 +2,12 @@
 // [v-매치사이즈 업데이트] 9vs9(3-4-1 고정) / 10vs10(3-4-2 고정) / 11vs11(자유) 경기 인원 선택 지원
 //  - 휴식·심판 로테이션 로직은 기존과 동일 (매 쿼터 휴식 인원 = 명단 − 경기 인원)
 import { roleTip, applyLocks, validateLineup, historyBonus, candidateCost, effectivePlayer } from './coachCore.js?v=1';
+import { planDuties } from './dutyRotation.js?v=1';
 let state;
 let generateLineupButton, lineupDisplay, loadingLineupSpinner, placeholderLineup;
 let teamSelectTabsContainer, lineupMembersTextarea;
 let activeTeamIndex = -1;
+let quarterView='0';
 
 // [기능] 한글 자모 분리 현상 해결을 위한 정규화 함수
 function normalizeName(name) {
@@ -23,50 +25,21 @@ function lineOfPos(pos) {
 }
 const LINE_KO = { DEF: '수비', MID: '미들', ATT: '공격', GK: 'GK' };
 
-// [기능] 양팀 공동 심판: 1·3·5쿼터=팀1 휴식자, 2·4·6쿼터=팀2 휴식자가 맡음
-// (해당 팀에 휴식자가 없으면 상대팀 휴식자가 대신 맡음)
+// Display saved/generated shared referees without rewriting historical lineups on load.
 function applySharedReferees() {
     const cache = state.teamLineupCache || {};
-    const teamIdxs = Object.keys(cache).filter(k => cache[k] && Array.isArray(cache[k].resters)).sort();
-    if (teamIdxs.length === 0) return [];
-
-    const restersOf = (t, q) => (cache[t].resters && Array.isArray(cache[t].resters[q])) ? cache[t].resters[q] : [];
-
-    const usage = {}; // 심판 횟수 공평하게 배분용
-    const shared = [];
-    for (let q = 0; q < 6; q++) {
-        let chosen = null;
-
-        // [추가] 운영진이 수동 지정한 심판이 있고, 그 사람이 실제 해당 쿼터 휴식자라면 최우선 적용
-        for (const t of teamIdxs) {
-            const mr = Array.isArray(cache[t].manualReferees) ? cache[t].manualReferees[q] : null;
-            if (mr && restersOf(t, q).includes(mr)) {
-                chosen = { name: mr, team: Number(t) };
-                break;
-            }
+    return Array.from({length:6},(_,q)=>{
+        for(const result of Object.values(cache)) {
+            const name=Array.isArray(result.referees)?result.referees[q]:result.referees?.[`q${q+1}`]||result.referees?.[`q_${q}`];
+            if(!name)continue;
+            const team=Object.keys(cache).find(t=>{
+                const rests=cache[t].resters;
+                return (Array.isArray(rests)?rests[q]:rests?.[`q${q+1}`]||rests?.[`q_${q}`])?.includes(name);
+            });
+            if(team!==undefined)return {name,team:Number(team)};
         }
-
-        // 수동 지정이 없으면 기존 자동 배분 (휴식자 중 심판 적게 본 사람 우선, 담당 팀 번갈아)
-        if (!chosen) {
-            const order = teamIdxs.map((_, i) => teamIdxs[(q + i) % teamIdxs.length]);
-            for (const t of order) {
-                const resters = restersOf(t, q);
-                if (resters.length > 0) {
-                    const sorted = [...resters].sort((a, b) => (usage[a] || 0) - (usage[b] || 0));
-                    chosen = { name: sorted[0], team: Number(t) };
-                    break;
-                }
-            }
-        }
-
-        if (chosen) usage[chosen.name] = (usage[chosen.name] || 0) + 1;
-        shared.push(chosen);
-    }
-    // 계산된 공동 심판을 모든 팀의 데이터에 기록 (공유 페이지·인쇄물에도 자동 반영)
-    teamIdxs.forEach(t => {
-        cache[t].referees = shared.map(s => s ? s.name : null);
+        return null;
     });
-    return shared;
 }
 
 // [기능 1] 9인(3-4-1), 10인(3-4-2) 포메이션 좌표 추가
@@ -186,6 +159,9 @@ function findInLineup(lineup, name) {
 // [수정] 선수 교체 공통 함수 (드래그와 탭이 함께 사용)
 async function performSwap(qIndex, dragInfo, targetInfo) {
     if (!state.isAdmin) return;
+    if([dragInfo.posType,targetInfo.posType].some(pos=>['ref','rest','GK'].includes(pos)) || state.lineupResults?.lineups?.[qIndex]?.GK?.some(n=>[dragInfo.name,targetInfo.name].includes(n))) {
+        window.showNotification('심판·키퍼·휴식은 투표 시각 순번으로 배정합니다. 필드 포지션끼리만 교체할 수 있습니다.','error');return;
+    }
     const teamAtStart=activeTeamIndex;
     try { if(window.prepareCoach) await window.prepareCoach(); }
     catch(error) {window.showNotification(error.message || '고정 조건 조회 실패', 'error');return;}
@@ -376,8 +352,23 @@ function renderAllQuarters() {
     lineupDisplay.className = "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"; 
 
     if (!state.lineupResults || !state.lineupResults.lineups) return;
+    const viewBar=document.createElement('div');viewBar.className='lineup-view-bar';viewBar.style.gridColumn='1 / -1';
+    viewBar.setAttribute('aria-label','표시할 쿼터');
+    const updateView=()=>{
+        lineupDisplay.style.gridTemplateColumns=quarterView==='all'?'':'minmax(0, 1fr)';
+        lineupDisplay.querySelectorAll('.quarter-block').forEach(block=>block.hidden=quarterView!=='all'&&block.dataset.q!==quarterView);
+        viewBar.querySelectorAll('button').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.view===quarterView)));
+    };
+    for(const [value,label] of [...Array.from({length:6},(_,q)=>[String(q),`${q+1}쿼터`]),['all','전체 보기']]){
+        const button=document.createElement('button');button.type='button';button.dataset.view=value;button.textContent=label;
+        button.onclick=()=>{quarterView=value;updateView();};viewBar.append(button);
+    }
+    lineupDisplay.append(viewBar);
 
     const sharedReferees = applySharedReferees(); // [수정] 양팀 공동 심판 계산
+    const dutyNote=document.createElement('p');dutyNote.className='coach-note';dutyNote.style.gridColumn='1 / -1';
+    dutyNote.textContent='심판: 전체 투표순 · 키퍼/휴식: 팀별 투표순 · 늦은 신청부터 순환 · 전담 GK 예외. '+(state.dutyNotes||[]).join(' ');
+    lineupDisplay.append(dutyNote);
 
     for (let qIndex = 0; qIndex < 6; qIndex++) {
         const lineup = state.lineupResults.lineups[qIndex];
@@ -452,11 +443,21 @@ function renderAllQuarters() {
         lineupDisplay.appendChild(quarterBlock);
     }
     // [중요] 렌더링 후 드래그 핸들러 연결
+    updateView();
     addDragAndDropHandlers();
 }
 
 // [기능 2, 3] 심판 및 슈퍼 GK 로직이 반영된 실행 함수
-function executeLineupGeneration(members, formations, isSilent = false, options = {}) {
+async function executeLineupGeneration(members, formations, isSilent = false, options = {}) {
+    let chronologicalOrder=state.initialAttendeeOrder || [];
+    if(window.voteMgmt?.getDutyOrder) {
+        const requestedDate=document.getElementById('balancer-date')?.value;
+        try {
+            chronologicalOrder=await window.voteMgmt.getDutyOrder(requestedDate);
+            if(document.getElementById('balancer-date')?.value!==requestedDate)throw new Error('날짜가 바뀌어 배정을 중단했습니다.');
+        }
+        catch(e) { window.showNotification(e.message || '투표 시각을 확인하지 못해 배정을 중단했습니다.','error');return null; }
+    }
     return new Promise(resolve => {
         if(new Set(members).size!==members.length || members.some(n=>!n) || formations.length!==6) { resolve(null);return; }
         // [v-매치사이즈] 인원 검증 및 자동 전환
@@ -478,7 +479,7 @@ function executeLineupGeneration(members, formations, isSilent = false, options 
             }
         }
 
-        const initialOrder = (state.initialAttendeeOrder || []).map(name => normalizeName(name));
+        const initialOrder = chronologicalOrder.map(name => normalizeName(name));
         const sortedMembers = [...members].sort((a, b) => { 
             const indexA = initialOrder.indexOf(normalizeName(a)); 
             const indexB = initialOrder.indexOf(normalizeName(b)); 
@@ -497,6 +498,22 @@ function executeLineupGeneration(members, formations, isSilent = false, options 
         // [추가] 키퍼 최소 1회 보장 대상: 주/부에 GK가 있으나 전담(슈퍼GK)은 아닌 선수
         const gkGuarColumn = members.filter(m => !superGks.includes(m) && ((localPlayerDB[m].pos1 || []).includes('GK') || (localPlayerDB[m].pos2 || []).includes('GK')));
         const hasDedicatedGk = superGks.length > 0;
+        const squads=(state.teams?.length?state.teams.map(team=>team.map(p=>normalizeName(String(p.name).replace(' (신규)','')))):[members]);
+        const squadIndex=squads.findIndex(team=>team.length===members.length&&members.every(n=>team.includes(n)));
+        if(squadIndex<0){window.showNotification('선택 팀과 참가 명단이 다릅니다. 팀 명단을 먼저 확인해 주세요.','error');resolve(null);return;}
+        const counts=squads.map((team,t)=>Array.from({length:6},(_,q)=>{
+            const f=t===squadIndex?formations[q]:state.teamLineupCache?.[t]?.formations?.[q]||formations[q];
+            return Math.min(team.length,(posCellMap[f]||[]).length);
+        }));
+        const allDedicated=squads.flat().filter(n=>{
+            const p=effectivePlayer(state.playerDB[n]||{name:n},state.coachProfiles);
+            return p.pos1?.includes('GK')&&p.pos2?.includes('GK');
+        });
+        let duties;
+        try { duties=planDuties(squads,initialOrder,counts,allDedicated); }
+        catch(e){window.showNotification(e.message,'error');resolve(null);return;}
+        const duty=duties.teams[squadIndex];
+        state.dutyNotes=duties.notes;
         const rankOf = (m) => { const i = initialOrder.indexOf(normalizeName(m)); return i === -1 ? 9999 : i; }; // 클수록 명단 아래(늦은 투표)
 
         // [재설계] 선호 포지션 보장 + 무작위 탐색
@@ -548,26 +565,13 @@ function executeLineupGeneration(members, formations, isSilent = false, options 
                 const numToRest = members.length - slots.length;
 
                 // ---- 휴식 선정: 누적 휴식 수가 적은 사람 우선, 동률이면 늦은 투표(아래)부터. 직전 키퍼(전담 제외)는 이번 휴식 제외 ----
-                let restElig = sortedMembers.filter(m => !superGks.includes(m) && m !== gkLast);
-                restElig.sort((a, b) => (restCount[a] - restCount[b]) || (rankOf(b) - rankOf(a)));
-                let quarterResters = restElig.slice(0, numToRest);
-                if (quarterResters.length < numToRest) {
-                    // 전담/직전 키퍼 제외로 인원이 모자라면 불가피하게 보충 (그래도 누적 적은 사람 우선)
-                    const extra = sortedMembers
-                        .filter(m => !superGks.includes(m) && !quarterResters.includes(m))
-                        .sort((a, b) => (restCount[a] - restCount[b]) || (rankOf(b) - rankOf(a)));
-                    quarterResters = quarterResters.concat(extra.slice(0, numToRest - quarterResters.length));
-                }
+                const quarterResters = [...duty.resters[q]];
                 quarterResters.forEach(m => restCount[m]++);
                 resters.push(quarterResters);
 
                 // ---- 심판 배정: 휴식자 중 심판을 적게 본 사람 우선, 동률이면 늦은 투표(아래)부터 ----
-                let assignedRef = null;
-                if (quarterResters.length > 0) {
-                    const refCands = [...quarterResters].sort((a, b) => (refCount[a] - refCount[b]) || (rankOf(b) - rankOf(a)));
-                    assignedRef = refCands[0];
-                    refCount[assignedRef]++;
-                }
+                const assignedRef = duty.referees[q];
+                if(quarterResters.includes(assignedRef))refCount[assignedRef]++;
                 referees.push(assignedRef);
 
                 let onField = sortedMembers.filter(m => !quarterResters.includes(m));
@@ -579,28 +583,7 @@ function executeLineupGeneration(members, formations, isSilent = false, options 
                 let assignedGk = null;
                 const gkSlotExists = slots.includes('GK');
                 if (gkSlotExists) {
-                    const onFieldSuper = onField.filter(m => superGks.includes(m));
-                    if (onFieldSuper.length > 0) {
-                        assignedGk = onFieldSuper[0];        // 전담 키퍼는 항상 골문
-                    } else {
-                        const banned = new Set(restRefLast); // 직전 휴식/심판자 → 이번 키퍼 금지
-                        if (gkLast) banned.add(gkLast);      // 직전 키퍼 → 연속 금지
-                        let elig = availablePlayers.filter(m => !banned.has(m));
-                        if (elig.length === 0) elig = [...availablePlayers]; // 불가피하면 완화
-                        // 1순위: 키퍼 보장 미충족(주/부 GK) 중 투표 아래부터 → 부GK ≥1회 보장
-                        const need = elig.filter(m => gkGuarColumn.includes(m) && gkCount[m] === 0);
-                        const pool = need.length > 0 ? need : elig;
-                        // [제안A] 키퍼를 적게 맡은 사람 우선 → 같으면 GK 보유자 우선 → 같으면 늦은 투표 순
-                        pool.sort((a, b) => {
-                            const ca = gkCount[a] || 0, cb = gkCount[b] || 0;
-                            if (ca !== cb) return ca - cb;                 // 키퍼 횟수 적은 사람 먼저
-                            const ga = gkGuarColumn.includes(a) ? 1 : 0;
-                            const gb = gkGuarColumn.includes(b) ? 1 : 0;
-                            if (ga !== gb) return gb - ga;                 // GK 보유자 먼저
-                            return rankOf(b) - rankOf(a);                  // 아래(늦은 투표)부터
-                        });
-                        assignedGk = pool[0];
-                    }
+                    assignedGk = duty.gks[q];
                     if (assignedGk) {
                         assignment['GK'] = [assignedGk];
                         availablePlayers.splice(availablePlayers.indexOf(assignedGk), 1);
@@ -710,8 +693,15 @@ function executeLineupGeneration(members, formations, isSilent = false, options 
             let totalCost = guaranteeShort * 1000 + gkGuaranteeShort * 800 + gkOverShort * 600 + wishShort * 250 + qualityCost + preferShort * 15;
             let candidate = { lineups, resters, referees, members, formations, score: balance, guaranteeShort, preferShort };
             if (options.original) {
-                candidate = applyLocks(candidate, options.original, options.locks || []);
+                // Field-position preferences cannot exempt a player from their timed duty.
+                const fieldLocks=(options.locks || []).filter(({name,q})=>{
+                    const old=options.original.lineups?.[q];
+                    return !duty.resters[q].includes(name)&&duty.gks[q]!==name&&!old?.GK?.includes(name)&&Object.entries(old||{}).some(([pos,ns])=>pos!=='GK'&&ns.includes(name));
+                });
+                candidate = applyLocks(candidate, options.original, fieldLocks);
                 if (!candidate || !validateLineup(candidate, members)) continue;
+                candidate.referees=[...duty.referees];
+                delete candidate.manualReferees;
                 totalCost = candidateCost(candidate,localPlayerDB,state.coachHistory || {},options.original);
                 const scores=candidate.lineups.map(l=>Object.values(l).flat().reduce((s,n)=>s+(localPlayerDB[n]?.s1 ?? 65),0));
                 candidate.score=Math.max(...scores)-Math.min(...scores);

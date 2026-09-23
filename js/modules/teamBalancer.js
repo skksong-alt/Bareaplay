@@ -671,6 +671,8 @@ export function init(dependencies) {
     pinTogetherTextarea = document.getElementById('pin-together');
     pinApartTextarea = document.getElementById('pin-apart');
     avoidRepeatCheckbox = document.getElementById('avoid-repeat');
+    // Eight-week continuity trial: do not encourage reshuffling familiar combinations by default.
+    if(avoidRepeatCheckbox)avoidRepeatCheckbox.checked=false;
     sliders = { skill: document.getElementById('w_skill'), pos: document.getElementById('w_pos'), size: document.getElementById('w_size') };
     sliderVals = { skill: document.getElementById('w_skill_val'), pos: document.getElementById('w_pos_val'), size: document.getElementById('w_size_val') };
 

@@ -1,21 +1,27 @@
 // sw.js
-const CACHE_NAME = 'bareaplay-cache-v61';
+const CACHE_NAME = 'bareaplay-cache-v63';
 const urlsToCache = [
     '/', '/index.html', '/share.html', '/css/style.css',
-    '/css/match-hub.css?v=2',
-    '/js/app.js?v=17',
+    '/css/match-hub.css?v=3',
+    '/js/app.js?v=19',
     '/js/store.js?v=2',
     '/js/modules/playerManagement.js?v=5',
-    '/js/modules/teamBalancer.js?v=8',
-    '/js/modules/lineupGenerator.js?v=8',
+    '/js/modules/teamBalancer.js?v=9',
+    '/js/modules/lineupGenerator.js?v=9',
     '/js/modules/accounting.js?v=7',
-    '/js/modules/shareManagement.js?v=8',
-    '/js/modules/voteManagement.js?v=11',
+    '/js/modules/shareManagement.js?v=9',
+    '/js/modules/voteManagement.js?v=13',
     '/js/modules/lineupStats.js?v=2',
     '/js/modules/coachCore.js?v=1',
-    '/js/modules/weeklyContent.js?v=3',
-    '/js/modules/votePage.js?v=3',
-    '/js/modules/coachWorkspace.js?v=3',
+    '/js/modules/voteOrder.js?v=1',
+    '/js/modules/dutyRotation.js?v=1',
+    '/js/modules/refereeEducation.js?v=1',
+    '/js/modules/adminWorkflow.js?v=1',
+    '/js/modules/positionPreferences.js?v=1',
+    '/js/modules/positionPreferencesCore.js?v=1',
+    '/js/modules/weeklyContent.js?v=4',
+    '/js/modules/votePage.js?v=5',
+    '/js/modules/coachWorkspace.js?v=4',
     '/js/modules/matchRecord.js?v=2',
     '/manifest.json', '/favicon.ico', '/assets/icon-512.png'
 ];

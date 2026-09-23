@@ -1,6 +1,8 @@
 import { doc, getDoc, getDocs, collection, query, where, setDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js';
 import { cleanName, escapeHtml as esc, chooseReviewDate } from './coachCore.js?v=1';
-import { lessonHtml, addCoachStyles } from './weeklyContent.js?v=3';
+import { lessonHtml, addCoachStyles } from './weeklyContent.js?v=4';
+import { compareResponseTime, confirmGuest } from './voteOrder.js?v=1';
+import { POSITION_SURVEY_ENABLED } from './positionPreferences.js?v=1';
 let dispose = () => {};
 const readLang = () => { try { return localStorage.getItem('bp_lang') === 'en' ? 'en' : 'ko'; } catch { return 'ko'; } };
 const dubaiToday = () => new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
@@ -64,6 +66,7 @@ export async function renderVote(db, voteId) {
           <section class="coach-card match-attendance"><div class="match-card-heading"><h2>${t('참석 현황','Who’s playing')}</h2><span class="match-live" id="v-live">${t('연결 중','Connecting')}</span></div><div id="v-list" aria-label="${t('참석자 명단','RSVP list')}"></div></section>
           <div id="v-lesson" class="match-resources">${lessonHtml(vote.date,{},lang)}</div></div>`;
         const input = document.getElementById('v-name'), message = document.getElementById('v-msg');
+        if(POSITION_SURVEY_ENABLED)document.getElementById('v-name-help').insertAdjacentHTML('afterend',`<a class="coach-link" href="/?preferences=1">${t('내 희망 포지션 · 감독에게 비공개 제출','My position preferences · private to the coach')} ↗</a>`);
         try { input.value=sessionStorage.getItem(draftKey) || ''; } catch { /* optional */ }
         input.addEventListener('input',rememberName);
         let saving=false;
@@ -79,7 +82,8 @@ export async function renderVote(db, voteId) {
             if(saving) return;
             const name=cleanName(input.value), status=button.dataset.status;
             if(!name || name.includes('/') || name==='.' || name==='..') { message.textContent=t('올바른 이름을 입력하세요.','Enter a valid name.'); return; }
-            saving=true; deadline();
+            if(!confirmGuest(name,names,lang)){message.textContent=t('이름을 확인해 주세요. 아직 저장하지 않았습니다.','Please check your name. Nothing has been saved.');input.focus();return;}
+            saving=true; input.disabled=true; deadline();
             try {
                 const latest=await getDoc(doc(db,'votes',voteId));
                 if(!latest.exists() || latest.data().closed) throw new Error('closed');
@@ -94,18 +98,18 @@ export async function renderVote(db, voteId) {
                 await setDoc(ref,payload,{merge:true});
                 message.textContent=`${name}: `+(payload.waitlist?t('대기 신청 완료','Added to waitlist'):t('신청이 저장되었습니다. 다시 선택하면 변경됩니다.','RSVP saved. Select again to update.'));
             } catch(e) { message.textContent=e.message==='closed'?t('투표가 종료되었습니다.','RSVP has closed.'):t('저장 실패. 다시 시도하세요.','Could not save. Please try again.'); }
-            finally { saving=false; deadline(); }
+            finally { saving=false; input.disabled=false; deadline(); }
         });
         cleanups.push(onSnapshot(collection(db,'votes',voteId,'responses'),snap=>{
             if(!alive) return;
             const all=snap.docs.map(d=>d.data());
             const groups=[['attend',t('참석','Going')],['wait',t('대기','Waitlist')],['maybe',t('미정','Maybe')],['absent',t('불참','Not going')]];
             const grouped=groups.map(([status,label])=>{
-                const list=all.filter(r=>status==='wait'?r.status==='attend'&&r.waitlist:r.status===status && (status!=='attend'||!r.waitlist)).sort((a,b)=>(a.attendingSince?.seconds ?? Infinity)-(b.attendingSince?.seconds ?? Infinity));
+                const list=all.filter(r=>status==='wait'?r.status==='attend'&&r.waitlist:r.status===status && (status!=='attend'||!r.waitlist)).sort(compareResponseTime);
                 return {status,label,list};
             });
             const roster=({status,label,list})=>`<section class="attendance-group ${status}"><h3>${label}<span>${list.length}</span></h3>${list.length?`<ol>${list.map(r=>`<li><span class="roster-name">${esc(r.name)}</span>${r.guest?`<small aria-label="${t('게스트','Guest')}">GUEST</small>`:''}</li>`).join('')}</ol>`:`<p class="attendance-empty">${t('아직 없어요','None yet')}</p>`}</section>`;
-            document.getElementById('v-list').innerHTML=`<div class="attendance-stats">${grouped.filter(g=>g.status!=='wait').map(g=>`<div class="attendance-stat ${g.status}"><strong>${g.list.length}</strong><span>${g.label}</span>${g.status==='attend'&&grouped[1].list.length?`<small class="waitlist-count">${t('대기 '+grouped[1].list.length+'명',grouped[1].list.length+' waitlisted')}</small>`:''}</div>`).join('')}</div><div class="attendance-roster"><div>${roster(grouped[0])}${grouped[1].list.length?roster(grouped[1]):''}</div><div class="attendance-side">${roster(grouped[2])}${roster(grouped[3])}</div></div><p class="attendance-footnote">${t('키퍼·휴식·심판 배정에 참석 신청 순서와 포지션·배정 횟수를 함께 반영합니다.','GK, rest and referee assignments consider RSVP order, positions and rotation counts.')}</p>`;
+            document.getElementById('v-list').innerHTML=`<div class="attendance-stats">${grouped.filter(g=>g.status!=='wait').map(g=>`<div class="attendance-stat ${g.status}"><strong>${g.list.length}</strong><span>${g.label}</span>${g.status==='attend'&&grouped[1].list.length?`<small class="waitlist-count">${t('대기 '+grouped[1].list.length+'명',grouped[1].list.length+' waitlisted')}</small>`:''}</div>`).join('')}</div><div class="attendance-roster"><div>${roster(grouped[0])}${grouped[1].list.length?roster(grouped[1]):''}</div><div class="attendance-side">${roster(grouped[2])}${roster(grouped[3])}</div></div><p class="attendance-footnote">${t('심판은 전체, 키퍼·휴식은 팀별 늦은 참석 신청순으로 순환합니다. 전담 GK는 예외입니다.','Referees rotate by latest RSVP across all teams; GK/rest rotate within each team. Dedicated goalkeepers are exempt.')}</p>`;
             document.getElementById('v-live').textContent=t('실시간','Live');
         },()=>{ if(alive) { document.getElementById('v-list').textContent=t('명단을 불러오지 못했습니다.','Could not load the list.');document.getElementById('v-live').textContent=t('연결 확인 필요','Connection unavailable'); } }));
         // Independent enhancements must never prevent attendance submission.
@@ -147,27 +151,30 @@ export async function renderVote(db, voteId) {
 }
 export function mountRatings(db, container, date, names, lang) {
     const en=lang==='en', t=(ko,english)=>en?english:ko;
-    let votes={}, picks=[], mine='', saving=false, loaded=false;
+    let picks=[], mine='', saving=false;
     container.innerHTML=`<section class="coach-card"><h2>${t('지난 경기 활약 투표','Previous match appreciation')} · ${esc(date)}</h2><p class="coach-note">${t('지난 경기에 참여했다면 인상 깊었던 3명을 순서대로 선택하세요. 수비·도움·동료 지원도 생각해 주세요. 이번 참석 신청과 별개이며 건너뛰어도 됩니다.','If you played that match, pick three teammates in order. Remember defending, effort and support too. This is optional and separate from your RSVP.')}</p><div class="review-video"><a id="review-match-video" href="https://www.youtube.com/@FC%EB%B0%94%EB%A0%88%EC%95%84" target="_blank" rel="noopener noreferrer">▷ ${t('지난 경기 영상','Previous match footage')} ↗</a><p>${t('팀 유튜브 채널에서 위 경기 날짜의 영상을 확인해 보세요. 새 탭에서 열립니다.','Find the match date above on our team’s YouTube channel. Opens in a new tab.')}</p></div><label>${t('지난 경기 참가자 본인 이름','Your name from that match')}<select id="review-name"><option value="">${t('선택','Select')}</option>${names.map(n=>`<option>${esc(n)}</option>`).join('')}</select></label><div id="review-picks"></div><button id="review-save" class="coach-primary" disabled>${t('투표 저장','Save vote')}</button><p id="review-msg" role="status"></p><div id="review-result"></div></section>`;
     const select=container.querySelector('#review-name'), save=container.querySelector('#review-save'), msg=container.querySelector('#review-msg');
     const draw=()=>{
         container.querySelector('#review-picks').innerHTML=mine?names.filter(n=>n!==mine).map(n=>`<button data-player="${esc(n)}" class="${picks.includes(n)?'coach-selected':''}" ${saving?'disabled':''}>${esc(n)} ${picks.includes(n)?`(${3-picks.indexOf(n)}${en?' pts':'점'})`:''}</button>`).join(''):'';
-        save.disabled=!loaded || !mine || picks.length!==3 || saving;
+        save.disabled=!mine || picks.length!==3 || saving;
         container.querySelectorAll('[data-player]').forEach(b=>b.onclick=()=>{const n=b.dataset.player; if(picks.includes(n)) picks=picks.filter(p=>p!==n); else if(picks.length<3) picks.push(n); draw();});
     };
-    select.onchange=()=>{mine=select.value; picks=(votes[mine]?.picks || []).filter(n=>names.includes(n)&&n!==mine).slice(0,3); msg.textContent='';draw();};
+    // A selected name is not proof of identity. Never retrieve an existing ballot here.
+    select.onchange=()=>{mine=select.value; picks=[]; msg.textContent='';draw();};
     save.onclick=async()=>{
-        if(!loaded || saving || !names.includes(mine) || picks.length!==3 || new Set(picks).size!==3) return;
+        if(saving || !names.includes(mine) || picks.length!==3 || new Set(picks).size!==3) return;
         saving=true; select.disabled=true;draw();
-        try { await setDoc(doc(db,'ratings',date),{date,votes:{[mine]:{picks:[...picks],at:Date.now()}}},{merge:true}); msg.textContent=t('저장되었습니다. 다시 제출하면 본인 표만 수정됩니다.','Saved. Submitting again updates your own vote.'); }
+        try {
+            await setDoc(doc(db,'ratings',date),{date,votes:{[mine]:{picks:[...picks],at:Date.now()}}},{merge:true});
+            picks=[]; mine=''; select.value='';
+            msg.textContent=t('저장되었습니다. 선택 내용은 화면에서 지웠습니다. 다시 제출하려면 본인 이름과 3명을 새로 선택해 주세요.','Saved. Your selections have been cleared from this screen. To submit again, select your own name and three teammates afresh.');
+        }
         catch { msg.textContent=t('저장 실패. 다시 시도하세요.','Could not save. Please retry.'); }
         finally {saving=false;select.disabled=false;draw();}
     };
-    return onSnapshot(doc(db,'ratings',date),snap=>{
-        loaded=true;
-        votes=snap.exists()?snap.data().votes || {}:{};
-        const totals={};Object.values(votes).forEach(v=>(v.picks || []).slice(0,3).forEach((n,i)=>{if(names.includes(n))totals[n]=(totals[n]||0)+3-i;}));
-        container.querySelector('#review-result').innerHTML=`<details><summary>${t('집계 보기','View tally')} (${Object.keys(votes).length})</summary><p>${Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([n,v])=>`${esc(n)}: ${v}`).join(' · ') || '—'}</p></details>`;
-        draw();
-    },()=>{loaded=false;msg.textContent=t('기존 표를 불러오지 못했습니다. 새로고침하세요.','Could not load existing votes. Reload to retry.');save.disabled=true;});
+    // UI mitigation only: server Rules must also restrict raw ratings reads.
+    // Even a live aggregate can reveal a ballot through before/after score differences.
+    container.querySelector('#review-result').textContent=t('이 화면에서는 이전 선택과 실시간 집계를 표시하지 않습니다. 본인 이름으로만 투표해 주세요.','Previous selections and live totals are not displayed here. Please vote only under your own name.');
+    draw();
+    return ()=>{};
 }

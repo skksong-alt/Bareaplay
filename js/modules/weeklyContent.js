@@ -1,4 +1,5 @@
 import { escapeHtml as esc, validVideoUrl } from './coachCore.js?v=1';
+import { refereeLessonHtml } from './refereeEducation.js?v=1';
 export const LESSONS = [
     { ko:'받기 전에 보고, 첫 터치를 준비하기', en:'Look before receiving; prepare your first touch',
       actionKo:'공이 오기 전 주변을 확인하고 다음 패스가 가능한 방향으로 받으세요.', actionEn:'Look around before the ball arrives. Receive towards your next passing option.',
@@ -63,6 +64,7 @@ export function lessonHtml(date, custom, lang = 'ko') {
       <div class="preparation-content"><p class="preparation-description">${en?'Understand every role, play better together. Watch all the videos before the match and bring one idea to try together. Tap a guideline to watch.':'다른 포지션을 이해하면 우리 팀의 플레이도 더 좋아집니다. 경기 전 영상들을 두루 살펴보고, 함께 실천할 한 가지를 찾아보세요. 핵심 지침을 누르면 영상이 열립니다.'}</p>
       <ol class="video-guidelines">${videos.map((v,i)=>`<li class="video-guideline"><span class="video-number" aria-hidden="true">${String(i+1).padStart(2,'0')}</span><div>${v.role?`<small>${esc(v.role)}</small>`:''}<a href="${esc(v.url)}" target="_blank" rel="noopener noreferrer">${esc(v.title)}</a></div></li>`).join('')}</ol>
       ${note && !parseGuidelines(note).length?`<p class="coach-note">${esc(note)}</p>`:''}
+      ${refereeLessonHtml(date,lang)}
       <div class="practice-block"><h3>${en?'After warm-up · 15-minute practice':'준비운동 후 · 15분 연습 아이디어'}</h3><div class="practice-instructions">${String(en?l.drillEn:l.drillKo).split('\n').filter(s=>s.trim()).map(s=>{const divider=s.indexOf(' | ');return divider<0?`<p>${esc(s)}</p>`:`<p><strong>${esc(s.slice(0,divider))}</strong><br>${esc(s.slice(divider+3))}</p>`;}).join('')}</div>${!hasCustomDrill?`<a class="practice-source" href="${esc(source)}" target="_blank" rel="noopener noreferrer">${en?'Adapted for adult beginners from FIFA training ideas · View source':'FIFA 훈련 원리를 성인 초보팀의 15분 연습으로 재구성 · 참고 원문'} ↗</a>`:''}</div></div></details>`;
 }
 export function addCoachStyles() {

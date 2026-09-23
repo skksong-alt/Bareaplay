@@ -1,6 +1,8 @@
 // js/modules/shareManagement.js
 import { doc, setDoc, collection, onSnapshot, addDoc, getDoc, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
-import { getPosCellMap } from './lineupGenerator.js?v=8'; // [정리] 포메이션 좌표 단일화
+import { getPosCellMap } from './lineupGenerator.js?v=9'; // [정리] 포메이션 좌표 단일화
+import { compareResponseTime } from './voteOrder.js?v=1';
+import { planDuties } from './dutyRotation.js?v=1';
 
 let db, state;
 let addLocationBtn, shareDate, shareTime, shareLocationSelect;
@@ -98,6 +100,14 @@ async function generateShareableLink() {
 
         const lineups = await Promise.all(lineupPromises);
         if (lineups.some(l => !l)) throw new Error('모든 팀의 라인업을 먼저 생성하세요. 기존 공유 결과는 유지됩니다.');
+        const order=await window.voteMgmt.getDutyOrder(selected.info.date);
+        const squads=state.teams.map(team=>team.map(p=>normalizeName(String(p.name).replace(' (신규)',''))));
+        const counts=lineups.map(l=>l.lineups.map(q=>Object.values(q).flat().length));
+        const dedicated=squads.flat().filter(n=>state.playerDB[n]?.pos1?.includes('GK')&&state.playerDB[n]?.pos2?.includes('GK'));
+        const duties=planDuties(squads,order,counts,dedicated);
+        if(lineups.some((l,t)=>l.lineups.some((q,i)=>q.GK?.[0]!==duties.teams[t].gks[i] || JSON.stringify([...(l.resters[i]||[])].sort())!==JSON.stringify([...duties.teams[t].resters[i]].sort()) || l.referees[i]!==duties.teams[t].referees[i]))) {
+            throw new Error('현재 투표순과 다른 키퍼·심판·휴식 배정이 있습니다. 양 팀 라인업을 다시 생성한 뒤 공개하세요. 기존 공개 결과는 유지됩니다.');
+        }
         
         lineups.forEach((originalLineup, i) => {
             if (originalLineup) {
@@ -134,9 +144,9 @@ async function generateShareableLink() {
                 const since = (a, b) => ((a.attendingSince && a.attendingSince.seconds ? a.attendingSince.seconds : 1e15) - (b.attendingSince && b.attendingSince.seconds ? b.attendingSince.seconds : 1e15));
                 const pick = r => ({ name: r.name, guest: !!r.guest });
                 attendanceSnapshot = {
-                    attend: all.filter(r => r.status === 'attend').sort(since).map(pick),
-                    maybe: all.filter(r => r.status === 'maybe').map(pick),
-                    absent: all.filter(r => r.status === 'absent').map(pick)
+                    attend: all.filter(r => r.status === 'attend').sort(compareResponseTime).map(pick),
+                    maybe: all.filter(r => r.status === 'maybe').sort(compareResponseTime).map(pick),
+                    absent: all.filter(r => r.status === 'absent').sort(compareResponseTime).map(pick)
                 };
             }
         } catch (e) { console.error('attendance snapshot fail', e); }
@@ -184,7 +194,7 @@ async function generateShareableLink() {
 
     } catch (error) {
         console.error("Share link generation failed: ", error);
-        window.showNotification("공유 링크 생성에 실패했습니다.", "error");
+        window.showNotification(error.message || "공유 링크 생성에 실패했습니다.", "error");
     } finally {
         generateShareBtn.disabled=false;
         loadingOverlay.style.opacity = 0;

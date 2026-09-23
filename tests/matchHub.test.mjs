@@ -51,8 +51,8 @@ test('optional legacy text fields accept safe link lists, with language fallback
 
 test('match resources stylesheet is versioned and included in the offline cache',()=>{
     const root=new URL('../',import.meta.url);
-    assert.match(readFileSync(new URL('index.html',root),'utf8'),/css\/match-hub\.css\?v=2/);
-    assert.match(readFileSync(new URL('sw.js',root),'utf8'),/'\/css\/match-hub\.css\?v=2'/);
+    assert.match(readFileSync(new URL('index.html',root),'utf8'),/css\/match-hub\.css\?v=3/);
+    assert.match(readFileSync(new URL('sw.js',root),'utf8'),/'\/css\/match-hub\.css\?v=3'/);
     const shared=readFileSync(new URL('js/app.js',root),'utf8');
     assert.doesNotMatch(shared,/Next match RSVP · Previous match appreciation/);
 });

@@ -1,8 +1,9 @@
 // js/modules/voteManagement.js
 // 묶음 C: 참석 투표 (로그인 없이 링크로 참여) + 관리자 확정 → 팀 배정 연결
-import { doc, setDoc, getDoc, getDocs, addDoc, deleteDoc, collection, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
-import { renderVote } from './votePage.js?v=3';
-import { syncMeetingInfo } from './shareManagement.js?v=8';
+import { doc, setDoc, getDoc, getDocs, addDoc, deleteDoc, collection, query, where, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+import { renderVote } from './votePage.js?v=5';
+import { syncMeetingInfo } from './shareManagement.js?v=9';
+import { compareResponseTime } from './voteOrder.js?v=1';
 
 let db, state;
 let activeVoteId = null;          // 관리자 화면에서 현재 보고 있는 투표
@@ -10,6 +11,16 @@ let respUnsub = null;             // 응답 실시간 구독 해제 함수
 let adminResponses = [];          // 관리자 화면용 응답 캐시
 let adminVoteInfo = null;         // [추가] 현재 활성 투표의 문서 데이터(마감시각 표시용)
 export const getSelectedMeeting=()=>({id:activeVoteId,info:adminVoteInfo?{...adminVoteInfo}:null});
+export async function getDutyOrder(date) {
+    let voteId=adminVoteInfo?.date===date?activeVoteId:null;
+    if(!voteId) {
+        const votes=await getDocs(query(collection(db,'votes'),where('date','==',date)));
+        if(votes.docs.length!==1)throw new Error('이 날짜의 참석 투표를 먼저 선택해 주세요. 순번을 임의로 정하지 않습니다.');
+        voteId=votes.docs[0].id;
+    }
+    const snap=await getDocs(collection(db,'votes',voteId,'responses'));
+    return snap.docs.map(d=>d.data()).filter(r=>r.status==='attend'&&Number.isFinite(r.attendingSince?.seconds)).sort(compareResponseTime).map(r=>normName(r.name));
+}
 
 function normName(s) {
     return (s == null ? '' : String(s)).normalize('NFC').trim();
@@ -216,13 +227,13 @@ function renderAdminStatus() {
 
     // [v55] 참석자를 정규 참석 / 대기자(마감 후 참석)로 분리. 각각 투표순(선착순) 정렬.
     const attendAll = adminResponses.filter(r => r.status === 'attend')
-        .sort((a, b) => tsSeconds(a.attendingSince) - tsSeconds(b.attendingSince));
+        .sort(compareResponseTime);
     const attend = attendAll.filter(r => !r.waitlist);
     const waitlist = attendAll.filter(r => !!r.waitlist);
     const maybe = adminResponses.filter(r => r.status === 'maybe')
-        .sort((a, b) => tsSeconds(a.updatedAt) - tsSeconds(b.updatedAt));
+        .sort(compareResponseTime);
     const absent = adminResponses.filter(r => r.status === 'absent')
-        .sort((a, b) => tsSeconds(a.updatedAt) - tsSeconds(b.updatedAt));
+        .sort(compareResponseTime);
 
     const attendRows = attend.map((r, i) => `
         <li class="flex items-center justify-between py-1.5 border-b">
@@ -274,7 +285,7 @@ function renderAdminStatus() {
                 <button id="vote-to-balancer" class="bg-indigo-600 text-white text-sm font-bold py-2 px-4 rounded-lg hover:bg-indigo-700">이 투표로 팀 짜기 →</button>
             </div>
             ${adminVoteInfo && adminVoteInfo.deadlineMs ? `<p class="text-xs font-bold mb-1 ${Date.now() > adminVoteInfo.deadlineMs ? 'text-red-500' : 'text-emerald-600'}">⏰ 자동 마감: ${fmtMs(adminVoteInfo.deadlineMs)} — 경기 시작 2시간 전${Date.now() > adminVoteInfo.deadlineMs ? ' · 마감됨 (이후 참석 투표는 대기자로 등록됩니다)' : ''}</p>` : ''}
-            <p class="text-xs text-gray-400 mb-2">※ 참석자는 투표가 늦은 사람일수록 아래쪽에 있으며, 팀 배정 후 아래(늦은 투표)부터 휴식·키퍼를 맡습니다. (미정은 팀 배정에 포함되지 않습니다)</p>
+            <p class="text-xs text-gray-400 mb-2">※ 참석자는 투표가 늦은 사람일수록 아래쪽에 있으며, 팀 배정 후 늦은 투표부터 전체 심판 / 팀별 키퍼·휴식을 순환합니다. (미정은 팀 배정에 포함되지 않습니다)</p>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div><p class="font-semibold text-green-700 mb-1">✅ 참석 (투표순)</p><ul class="text-sm">${attendRows || '<li class="text-gray-400 py-2">아직 없음</li>'}</ul>
                     ${waitlist.length ? `<p class="font-semibold text-orange-600 mt-3 mb-1">⏳ 대기자 (마감 후 참석 · 선착순)</p><ul class="text-sm">${waitRows}</ul>` : ''}</div>
@@ -336,7 +347,7 @@ async function adminAdd() {
 
 function sendToBalancer() {
     const attendAll = adminResponses.filter(r => r.status === 'attend')
-        .sort((a, b) => tsSeconds(a.attendingSince) - tsSeconds(b.attendingSince));
+        .sort(compareResponseTime);
     const attend = attendAll.filter(r => !r.waitlist);
     const waitlist = attendAll.filter(r => !!r.waitlist);
     if (attendAll.length === 0) { window.showNotification('참석자가 없습니다.', 'error'); return; }
@@ -345,7 +356,7 @@ function sendToBalancer() {
     // [v55] 대기자가 있으면 포함 여부를 확인. 포함 시 명단 맨 아래(선착순)로 붙는다 → 휴식·키퍼 우선.
     if (waitlist.length > 0) {
         const inc = confirm(`대기자가 ${waitlist.length}명 있습니다. 대기자까지 함께 불러올까요?\n\n[확인] 참석 ${attend.length}명 + 대기 ${waitlist.length}명\n[취소] 참석 ${attend.length}명만`);
-        if (inc) names = names.concat(waitlist.map(r => r.name));
+        if (inc) names = attendAll.map(r => r.name);
     }
     if (names.length === 0) { window.showNotification('불러올 참석자가 없습니다. (대기자만 있는 경우 대기자를 포함하거나 참석 확정하세요)', 'error'); return; }
     const textarea = document.getElementById('attendees');
