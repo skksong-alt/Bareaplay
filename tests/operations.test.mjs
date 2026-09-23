@@ -6,7 +6,7 @@ import { REFEREE_LESSONS, refereeLessonIndex, refereeLessonHtml } from '../js/mo
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import * as core from '../js/modules/coachCore.js';
-import { POSITIONS,PREFERENCE_PITCH,validatePreference,preferenceSummary } from '../js/modules/positionPreferencesCore.js';
+import { POSITIONS,PREFERENCE_PITCH,validatePreference,preferenceSummary,surveyRoleCode } from '../js/modules/positionPreferencesCore.js';
 
 test('position survey pitch displays 4-2-3-1 without changing stored roles',()=>{
     assert.equal(PREFERENCE_PITCH.length,11);
@@ -42,6 +42,20 @@ test('private preference choices allow matching ranks without double-counting; d
     assert.deepEqual(preferenceSummary([answer,{...answer,first:'CM'}]).duplicates,['A']);
     assert.equal(preferenceSummary([answer],['B']).rows.find(r=>r.code==='CB').first.length,0);
     assert.equal(JSON.stringify(answer),before);
+});
+test('coach summary combines legacy CM with DM without editing saved answers',()=>{
+    const responses=[
+        {name:'A',first:'CM',second:'DM'},
+        {name:'B',first:'FW',second:'CM'},
+        {name:'C',first:'DM',second:'DM'}
+    ],before=JSON.stringify(responses);
+    const {rows}=preferenceSummary(responses),dm=rows.find(r=>r.code==='DM');
+    assert.equal(rows.some(r=>r.code==='CM'),false);
+    assert.deepEqual(dm.first,['A','C']);
+    assert.deepEqual(dm.second,['B']);
+    assert.deepEqual(dm.same,['A','C']);
+    assert.equal(surveyRoleCode('CM'),'DM');
+    assert.equal(JSON.stringify(responses),before);
 });
 test('referees follow global order; GK/rest follow team queues, with no same-quarter overlap',()=>{
     const A=Array.from({length:12},(_,i)=>`A${i+1}`),B=Array.from({length:12},(_,i)=>`B${i+1}`),teams=[A,B],order=[...A,...B];

@@ -118,6 +118,20 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
     await page.locator('.preference-pitch').screenshot({path:path.join(process.env.TEMP||root,'bareaplay-survey-pitch-mobile.png')});
     await page.setViewportSize({width:1280,height:900});
     await page.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-position-survey-desktop.png'),fullPage:true});
+    await context.addInitScript(()=>{window.__fixture['privatePositionPreferences/test-other']={name:'Test 02',first:'CM',second:'DM',stable:false,flexible:false,note:'Legacy answer'};});
+    await page.goto(base+'/');await page.waitForSelector('#tab-players');await page.locator('#tab-players').click();
+    await page.locator('#preference-admin-load').click();
+    await page.locator('#preference-admin-result .coach-table').waitFor();
+    assert.equal(await page.locator('#preference-admin-result .coach-table').getByText('중앙 미들',{exact:true}).count(),0);
+    assert.match(await page.locator('#preference-admin-result .coach-table tr').filter({hasText:'수비형 미들'}).textContent(),/Test 02/);
+    await page.locator('#preference-admin-result details').click();
+    assert.match(await page.locator('#preference-admin-result details').textContent(),/Test 02 · DM \/ DM/);
+    assert.equal(await page.evaluate(()=>__writes.length),0,'loading coach results must not rewrite legacy CM answers');
+    await context.addInitScript(()=>{window.__fixture['privatePositionPreferences/test-admin']={name:'Test 01',first:'CM',second:'DM',stable:false,flexible:false,note:'Legacy choice'};});
+    await page.goto(base+'/?preferences=1');await page.waitForSelector('#preference-name');
+    assert.match(await page.locator('[data-rank="first"]').textContent(),/수비형 미들/);
+    assert.equal(await page.locator('[data-position="DM"][data-ranks="1-2"]').count(),2);
+    assert.equal(await page.evaluate(()=>__writes.length),0,'showing legacy CM as DM must not edit the saved response');
     assert.deepEqual(errors,[]);console.log('PASS: bilingual survey purpose, Google sign-in, registered name, same-position preference, own-response access, preserved players and narrow-screen layout.');
     await context.close();return;
   }
@@ -217,7 +231,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   if(process.argv.includes('--operations')) {
     await page.evaluate(async()=>{
       for(const [status,ns] of [['maybe',['Test 02','Test 03']],['absent',['Test 04','Test 05']]])ns.forEach((name,i)=>{__fixture['votes/test-vote/responses/'+name]={name,status,updatedAt:{seconds:2,nanoseconds:i?1:9},attendingSince:{seconds:i?90:1}};});
-      const m=await import('/js/modules/votePage.js?v=10');await m.renderVote({},'test-vote');
+      const m=await import('/js/modules/votePage.js?v=11');await m.renderVote({},'test-vote');
     });
     await page.waitForSelector('.attendance-group.maybe li');
     assert.deepEqual(await page.locator('.attendance-group.maybe .roster-name').allTextContents(),['Test 03','Test 02']);
@@ -343,7 +357,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   await page.evaluate(()=>localStorage.setItem('bp_lang','ko'));
   await page.goto(base+'/?vote=current');await page.waitForSelector('.match-review-link');
   await page.evaluate(ns=>{ns.slice(1,18).forEach((name,i)=>{__fixture['votes/test-vote/responses/'+name]={name,status:i<13?'attend':i<15?'maybe':'absent',guest:false,waitlist:false,attendingSince:{seconds:11+i}};});},names);
-  await page.evaluate(async()=>{const m=await import('/js/modules/votePage.js?v=10');await m.renderVote({},'test-vote');});await page.waitForSelector('.match-review-link');
+  await page.evaluate(async()=>{const m=await import('/js/modules/votePage.js?v=11');await m.renderVote({},'test-vote');});await page.waitForSelector('.match-review-link');
   assert.equal(await page.locator('.attendance-group.attend li').count(),14);
   assert.equal(await page.evaluate(()=>__writes.length),0);
   await page.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-vote-mobile-preview.png'),fullPage:true});

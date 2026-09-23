@@ -15,10 +15,13 @@ export const PREFERENCE_PITCH = [
 export function validatePreference(value,names) {
     return names.includes(value.name)&&['first','second'].every(k=>POSITIONS.some(p=>p[0]===value[k]))&&typeof value.stable==='boolean'&&typeof value.flexible==='boolean'&&typeof value.note==='string'&&value.note.length<=500;
 }
+// Legacy CM submissions stay untouched in Firestore and count as the current DM role.
+export const surveyRoleCode=code=>code==='CM'?'DM':code;
 export function preferenceSummary(responses,attendees=null) {
     const byName=new Map();
     for(const r of responses){if(!byName.has(r.name))byName.set(r.name,[]);byName.get(r.name).push(r);}
     const duplicates=[...byName].filter(([,rs])=>rs.length>1).map(([name])=>name);
-    const unique=[...byName.values()].filter(rs=>rs.length===1).map(rs=>rs[0]).filter(r=>!attendees||attendees.includes(r.name));
-    return {duplicates,rows:POSITIONS.map(([code,ko,en])=>({code,ko,en,first:unique.filter(r=>r.first===code).map(r=>r.name),second:unique.filter(r=>r.second===code&&r.first!==code).map(r=>r.name),same:unique.filter(r=>r.first===code&&r.second===code).map(r=>r.name)}))};
+    const unique=[...byName.values()].filter(rs=>rs.length===1).map(rs=>rs[0]).filter(r=>!attendees||attendees.includes(r.name))
+        .map(r=>({...r,first:surveyRoleCode(r.first),second:surveyRoleCode(r.second)}));
+    return {duplicates,rows:POSITIONS.filter(([code])=>code!=='CM').map(([code,ko,en])=>({code,ko,en,first:unique.filter(r=>r.first===code).map(r=>r.name),second:unique.filter(r=>r.second===code&&r.first!==code).map(r=>r.name),same:unique.filter(r=>r.first===code&&r.second===code).map(r=>r.name)}))};
 }

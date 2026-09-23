@@ -1,7 +1,7 @@
 import { doc,getDoc,getDocs,collection,setDoc,serverTimestamp } from 'https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js';
 import { GoogleAuthProvider,signInWithPopup,onAuthStateChanged,signOut } from 'https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js';
 import { escapeHtml as esc,cleanName } from './coachCore.js?v=1';
-import { POSITIONS,PREFERENCE_PITCH,validatePreference,preferenceSummary } from './positionPreferencesCore.js?v=3';
+import { POSITIONS,PREFERENCE_PITCH,validatePreference,preferenceSummary,surveyRoleCode } from './positionPreferencesCore.js?v=4';
 
 // Release gate: enable ONLY after the coach-only Rules have been approved and deployed.
 // This gate is not a security boundary; the Firestore Rules are mandatory.
@@ -56,9 +56,9 @@ export function renderPositionSurvey(db,auth) {
             const nameInput=body.querySelector('#preference-name');if(existing)nameInput.value=existing.name;
             const message=body.querySelector('#preference-message');
             const draw=()=>{
-                for(const rank of ['first','second']){const code=rank==='first'?first:second,p=POSITIONS.find(p=>p[0]===code),button=body.querySelector(`[data-rank="${rank}"]`);button.textContent=`${rank==='first'?t('1지망','First'):t('2지망','Second')}: ${p?(en?p[2]:p[1]):t('선택','Select')}`;button.setAttribute('aria-pressed',String(rank===slot));}
+                for(const rank of ['first','second']){const code=surveyRoleCode(rank==='first'?first:second),p=POSITIONS.find(p=>p[0]===code),button=body.querySelector(`[data-rank="${rank}"]`);button.textContent=`${rank==='first'?t('1지망','First'):t('2지망','Second')}: ${p?(en?p[2]:p[1]):t('선택','Select')}`;button.setAttribute('aria-pressed',String(rank===slot));}
                 body.querySelectorAll('[data-position]').forEach(button=>{
-                    const ranks=[first===button.dataset.position?'1':'',second===button.dataset.position?'2':''].filter(Boolean);
+                    const ranks=[surveyRoleCode(first)===button.dataset.position?'1':'',surveyRoleCode(second)===button.dataset.position?'2':''].filter(Boolean);
                     button.setAttribute('aria-pressed',String(ranks.length>0));
                     button.dataset.ranks=ranks.join('-');
                     button.querySelector('.preference-pick-badge').textContent=ranks.length?(en?ranks.map(rank=>rank==='1'?'1st':'2nd').join(' · '):ranks.join('·')+'지망'):'';
@@ -98,7 +98,7 @@ export function mountPreferenceAdmin(db,state) {
         const only=panel.querySelector('#preference-attending').checked;
         const attendees=only?(document.getElementById('attendees')?.value||'').split('\n').map(cleanName).filter(Boolean):null;
         const {rows,duplicates}=preferenceSummary(responses,attendees),out=panel.querySelector('#preference-admin-result');
-        out.innerHTML=`<p>${responses.length}개 계정 응답${only?' · 현재 참가자만 집계':''}</p>${duplicates.length?`<p class="coach-error">같은 이름의 여러 계정 응답: ${duplicates.map(esc).join(', ')}. 확인 전 수요 집계에서 제외했습니다.</p>`:''}<div style="overflow:auto"><table class="coach-table"><tr><th>포지션</th><th>1지망</th><th>2지망만</th><th>두 지망 동일</th></tr>${rows.map(r=>`<tr><td>${r.ko}</td><td>${r.first.length} · ${r.first.map(esc).join(', ')}</td><td>${r.second.length} · ${r.second.map(esc).join(', ')}</td><td>${r.same.length}</td></tr>`).join('')}</table></div><details><summary>개별 응답</summary>${responses.filter(r=>!attendees||attendees.includes(r.name)).map(r=>`<p><b>${esc(r.name)}</b> · ${esc(r.first)} / ${esc(r.second)}<br>${esc(r.note)}</p>`).join('')}</details>`;
+        out.innerHTML=`<p>${responses.length}개 계정 응답${only?' · 현재 참가자만 집계':''}</p>${duplicates.length?`<p class="coach-error">같은 이름의 여러 계정 응답: ${duplicates.map(esc).join(', ')}. 확인 전 수요 집계에서 제외했습니다.</p>`:''}<div style="overflow:auto"><table class="coach-table"><tr><th>포지션</th><th>1지망</th><th>2지망만</th><th>두 지망 동일</th></tr>${rows.map(r=>`<tr><td>${r.ko}</td><td>${r.first.length} · ${r.first.map(esc).join(', ')}</td><td>${r.second.length} · ${r.second.map(esc).join(', ')}</td><td>${r.same.length}</td></tr>`).join('')}</table></div><details><summary>개별 응답</summary>${responses.filter(r=>!attendees||attendees.includes(r.name)).map(r=>`<p><b>${esc(r.name)}</b> · ${esc(surveyRoleCode(r.first))} / ${esc(surveyRoleCode(r.second))}<br>${esc(r.note)}</p>`).join('')}</details>`;
     };
     panel.querySelector('#preference-admin-load').onclick=async()=>{
         const out=panel.querySelector('#preference-admin-result');

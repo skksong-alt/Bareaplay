@@ -8,11 +8,11 @@ import * as balancer from './modules/teamBalancer.js?v=9';
 import * as lineup from './modules/lineupGenerator.js?v=9';
 import * as accounting from './modules/accounting.js?v=7';
 import * as shareMgmt from './modules/shareManagement.js?v=9';
-import * as voteMgmt from './modules/voteManagement.js?v=18';
+import * as voteMgmt from './modules/voteManagement.js?v=19';
 import * as lineupStats from './modules/lineupStats.js?v=2';
 import * as coachWorkspace from './modules/coachWorkspace.js?v=4';
 import * as adminWorkflow from './modules/adminWorkflow.js?v=1';
-import { renderPositionSurvey, mountPreferenceAdmin } from './modules/positionPreferences.js?v=4';
+import { renderPositionSurvey, mountPreferenceAdmin } from './modules/positionPreferences.js?v=5';
 import { roleTip } from './modules/coachCore.js?v=1';
 import * as matchRecord from './modules/matchRecord.js?v=2'; // 경기기록 탭 (v58: 팀 이름 표시)
 

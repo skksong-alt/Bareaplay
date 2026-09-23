@@ -1,7 +1,7 @@
 // js/modules/voteManagement.js
 // 묶음 C: 참석 투표 (로그인 없이 링크로 참여) + 관리자 확정 → 팀 배정 연결
 import { doc, setDoc, getDoc, getDocs, addDoc, deleteDoc, collection, query, where, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
-import { renderVote } from './votePage.js?v=10';
+import { renderVote } from './votePage.js?v=11';
 import { syncMeetingInfo } from './shareManagement.js?v=9';
 import { compareResponseTime } from './voteOrder.js?v=1';
 
