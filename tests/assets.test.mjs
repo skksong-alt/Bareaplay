@@ -16,7 +16,7 @@ test('all module URLs exist and versioned imports are precached',()=>{
         }
     }
     for(const file of ['index.html','share.html']){
-        const html=readFileSync(resolve(root,file),'utf8');assert.ok(html.includes('js/app.js?v=20'));
+        const html=readFileSync(resolve(root,file),'utf8');assert.ok(html.includes('js/app.js?v=21'));
     }
 });
 test('new coaching modules do not write accounting/player/attendance records',()=>{

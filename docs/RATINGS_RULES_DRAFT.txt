@@ -1,6 +1,8 @@
-// REVIEW DRAFT ONLY — NOT DEPLOYED OR EMULATOR-VERIFIED.
+// This rule logic was published through Firebase Console on 2026-09-23 at 15:56 (Dubai).
+// Anonymous ratings get denied and ratingResults get allowed in Rules Playground.
+// Not Emulator-verified. No production data was written during verification.
 // Based on the rules visible in Team Barea Firebase Console on 2026-09-23.
-// Re-read the live rules immediately before any approved deployment. Preserve
+// Re-read the live rules immediately before any future approved deployment. Preserve
 // concurrent changes. This file is not an instruction to publish automatically.
 rules_version = '2';
 service cloud.firestore {

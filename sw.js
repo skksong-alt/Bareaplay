@@ -1,16 +1,16 @@
 // sw.js
-const CACHE_NAME = 'bareaplay-cache-v64';
+const CACHE_NAME = 'bareaplay-cache-v65';
 const urlsToCache = [
     '/', '/index.html', '/share.html', '/css/style.css',
     '/css/match-hub.css?v=3',
-    '/js/app.js?v=20',
+    '/js/app.js?v=21',
     '/js/store.js?v=2',
     '/js/modules/playerManagement.js?v=5',
     '/js/modules/teamBalancer.js?v=9',
     '/js/modules/lineupGenerator.js?v=9',
     '/js/modules/accounting.js?v=7',
     '/js/modules/shareManagement.js?v=9',
-    '/js/modules/voteManagement.js?v=14',
+    '/js/modules/voteManagement.js?v=15',
     '/js/modules/lineupStats.js?v=2',
     '/js/modules/coachCore.js?v=1',
     '/js/modules/voteOrder.js?v=1',
@@ -20,9 +20,9 @@ const urlsToCache = [
     '/js/modules/positionPreferences.js?v=1',
     '/js/modules/positionPreferencesCore.js?v=1',
     '/js/modules/weeklyContent.js?v=4',
-    '/js/modules/votePage.js?v=6',
+    '/js/modules/votePage.js?v=7',
     '/js/modules/ratingIdentity.js?v=1',
-    '/js/modules/ratingService.js?v=1',
+    '/js/modules/ratingService.js?v=2',
     '/js/modules/coachWorkspace.js?v=4',
     '/js/modules/matchRecord.js?v=2',
     '/manifest.json', '/favicon.ico', '/assets/icon-512.png'

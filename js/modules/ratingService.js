@@ -1,5 +1,5 @@
 // Enable only with the matching server endpoint AND reviewed Firestore Rules.
-export const RATING_SERVICE_ENABLED=false;
+export const RATING_SERVICE_ENABLED=true;
 export async function requestRating(payload) {
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
     try {

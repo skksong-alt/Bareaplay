@@ -1,4 +1,4 @@
 import ratings from '../server/ratings.cjs';
 
-// Disabled until keyless server access, merged Rules and deployment are approved.
+// Server access uses keyless credentials; the environment flag controls availability.
 export default ratings.createHandler();

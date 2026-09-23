@@ -4,7 +4,7 @@ import { lessonHtml, addCoachStyles } from './weeklyContent.js?v=4';
 import { compareResponseTime, confirmGuest } from './voteOrder.js?v=1';
 import { POSITION_SURVEY_ENABLED } from './positionPreferences.js?v=1';
 import { rememberedRatingName, rememberRatingName, ratingRememberEnabled, setRatingRememberEnabled, wasRatingSubmittedHere, markRatingSubmittedHere, ratingConfirmation } from './ratingIdentity.js?v=1';
-import { RATING_SERVICE_ENABLED, requestRating } from './ratingService.js?v=1';
+import { RATING_SERVICE_ENABLED, requestRating } from './ratingService.js?v=2';
 let dispose = () => {};
 const readLang = () => { try { return localStorage.getItem('bp_lang') === 'en' ? 'en' : 'ko'; } catch { return 'ko'; } };
 const dubaiToday = () => new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());

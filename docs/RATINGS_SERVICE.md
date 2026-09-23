@@ -1,10 +1,18 @@
-# 이름 기반 활약투표 개선 — 배포 전 준비
+# 이름 기반 활약투표 개선 — 운영 전환
 
 기준: `master`, `f9a931d`. 이 문서는 해당 기준점 이후 로컬 구현을 설명한다.
 사용자는 Google 로그인 없는 활약투표, 기기별 이름 기억, 재투표 확인 및 점수 없는 실시간 상위 3명 공개를 요청했다.
-제출 여부와 공개 결과의 별도 저장 구조 추가도 승인했다. 키 없는 연결 설정과 단계적 배포도 승인받았다. 현재 연결 설정을 진행 중이며, Rules 변경과 commit/push/배포는 아직 수행하지 않았다.
+제출 여부와 공개 결과의 별도 저장 구조 추가도 승인했다. 키 없는 연결 설정과 단계적 배포도 승인받았다. 아래 최신 상태가 초기 준비 기록보다 우선한다.
 
-## 2026-09-23 연결 준비 진행 상황
+## 2026-09-23 최종 전환 상태
+
+- 서버 준비 코드와 연결 진단 수정은 master에 commit/push했고 Vercel Production Ready를 확인했다. 연결 식별자 입력 오류를 Vercel에서 바로잡은 뒤, 존재하지 않는 경기 날짜의 읽기 전용 API 요청으로 실제 Firestore 접근 성공을 확인했다(없는 경기이므로 HTTP 400). 비밀값은 출력하거나 다시 열어보지 않았다.
+- Firebase Console에서 기존 Rules와 비교한 뒤 활약투표 원본과 제출 표시만 비공개로 전환했다. 익명 원본 get 거부 / 공개 결과 get 허용을 Rules Playground로 확인했고, Console의 오늘 15:56 게시 버전으로 성공을 확인했다. 선수·출석·회계·참석투표 등 나머지 기존 권한은 변경하지 않았다.
+- Vercel 서버 활성화를 true로 저장하고 프론트도 서버 API 사용으로 전환한다. 캐시는 v65, app v21, voteManagement v15, votePage v7, ratingService v2이다. 예전 화면은 새로고침이 필요할 수 있으며, 서버 오류 때 원본 직접 쓰기로 우회하지 않는다.
+- 로컬 서버/캐시 검사 11개와 격리된 브라우저 활약투표 검사가 통과했다. 운영 Firebase에는 투표 제출, 테스트 문서 생성, 기존 데이터 변경·이관·삭제를 하지 않았다. 실제 운영 쓰기 성공은 시험하지 않았으므로 별도 확인 항목이다.
+- 포지션 설문은 계속 비활성이다. 아래의 준비 당시 기록과 초기 비활성 값은 작업 이력이며 현재 활성화 상태로 오해하지 않는다.
+
+## 2026-09-23 연결 준비 이력
 
 - IAM, Service Account Credentials, Security Token Service API를 활성화했다.
 - 운영 Vercel용 Workload Identity Pool과 OIDC provider를 생성했다. 서비스 계정 키는 생성하지 않았다.
@@ -57,7 +65,7 @@ Vercel Node 22 서버 함수 `/api/ratings`를 추가했다. 서버의 Cloud Fir
 6. 공개 API는 로그인 없이 이름 선택을 허용하므로 남의 이름으로 교체를 승인하는 사람을 막지 못한다. Origin 검사는 본인 인증이나 봇 방어가 아니다. 공개 전 Vercel 측 요청 제한/남용 대응 방식을 검토한다. 이 코드에는 지속적인 전역 rate limit이 없다.
 7. 운영 전환은 명시 승인 후 한다. 서버 API를 먼저 준비하고, legacy 클라이언트의 원본 읽기·쓰기를 차단한 뒤 프론트 `RATING_SERVICE_ENABLED=true`와 새 캐시 버전을 배포한다. 전환 중 이전 화면은 저장 실패할 수 있으므로 안내한다. 서버 오류 시 원본 직접 쓰기로 우회하지 않는다.
 
-현재 프론트/서버는 모두 비활성화 기본값이다. 임시 화면 모드에서는 모든 저장에 '이미 표가 있으면 교체' 확인을 띄우지만, 기기 밖의 제출 여부를 정확히 감지한다고 표현하지 않는다. 실제 서버 연결 전에는 실시간 결과도 열지 않는다.
+준비 단계에서는 프론트/서버를 비활성화했고, 임시 화면에서 모든 저장에 교체 확인을 표시했다. 최종 전환에서는 서버가 실제 기존 표를 확인하고, 화면에는 과거 선택을 보내지 않는다.
 
 ## 복구 / 보존
 
@@ -65,6 +73,6 @@ Vercel Node 22 서버 함수 `/api/ratings`를 추가했다. 서버의 Cloud Fir
 
 ## 확인 범위
 
-로컬 가짜 데이터로 이름 기억/해제, 기존 투표 감지, 취소, 다른 표 보존, 동시 수정 충돌, 점수 없는 상위 3명, 오류 시 우회 금지와 캐시 연결을 확인한다. 가짜 OIDC 토큰으로 클라이언트 생성이 가능하고 토큰이 없으면 실패하는 것도 확인한다. 운영 데이터 쓰기, 실제 IAM/Rules/OIDC 연결 시험은 하지 않는다. 실제 Firestore transaction과 Rules의 Emulator 통합 검증은 별도 필요하다.
+로컬 가짜 데이터로 이름 기억/해제, 기존 투표 감지, 취소, 다른 표 보존, 동시 수정 충돌, 점수 없는 상위 3명, 오류 시 우회 금지와 캐시 연결을 확인했다. 가짜 OIDC 토큰으로 클라이언트 생성과 토큰 누락 차단도 확인했다. 실제 IAM/OIDC 읽기 연결과 Console Rules 시뮬레이션은 확인했지만, 운영 데이터 쓰기 시험은 하지 않았다. 실제 Firestore transaction 쓰기와 Rules의 Emulator 통합 검증은 별도 필요하다.
 
 참고: [Vercel Node 함수](https://vercel.com/docs/functions/runtimes/node-js), [Vercel–Google Cloud OIDC 연결](https://vercel.com/docs/oidc/gcp), [Google Cloud Workload Identity Federation](https://cloud.google.com/iam/docs/workload-identity-federation), [Firestore 서버 IAM](https://docs.cloud.google.com/firestore/docs/security/iam), [Firestore transaction](https://firebase.google.com/docs/firestore/manage-data/transactions).

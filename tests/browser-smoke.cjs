@@ -45,9 +45,9 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
       const result=payload.action==='leaders'?{leaders:['Test 03','Test 04','Test 05']}:payload.action==='status'?{exists:ratingServerExists,version:'opaque-test-version'}:{saved:true};
       return route.fulfill({contentType:'application/json',body:JSON.stringify(result)});
     }
-    if(url.startsWith(base)&&url.includes('/js/modules/ratingService.js')&&enableRatingServiceForTest) {
+    if(url.startsWith(base)&&url.includes('/js/modules/ratingService.js')) {
       const source=await readFile(path.join(root,'js/modules/ratingService.js'),'utf8');
-      return route.fulfill({contentType:'text/javascript',body:source.replace('RATING_SERVICE_ENABLED=false','RATING_SERVICE_ENABLED=true')});
+      return route.fulfill({contentType:'text/javascript',body:source.replace(/RATING_SERVICE_ENABLED=(?:true|false)/,`RATING_SERVICE_ENABLED=${enableRatingServiceForTest}`)});
     }
     if(url.startsWith(base)&&url.includes('/js/modules/positionPreferences.js')&&enableSurveyForTest) {
       const source=await readFile(path.join(root,'js/modules/positionPreferences.js'),'utf8');
@@ -156,7 +156,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   if(process.argv.includes('--operations')) {
     await page.evaluate(async()=>{
       for(const [status,ns] of [['maybe',['Test 02','Test 03']],['absent',['Test 04','Test 05']]])ns.forEach((name,i)=>{__fixture['votes/test-vote/responses/'+name]={name,status,updatedAt:{seconds:2,nanoseconds:i?1:9},attendingSince:{seconds:i?90:1}};});
-      const m=await import('/js/modules/votePage.js?v=6');await m.renderVote({},'test-vote');
+      const m=await import('/js/modules/votePage.js?v=7');await m.renderVote({},'test-vote');
     });
     await page.waitForSelector('.attendance-group.maybe li');
     assert.deepEqual(await page.locator('.attendance-group.maybe .roster-name').allTextContents(),['Test 03','Test 02']);
@@ -282,7 +282,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   await page.evaluate(()=>localStorage.setItem('bp_lang','ko'));
   await page.goto(base+'/?vote=current');await page.waitForSelector('.match-review-link');
   await page.evaluate(ns=>{ns.slice(1,18).forEach((name,i)=>{__fixture['votes/test-vote/responses/'+name]={name,status:i<13?'attend':i<15?'maybe':'absent',guest:false,waitlist:false,attendingSince:{seconds:11+i}};});},names);
-  await page.evaluate(async()=>{const m=await import('/js/modules/votePage.js?v=6');await m.renderVote({},'test-vote');});await page.waitForSelector('.match-review-link');
+  await page.evaluate(async()=>{const m=await import('/js/modules/votePage.js?v=7');await m.renderVote({},'test-vote');});await page.waitForSelector('.match-review-link');
   assert.equal(await page.locator('.attendance-group.attend li').count(),14);
   assert.equal(await page.evaluate(()=>__writes.length),0);
   await page.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-vote-mobile-preview.png'),fullPage:true});
