@@ -49,9 +49,9 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
       const source=await readFile(path.join(root,'js/modules/ratingService.js'),'utf8');
       return route.fulfill({contentType:'text/javascript',body:source.replace(/RATING_SERVICE_ENABLED=(?:true|false)/,`RATING_SERVICE_ENABLED=${enableRatingServiceForTest}`)});
     }
-    if(url.startsWith(base)&&url.includes('/js/modules/positionPreferences.js')&&enableSurveyForTest) {
+    if(url.startsWith(base)&&url.includes('/js/modules/positionPreferences.js')) {
       const source=await readFile(path.join(root,'js/modules/positionPreferences.js'),'utf8');
-      return route.fulfill({contentType:'text/javascript',body:source.replace('POSITION_SURVEY_ENABLED=false','POSITION_SURVEY_ENABLED=true')});
+      return route.fulfill({contentType:'text/javascript',body:source.replace(/POSITION_SURVEY_ENABLED=(?:true|false)/,`POSITION_SURVEY_ENABLED=${enableSurveyForTest}`)});
     }
     if(url.startsWith(base))return route.continue();
     if(url.includes('firebase-firestore.js'))return route.fulfill({contentType:'text/javascript',body:firestore});
@@ -63,6 +63,43 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   });
   const page=await context.newPage(), errors=[],dialogs=[];let cancelGuest=false,cancelRating=false;
   page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>{dialogs.push(d.message());return (cancelGuest&&/Guest|guest/.test(d.message()))||cancelRating?d.dismiss():d.accept();});
+  if(process.argv.includes('--survey')) {
+    enableSurveyForTest=true;
+    await page.goto(base+'/?preferences=1');await page.waitForSelector('#preference-name');
+    assert.match(await page.locator('#preference-purpose-title').textContent(),/왜 포지션/);
+    assert.match(await page.locator('.preference-plan').textContent(),/8주 동안/);
+    assert.match(await page.locator('.preference-boundaries').textContent(),/자리 보장 투표는 아닙니다/);
+    await page.locator('#preference-signout').click();await page.waitForSelector('#preference-login');
+    assert.equal(await page.locator('#preference-purpose-title').count(),1,'purpose visible before sign-in');
+    await page.locator('#preference-language').click();await page.waitForSelector('#preference-login');
+    assert.match(await page.locator('#preference-purpose-title').textContent(),/Why are we asking/);
+    await page.locator('#preference-login').click();await page.waitForSelector('#preference-name');
+    await page.locator('#preference-name').selectOption('Test 01');
+    await page.locator('[data-position="CB"]').click();await page.locator('#preference-same').click();
+    await page.locator('#preference-stable').check();await page.locator('#preference-note').fill('Learn positioning');
+    await page.locator('#preference-save').click();await page.waitForFunction(()=>__writes.length===1);
+    assert.equal(await page.evaluate(()=>__writes[0].path),'privatePositionPreferences/test-admin');
+    assert.deepEqual(await page.evaluate(()=>[__writes[0].value.name,__writes[0].value.first,__writes[0].value.second]),['Test 01','CB','CB']);
+    assert.equal(await page.locator('#preference-name').isDisabled(),true);
+    assert.ok(await page.evaluate(()=>__reads.filter(p=>p.startsWith('privatePositionPreferences')).every(p=>p==='privatePositionPreferences/test-admin')));
+    assert.deepEqual(await page.evaluate(()=>__fixture['players/Test 01']),data['players/Test 01']);
+    const savedPreference=await page.evaluate(()=>__fixture['privatePositionPreferences/test-admin']);
+    await context.addInitScript(value=>{window.__fixture['privatePositionPreferences/test-admin']=value;},savedPreference);
+    await page.reload();await page.waitForSelector('#preference-name');
+    assert.equal(await page.locator('#preference-name').inputValue(),'Test 01');
+    assert.equal(await page.locator('#preference-name').isDisabled(),true);
+    assert.match(await page.locator('[data-rank="first"]').textContent(),/Centre back/);
+    await page.locator('[data-rank="second"]').click();await page.locator('[data-position="FW"]').click();
+    await page.locator('#preference-save').click();await page.waitForFunction(()=>__writes.length===1);
+    assert.equal(await page.evaluate(()=>__writes[0].value.second),'FW','returning respondent can change their own preference');
+    await page.setViewportSize({width:320,height:740});
+    await page.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-position-survey-mobile.png'),fullPage:true});
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'survey fits a narrow phone');
+    await page.setViewportSize({width:1280,height:900});
+    await page.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-position-survey-desktop.png'),fullPage:true});
+    assert.deepEqual(errors,[]);console.log('PASS: bilingual survey purpose, Google sign-in, registered name, same-position preference, own-response access, preserved players and narrow-screen layout.');
+    await context.close();return;
+  }
   await page.goto(base+'/?vote=current');await page.waitForSelector('.match-review-link');
   assert.equal(await page.locator('#review-name').count(),0,'ratings must have a separate screen');
   assert.equal(await page.locator('.preparation-card').getAttribute('open'),null,'resources start collapsed');
@@ -124,12 +161,15 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
     assert.match(dialogs.at(-1),/previous submission recorded on this device/);
     assert.equal(await page.locator('#review-picks .coach-selected').count(),3,'cancel retains current draft');cancelRating=false;
     await page.locator('#review-name').selectOption('Test 02');assert.equal(await page.locator('#review-picks .coach-selected').count(),0);
-    await page.locator('#review-remember').uncheck();await page.reload();await page.waitForSelector('#review-name');
+    await page.locator('#review-remember').click();await page.reload();await page.waitForSelector('#review-name');
     assert.equal(await page.locator('#review-name').inputValue(),'','forget name on shared devices');
-    assert.equal(await page.locator('#review-remember').isChecked(),false,'shared-device opt-out survives reload');
+    assert.equal(await page.locator('#review-remember').textContent(),'Remember my name','shared-device opt-out survives reload');
+    assert.equal(await page.locator('#review-remember[type="checkbox"]').count(),0);
     enableRatingServiceForTest=true;await page.reload();await page.waitForSelector('#review-name');
     await page.getByText('Recognised by teammates · Live TOP 3',{exact:true}).waitFor();
     assert.equal(await page.locator('#review-result strong').count(),3);
+    assert.deepEqual(await page.locator('.rating-medal').allTextContents(),['🥇','🥈','🥉']);
+    assert.deepEqual(await page.locator('.rating-rank').allTextContents(),['1st','2nd','3rd']);
     await page.locator('#review-name').selectOption('Test 02');
     for(const name of ['Test 03','Test 04','Test 05'])await page.locator(`[data-player="${name}"]`).click();
     cancelRating=true;await page.locator('#review-save').click();await page.waitForFunction(()=>!document.querySelector('#review-save').disabled);
@@ -142,7 +182,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
     assert.deepEqual(await page.evaluate(()=>__reads.filter(p=>p==='ratings'||p.startsWith('ratings/'))),[]);
     // Live result updates contain only the three recognised names, never a voter's picks.
     await page.evaluate(async d=>{const f=await import('https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js');await f.setDoc(f.doc({},'ratingResults',d),{leaders:['Test 06','Test 07','Test 08']});__writes=[];},past);
-    await page.getByText('★ Test 06',{exact:true}).waitFor();
+    await page.locator('#review-result strong').filter({hasText:'Test 06'}).waitFor();
     for(const name of ['Test 03','Test 04','Test 05'])await page.locator(`[data-player="${name}"]`).click();
     ratingFailure='changed';await page.locator('#review-save').click();await page.waitForFunction(()=>document.querySelector('#review-msg').textContent.includes('changed elsewhere'));
     assert.equal(await page.locator('#review-picks .coach-selected').count(),3);
@@ -156,7 +196,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   if(process.argv.includes('--operations')) {
     await page.evaluate(async()=>{
       for(const [status,ns] of [['maybe',['Test 02','Test 03']],['absent',['Test 04','Test 05']]])ns.forEach((name,i)=>{__fixture['votes/test-vote/responses/'+name]={name,status,updatedAt:{seconds:2,nanoseconds:i?1:9},attendingSince:{seconds:i?90:1}};});
-      const m=await import('/js/modules/votePage.js?v=7');await m.renderVote({},'test-vote');
+      const m=await import('/js/modules/votePage.js?v=8');await m.renderVote({},'test-vote');
     });
     await page.waitForSelector('.attendance-group.maybe li');
     assert.deepEqual(await page.locator('.attendance-group.maybe .roster-name').allTextContents(),['Test 03','Test 02']);
@@ -282,7 +322,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   await page.evaluate(()=>localStorage.setItem('bp_lang','ko'));
   await page.goto(base+'/?vote=current');await page.waitForSelector('.match-review-link');
   await page.evaluate(ns=>{ns.slice(1,18).forEach((name,i)=>{__fixture['votes/test-vote/responses/'+name]={name,status:i<13?'attend':i<15?'maybe':'absent',guest:false,waitlist:false,attendingSince:{seconds:11+i}};});},names);
-  await page.evaluate(async()=>{const m=await import('/js/modules/votePage.js?v=7');await m.renderVote({},'test-vote');});await page.waitForSelector('.match-review-link');
+  await page.evaluate(async()=>{const m=await import('/js/modules/votePage.js?v=8');await m.renderVote({},'test-vote');});await page.waitForSelector('.match-review-link');
   assert.equal(await page.locator('.attendance-group.attend li').count(),14);
   assert.equal(await page.evaluate(()=>__writes.length),0);
   await page.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-vote-mobile-preview.png'),fullPage:true});

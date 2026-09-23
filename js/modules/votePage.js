@@ -2,7 +2,7 @@ import { doc, getDoc, getDocs, collection, query, where, setDoc, onSnapshot, ser
 import { cleanName, escapeHtml as esc, chooseReviewDate } from './coachCore.js?v=1';
 import { lessonHtml, addCoachStyles } from './weeklyContent.js?v=4';
 import { compareResponseTime, confirmGuest } from './voteOrder.js?v=1';
-import { POSITION_SURVEY_ENABLED } from './positionPreferences.js?v=1';
+import { POSITION_SURVEY_ENABLED } from './positionPreferences.js?v=2';
 import { rememberedRatingName, rememberRatingName, ratingRememberEnabled, setRatingRememberEnabled, wasRatingSubmittedHere, markRatingSubmittedHere, ratingConfirmation } from './ratingIdentity.js?v=1';
 import { RATING_SERVICE_ENABLED, requestRating } from './ratingService.js?v=2';
 let dispose = () => {};
@@ -158,16 +158,21 @@ export function mountRatings(db, container, date, names, lang) {
     container.innerHTML=`<section class="coach-card"><h2>${t('지난 경기 활약 투표','Previous match appreciation')} · ${esc(date)}</h2><p class="coach-note">${t('지난 경기에 참여했다면 인상 깊었던 3명을 순서대로 선택하세요. 수비·도움·동료 지원도 생각해 주세요. 이번 참석 신청과 별개이며 건너뛰어도 됩니다.','If you played that match, pick three teammates in order. Remember defending, effort and support too. This is optional and separate from your RSVP.')}</p><div class="review-video"><a id="review-match-video" href="https://www.youtube.com/@FC%EB%B0%94%EB%A0%88%EC%95%84" target="_blank" rel="noopener noreferrer">▷ ${t('지난 경기 영상','Previous match footage')} ↗</a><p>${t('팀 유튜브 채널에서 위 경기 날짜의 영상을 확인해 보세요. 새 탭에서 열립니다.','Find the match date above on our team’s YouTube channel. Opens in a new tab.')}</p></div><label>${t('지난 경기 참가자 본인 이름','Your name from that match')}<select id="review-name"><option value="">${t('선택','Select')}</option>${names.map(n=>`<option>${esc(n)}</option>`).join('')}</select></label><div id="review-picks"></div><button id="review-save" class="coach-primary" disabled>${t('투표 저장','Save vote')}</button><p id="review-msg" role="status"></p><div id="review-result"></div></section>`;
     const select=container.querySelector('#review-name'), save=container.querySelector('#review-save'), msg=container.querySelector('#review-msg');
     select.insertAdjacentHTML('afterend',`<span class="coach-note" style="display:block">${t('이름이 다르면 위에서 다시 선택하세요. 이름 기억은 본인 인증이 아닙니다.','Wrong name? Select yours above. Remembering a name does not verify identity.')}</span>`);
-    select.closest('label').insertAdjacentHTML('afterend',`<label class="preference-check"><input type="checkbox" id="review-remember" checked>${t('이 기기에 내 이름 기억하기 · 공용 기기에서는 해제','Remember my name on this device · turn off on shared devices')}</label><p class="coach-note" id="review-memory-message" role="status"></p>`);
+    select.closest('label').insertAdjacentHTML('afterend',`<div class="rating-memory"><span id="review-memory-label"></span><button type="button" id="review-remember"></button></div><p class="coach-note" id="review-memory-message" role="status"></p>`);
     const remember=container.querySelector('#review-remember'),memoryMessage=container.querySelector('#review-memory-message');
-    remember.checked=ratingRememberEnabled();
+    let rememberEnabled=ratingRememberEnabled();
+    const drawMemory=()=>{
+        container.querySelector('#review-memory-label').textContent=rememberEnabled?t('이름은 이 기기에 자동으로 기억됩니다.','Your name is remembered on this device.'):t('이 기기에서는 이름을 기억하지 않습니다.','This device will not remember your name.');
+        remember.textContent=rememberEnabled?t('이름 기억 끄기','Turn off name memory'):t('이름 기억 켜기','Remember my name');
+    };
+    drawMemory();
     select.value=mine;
     if(remembered&&!mine)memoryMessage.textContent=t('기억된 이름이 이번 경기 명단에 없습니다. 참가자 본인 이름을 선택해 주세요.','The remembered name is not on this match roster. Select your own name.');
     const storeName=()=>{
-        const ok=rememberRatingName(remember.checked?mine:'');
-        memoryMessage.textContent=!ok?t('이 브라우저에서는 이름을 기억할 수 없습니다. 투표는 계속할 수 있습니다.','This browser cannot remember your name. You can still vote.'):remember.checked&&mine?t('이 브라우저에서 다음에도 이름을 선택해 드립니다. 선택한 선수 정보는 기기에 저장하지 않습니다.','Your name will be selected next time in this browser. Ballot choices are not stored on the device.'):t('이 기기에 기억한 이름을 지웠습니다.','The remembered name has been removed from this device.');
+        const ok=rememberRatingName(rememberEnabled?mine:'');
+        memoryMessage.textContent=!ok?t('이 브라우저에서는 이름을 기억할 수 없습니다. 투표는 계속할 수 있습니다.','This browser cannot remember your name. You can still vote.'):'';
     };
-    remember.onchange=()=>{setRatingRememberEnabled(remember.checked);storeName();};
+    remember.onclick=()=>{rememberEnabled=!rememberEnabled;setRatingRememberEnabled(rememberEnabled);storeName();drawMemory();};
     const draw=()=>{
         container.querySelector('#review-picks').innerHTML=mine?names.filter(n=>n!==mine).map(n=>`<button data-player="${esc(n)}" class="${picks.includes(n)?'coach-selected':''}" ${saving?'disabled':''}>${esc(n)} ${picks.includes(n)?`(${3-picks.indexOf(n)}${en?' pts':'점'})`:''}</button>`).join(''):'';
         save.disabled=!mine || picks.length!==3 || saving;
@@ -206,7 +211,7 @@ export function mountRatings(db, container, date, names, lang) {
         const showLeaders=value=>{
             if(!alive)return;
             const leaders=Array.isArray(value)?[...new Set(value.filter(n=>typeof n==='string'&&names.includes(n)))].slice(0,3):[];
-            resultBox.innerHTML=`<h3>${t('동료들이 주목한 활약 · 현재 TOP 3','Recognised by teammates · Live TOP 3')}</h3><p class="coach-note">${t('포인트와 개인별 선택은 공개하지 않습니다. 동점이면 이름순으로 최대 3명을 표시합니다.','Points and individual choices are private. Ties are ordered by name, showing up to three players.')}</p>${leaders.length?`<div class="coach-grid">${leaders.map(n=>`<strong class="coach-note">★ ${esc(n)}</strong>`).join('')}</div>`:`<p>${t('아직 집계할 투표가 없습니다.','No votes to display yet.')}</p>`}`;
+            resultBox.innerHTML=`<h3>${t('동료들이 주목한 활약 · 현재 TOP 3','Recognised by teammates · Live TOP 3')}</h3><p class="coach-note">${t('포인트와 개인별 선택은 공개하지 않습니다. 동점이면 이름순으로 순위를 정해 최대 3명을 표시합니다.','Points and individual choices are private. Ties are ranked by name, showing up to three players.')}</p>${leaders.length?`<ol class="rating-podium">${leaders.map((n,i)=>`<li class="rating-place-${i+1}"><span class="rating-medal" aria-hidden="true">${['🥇','🥈','🥉'][i]}</span><span class="rating-rank">${en?['1st','2nd','3rd'][i]:`${i+1}위`}</span><strong>${esc(n)}</strong></li>`).join('')}</ol>`:`<p>${t('아직 집계할 투표가 없습니다.','No votes to display yet.')}</p>`}`;
         };
         resultBox.textContent=t('현재 활약 투표 결과를 확인하고 있습니다…','Loading the current top three…');
         // Existing votes are aggregated on the server without modifying/migrating them.

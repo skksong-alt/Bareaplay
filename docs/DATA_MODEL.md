@@ -2,7 +2,7 @@
 
 ## 2026-09-23 추가 승인: 로그인 없는 활약투표 상태 / 공개 집계
 
-별도 저장 구조 추가를 승인받았다. 구현은 로컬이며 서버 연결·Rules 변경·배포는 아직 하지 않았다. 상세 전환/복구 절차는 `docs/RATINGS_SERVICE.md`에 있다.
+별도 저장 구조 추가를 승인받았다. 2026-09-23 서버 연결·Rules 변경·운영 배포를 완료했다. 상세 전환/복구 절차는 `docs/RATINGS_SERVICE.md`에 있다.
 
 - 기존 `ratings/{date}.votes.{name}.{picks,at}`를 유지한다. 서버가 사용자의 명시적 제출에 따라 해당 이름만 merge하며 다른 투표와 미지 필드는 보존한다.
 - 신규 `ratingParticipation/{date}/voters/{name}`: `submitted:boolean`, `revision:string`, `updatedAt:timestamp`. 선택 원본 없음. 브라우저 직접 접근은 차단하고 서버가 제출 여부만 알려주는 설계다.
@@ -12,7 +12,7 @@
 
 ## 2026-09-23 추가 설계: 비공개 희망 포지션 설문
 
-사용자가 Google 로그인 방식을 승인했다. 아래 경로는 구현 코드이며, 운영 컬렉션 생성이나 Rules 배포를 했다는 뜻은 아니다. 기능은 접근 권한 배포 전까지 `POSITION_SURVEY_ENABLED=false`로 닫혀 있다.
+사용자가 Google 로그인 방식과 2026-09-23 권한 적용·배포를 승인했다. 지정 감독 UID를 Firebase Console 계정과 Authentication 사용자 목록에서 대조했다. 본인/지정 감독 전용 Rules를 적용한 뒤 기능을 연다. 감독 UID는 저장소에 기록하지 않는다. 운영 테스트 응답이나 컬렉션을 미리 만들지 않으며 실제 팀원의 제출 때 생성된다. 공개 절차는 `docs/POSITION_SURVEY.md`에 기록한다.
 
 `privatePositionPreferences/{Firebase Auth uid}`: Google 계정당 응답 한 문서.
 
@@ -25,10 +25,10 @@
 | `updatedAt` | server timestamp | 마지막 제출 시각 |
 
 - 기존 `players` 주/부/희망 포지션, 참석 투표와 배정 정보를 덮어쓰거나 자동 이관하지 않는다.
-- 응답자는 자기 uid 문서만 읽고 수정한다. 전체 응답 조회는 일반 관리자 전체가 아니라 지정된 감독 uid 하나로 제한하는 Rules 초안이다.
+- 응답자는 자기 uid 문서만 읽고 수정한다. 전체 응답 조회는 일반 관리자 전체가 아니라 지정된 감독 uid 하나로 제한한다.
 - Google 로그인은 계정 소유만 구분한다. 본명과 계정의 일치를 자동 증명하지 않는다. 같은 이름의 여러 계정 응답은 감독 화면에 표시하며 수요 집계에서 제외한다.
 - 새 코드에는 설문 삭제 기능이 없다. 문제 시 기능 진입을 닫고 응답은 보존한다.
-- 배포 전 감독 uid를 비공개로 확인하고 기존 광역 허용 규칙이 새 경로를 공개하지 않는지 확인해야 한다. `docs/POSITION_SURVEY_RULES_DRAFT.txt`는 전체 규칙을 대체하는 파일이 아닌 검토용 조각이다.
+- 기존 광역 허용 규칙의 읽기·쓰기 모두에서 이 컬렉션을 제외했다. `docs/POSITION_SURVEY_RULES_DRAFT.txt`는 전체 규칙을 대체하는 파일이 아닌 적용 로직 조각이다.
 
 ## 2026-09-16 추가: 코칭 기능 (기존 데이터 이관 없음)
 

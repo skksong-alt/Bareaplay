@@ -5,14 +5,34 @@ import { POSITIONS,validatePreference,preferenceSummary } from './positionPrefer
 
 // Release gate: enable ONLY after the coach-only Rules have been approved and deployed.
 // This gate is not a security boundary; the Firestore Rules are mandatory.
-export const POSITION_SURVEY_ENABLED=false;
+export const POSITION_SURVEY_ENABLED=true;
 let unsubscribe=()=>{};
 export function renderPositionSurvey(db,auth) {
     unsubscribe();
     const en=(()=>{try{return localStorage.getItem('bp_lang')==='en';}catch{return false;}})(),t=(ko,eng)=>en?eng:ko;
     document.body.className='match-page';document.documentElement.lang=en?'en':'ko';
     document.title=t('희망 포지션 · BareaPlay','Position preferences · BareaPlay');
-    document.body.innerHTML=`<main class="match-shell preference-shell"><a class="match-back" href="/?vote=current">← ${t('참석 신청으로','Back to RSVP')}</a><section class="coach-card"><p class="coach-eyebrow">MY FOOTBALL ROLE</p><h1>${t('내가 뛰고 싶은 자리','Where I want to play')}</h1><p>${t('희망은 배정 보장이 아닙니다. 키퍼·심판·휴식 순번은 별도로 적용됩니다.','Preferences are not a guarantee. GK, referee and rest duties are assigned separately.')}</p><div id="preference-body"></div></section></main>`;
+    document.body.innerHTML=`<main class="match-shell preference-shell">
+        <div class="preference-topbar"><a class="match-back" href="/?vote=current">← ${t('참석 신청으로','Back to RSVP')}</a><button id="preference-language" type="button" lang="${en?'ko':'en'}">${en?'한국어':'English'}</button></div>
+        <section class="coach-card">
+            <p class="coach-eyebrow">BAREA · 8-WEEK TEAM TRIAL</p>
+            <h1>${t('희망 포지션 설문','Your preferred positions')}</h1>
+            <p class="preference-lead">${t('오늘보다 나은 나, 함께 성장하는 바레아. 여러분이 배우고 싶은 역할부터 듣겠습니다.','A better player, a stronger Barea. Tell us which roles you want to learn and grow in.')}</p>
+            <section class="preference-purpose" aria-labelledby="preference-purpose-title">
+                <h2 id="preference-purpose-title">${t('왜 포지션을 묻나요?','Why are we asking?')}</h2>
+                <p>${t('팀과 포지션이 매번 바뀌면 같은 역할의 움직임을 익히고 동료와 호흡을 맞출 시간이 부족할 수 있습니다. 원하는 자리만 번갈아 뛰는 것보다, 익숙한 역할에서 기본기와 판단력을 쌓는 방향을 8주 동안 시험해 보려 합니다.','Frequent changes of team and position can leave little time to learn a role and understand teammates. For eight weeks, we want to try more consistent roles, giving everyone time to practise the basics and make better decisions.')}</p>
+                <p><strong>${t('목표는 자리를 못 박는 것이 아니라, 각자가 자신 있는 역할을 만들고 함께 더 잘 뛰는 것입니다.','The goal is not to lock anyone into a position. It is to develop a role you feel confident in and play better together.')}</strong></p>
+            </section>
+            <details class="preference-plan">
+                <summary id="preference-plan-title">${t('8주 운영 계획 보기','See the eight-week plan')}</summary>
+                <ol><li><b>${t('먼저 · 희망 파악','First · Listen')}</b><span>${t('1·2지망과 배우고 싶은 점을 모읍니다. 감독이 포지션별 수요와 팀 균형을 함께 봅니다.','Share your first and second choices and what you want to learn. The coach will review demand alongside team balance.')}</span></li>
+                <li><b>${t('8주 동안 · 반복하고 조정','Over eight weeks · Practise and adjust')}</b><span>${t('주 역할과 팀 조합을 가능한 한 유지하며 연습합니다. 결원·참석 인원·역할 적합성에 따라 필요한 조정은 합니다. 시작일과 배정은 감독이 별도로 안내합니다.','Keep primary roles and team combinations as consistent as practical. Adjust for attendance, absences and role fit. The coach will announce the start date and assignments separately.')}</span></li>
+                <li><b>${t('마무리 · 함께 돌아보기','At the end · Review together')}</b><span>${t('역할에 대한 이해, 기본기, 동료와의 호흡, 본인 의견을 돌아보고 다음 운영 방식을 정합니다.','Review understanding of the role, basic skills, teamwork and your feedback before deciding what comes next.')}</span></li></ol>
+            </details>
+            <div class="preference-boundaries"><p><strong>${t('희망 조사이지, 자리 보장 투표는 아닙니다.','This is a preference survey, not a guaranteed assignment.')}</strong> ${t('여러분의 의사를 최대한 참고하되, 지원이 몰리는 자리와 꼭 필요한 역할 사이의 균형도 맞춥니다. 기존 선수 평가나 오늘의 배정이 자동 변경되지는 않습니다.','We will respect your wishes as much as possible while balancing popular positions with roles the team needs. This does not automatically change player assessments or today’s lineup.')}</p><p>${t('심판은 전체 참석자, 키퍼·휴식은 각 팀 안에서 늦은 참석 신청순으로 순환합니다. 전담 키퍼 예외를 포함한 기존 원칙은 그대로입니다.','Referees rotate from the latest RSVPs across all attendees; goalkeeper and rest duties rotate from the latest RSVPs within each team. The dedicated-goalkeeper exception stays in place.')}</p><p>${t('응답은 본인과 지정 감독만 볼 수 있습니다. 팀원에게 공개되지 않으며, 같은 Google 계정으로 다시 와서 희망을 수정할 수 있습니다.','Only you and the designated coach can view your response. It is not shared with teammates. You can return with the same Google account to update your preferences.')}</p></div>
+            <div id="preference-body"></div>
+        </section></main>`;
+    document.getElementById('preference-language').onclick=()=>{try{localStorage.setItem('bp_lang',en?'ko':'en');}catch{}renderPositionSurvey(db,auth);};
     const body=document.getElementById('preference-body');
     if(!POSITION_SURVEY_ENABLED){body.textContent=t('비공개 접근 권한을 준비 중입니다. 설문은 아직 열리지 않았습니다.','Private access is being prepared. This survey is not open yet.');return;}
     let generation=0;
@@ -65,7 +85,7 @@ export function renderPositionSurvey(db,auth) {
 
 export function mountPreferenceAdmin(db,state) {
     const host=document.getElementById('page-players');if(!host)return;
-    const panel=document.createElement('section');panel.className='coach-card';panel.innerHTML='<h2>비공개 희망 포지션</h2><p class="coach-note">본인 희망과 감독의 기존 평가를 분리합니다. 아래 내용으로 선수 정보나 배정을 자동 변경하지 않습니다.</p><button id="preference-admin-load">응답·수요 보기</button><label><input id="preference-attending" type="checkbox">현재 팀 배정 참가자만 집계</label><div id="preference-admin-result"></div>';host.append(panel);
+    const panel=document.createElement('section');panel.className='coach-card';panel.innerHTML='<h2>비공개 희망 포지션</h2><p class="coach-note">본인 희망과 감독의 기존 평가를 분리합니다. 아래 내용으로 선수 정보나 배정을 자동 변경하지 않습니다.</p><p><a class="coach-link" href="/?preferences=1" target="_blank" rel="noopener noreferrer">팀원에게 공유할 설문 열기 ↗</a></p><button id="preference-admin-load">응답·수요 보기</button><label><input id="preference-attending" type="checkbox">현재 팀 배정 참가자만 집계</label><div id="preference-admin-result"></div>';host.append(panel);
     let responses=[];
     const draw=()=>{
         const only=panel.querySelector('#preference-attending').checked;

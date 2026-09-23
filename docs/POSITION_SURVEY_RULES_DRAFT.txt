@@ -1,8 +1,8 @@
-// REVIEW FRAGMENT ONLY — NOT a complete ruleset. Do not replace existing rules with this file.
-// Insert inside the existing match /databases/{database}/documents after approval.
+// Rules fragment applied on 2026-09-23 after user approval; NOT a complete ruleset.
+// Do not replace existing rules with this file. The real coach UID stays out of Git.
 // Replace the placeholder with the verified coach UID privately before deployment.
-// Existing recursive/global allows MUST be inspected: an overlapping public read allow
-// would override this restriction. Do not enable the app feature until this is resolved.
+// The deployed top-level catch-all excludes privatePositionPreferences from BOTH
+// read and write. Preserve that exclusion: overlapping allow rules override restrictions.
 // Google login binds an answer to an account, NOT to a verified legal/team name.
 
 function positionSurveySignedIn() {
