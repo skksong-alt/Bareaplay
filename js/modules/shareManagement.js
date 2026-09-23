@@ -3,7 +3,7 @@ import { doc, setDoc, collection, onSnapshot, addDoc, getDoc, getDocs, deleteDoc
 import { getPosCellMap } from './lineupGenerator.js?v=10'; // [정리] 포메이션 좌표 단일화
 import { compareResponseTime } from './voteOrder.js?v=1';
 import { sharedRefereesFromLineups } from './dutyRotation.js?v=2';
-import { validateLineup } from './coachCore.js?v=1';
+import { prepareShareLineups } from './shareLineupValidation.js?v=1';
 
 let db, state;
 let addLocationBtn, shareDate, shareTime, shareLocationSelect;
@@ -90,28 +90,19 @@ async function generateShareableLink() {
     try {
         if (window.prepareCoach) await window.prepareCoach();
         const allTeamLineups = {};
-        const lineupPromises = state.teams.map((team, i) => {
-            if (state.teamLineupCache && state.teamLineupCache[i]) {
-                return Promise.resolve(state.teamLineupCache[i]);
-            }
-            const teamMembers = team.map(p => p.name.replace(' (신규)', ''));
-            const formations = Array.from(document.querySelectorAll('#page-lineup select[id^="formation-q"]')).map(s => s.value);
-            return window.lineup.executeLineupGeneration(teamMembers, formations, true);
-        });
-
-        const lineups = await Promise.all(lineupPromises);
-        if (lineups.some(l => !l)) throw new Error('모든 팀의 라인업을 먼저 생성하세요. 기존 공유 결과는 유지됩니다.');
+        const lineups = state.teams.map((_,i)=>state.teamLineupCache?.[i]);
+        if (lineups.some(l => !l)) throw new Error('모든 팀의 저장된 라인업을 먼저 확인하세요. 기존 공개 결과는 유지됩니다.');
         const order=await window.voteMgmt.getDutyOrder(selected.info.date);
         const squads=state.teams.map(team=>team.map(p=>normalizeName(String(p.name).replace(' (신규)',''))));
-        if(lineups.some((l,t)=>!validateLineup(l,squads[t]) || l.lineups.some((q,i)=>Object.values(q).flat().length!==(posCellMap[l.formations?.[i]]||[]).length))) {
-            throw new Error('라인업 인원·포메이션이 맞지 않습니다. 기존 공개 결과는 유지됩니다.');
-        }
+        // The public board uses the formation's visible slots. Legacy unused keys
+        // must not invalidate or change a fully arranged lineup.
+        const readyLineups=prepareShareLineups(lineups,squads,posCellMap);
         // A previously saved lineup may use the old same-team referee rotation.
         // Keep every field position and off-field player; only reconcile who referees.
         const sharedReferees=selected.info.date >= window.getLocalDate()
-            ? sharedRefereesFromLineups(lineups,order) : null;
+            ? sharedRefereesFromLineups(readyLineups,order) : null;
         
-        lineups.forEach((originalLineup, i) => {
+        readyLineups.forEach((originalLineup, i) => {
             if (originalLineup) {
                 const lineup = JSON.parse(JSON.stringify(originalLineup));
                 if(sharedReferees)lineup.referees=sharedReferees.map(ref=>ref?.name||null);
