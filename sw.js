@@ -1,16 +1,16 @@
 // sw.js
-const CACHE_NAME = 'bareaplay-cache-v63';
+const CACHE_NAME = 'bareaplay-cache-v64';
 const urlsToCache = [
     '/', '/index.html', '/share.html', '/css/style.css',
     '/css/match-hub.css?v=3',
-    '/js/app.js?v=19',
+    '/js/app.js?v=20',
     '/js/store.js?v=2',
     '/js/modules/playerManagement.js?v=5',
     '/js/modules/teamBalancer.js?v=9',
     '/js/modules/lineupGenerator.js?v=9',
     '/js/modules/accounting.js?v=7',
     '/js/modules/shareManagement.js?v=9',
-    '/js/modules/voteManagement.js?v=13',
+    '/js/modules/voteManagement.js?v=14',
     '/js/modules/lineupStats.js?v=2',
     '/js/modules/coachCore.js?v=1',
     '/js/modules/voteOrder.js?v=1',
@@ -20,7 +20,9 @@ const urlsToCache = [
     '/js/modules/positionPreferences.js?v=1',
     '/js/modules/positionPreferencesCore.js?v=1',
     '/js/modules/weeklyContent.js?v=4',
-    '/js/modules/votePage.js?v=5',
+    '/js/modules/votePage.js?v=6',
+    '/js/modules/ratingIdentity.js?v=1',
+    '/js/modules/ratingService.js?v=1',
     '/js/modules/coachWorkspace.js?v=4',
     '/js/modules/matchRecord.js?v=2',
     '/manifest.json', '/favicon.ico', '/assets/icon-512.png'
@@ -48,7 +50,7 @@ self.addEventListener('install', (event) => {
 // [수정] 네트워크 우선: 항상 최신 파일을 먼저 받고, 오프라인일 때만 저장본 사용
 self.addEventListener('fetch', (event) => {
     const url = event.request.url;
-    if (url.includes('googleapis.com') || url.includes('gstatic.com')) return;
+    if (url.includes('googleapis.com') || url.includes('gstatic.com') || new URL(url).pathname.startsWith('/api/')) return;
 
     event.respondWith(
         fetch(event.request)

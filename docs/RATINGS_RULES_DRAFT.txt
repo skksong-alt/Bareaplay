@@ -1,0 +1,74 @@
+// REVIEW DRAFT ONLY — NOT DEPLOYED OR EMULATOR-VERIFIED.
+// Based on the rules visible in Team Barea Firebase Console on 2026-09-23.
+// Re-read the live rules immediately before any approved deployment. Preserve
+// concurrent changes. This file is not an instruction to publish automatically.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    match /admins/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    // Existing anonymous RSVP behavior stays unchanged.
+    match /votes/{voteId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+      match /responses/{respId} {
+        allow read: if true;
+        allow create, update: if true;
+        allow delete: if isAdmin();
+      }
+    }
+
+    // Existing ratings data and historical subcollection ballots become private
+    // to the existing admin role. Anonymous submissions use the server endpoint.
+    match /ratings/{date} {
+      allow read: if isAdmin();
+      allow create, update: if false;
+      allow delete: if isAdmin();
+      match /votes/{voter} {
+        allow read: if isAdmin();
+        allow create, update: if false;
+        allow delete: if isAdmin();
+      }
+    }
+
+    // The server checks whether the selected name has submitted. No client can
+    // read or write these receipts directly.
+    match /ratingParticipation/{date}/voters/{name} {
+      allow read, write: if false;
+    }
+
+    // Only the score-free three-name result is public. The server alone writes it.
+    match /ratingResults/{date} {
+      allow get: if true;
+      allow list, write: if false;
+    }
+
+    // The deployed catch-all also matches top-level ratings and result documents.
+    // Excluding them here is essential: overlapping allows are OR'ed in Firestore.
+    // Other existing top-level collections retain their previous permissions.
+    match /{collectionName}/{docId} {
+      allow read: if collectionName != 'admins'
+        && collectionName != 'ratings'
+        && collectionName != 'ratingResults'
+        && collectionName != 'ratingParticipation';
+      allow write: if collectionName != 'admins'
+        && collectionName != 'ratings'
+        && collectionName != 'ratingResults'
+        && collectionName != 'ratingParticipation'
+        && isAdmin();
+    }
+  }
+}
+
+// The separate privatePositionPreferences survey is still disabled. Before it
+// opens, exclude that collection from the catch-all and add its own reviewed
+// permissions; the current catch-all would otherwise permit public reads.
+// Admin SDK access uses server IAM and bypasses these client Security Rules.

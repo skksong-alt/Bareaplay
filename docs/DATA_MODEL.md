@@ -1,5 +1,15 @@
 # BareaPlay Firestore 데이터 모델
 
+## 2026-09-23 추가 승인: 로그인 없는 활약투표 상태 / 공개 집계
+
+별도 저장 구조 추가를 승인받았다. 구현은 로컬이며 서버 연결·Rules 변경·배포는 아직 하지 않았다. 상세 전환/복구 절차는 `docs/RATINGS_SERVICE.md`에 있다.
+
+- 기존 `ratings/{date}.votes.{name}.{picks,at}`를 유지한다. 서버가 사용자의 명시적 제출에 따라 해당 이름만 merge하며 다른 투표와 미지 필드는 보존한다.
+- 신규 `ratingParticipation/{date}/voters/{name}`: `submitted:boolean`, `revision:string`, `updatedAt:timestamp`. 선택 원본 없음. 브라우저 직접 접근은 차단하고 서버가 제출 여부만 알려주는 설계다.
+- 신규 `ratingResults/{date}`: `date:string`, `leaders:string[]` (최대 3명), `updatedAt:timestamp`. 공개 결과에는 점수와 투표자/개별 선택이 없다. 서버가 투표/제출 표시/공개 결과를 같은 transaction으로 갱신한다.
+- 기존 투표는 자동 이관하지 않는다. 상태 조회와 최초 결과 표시는 서버에서 기존 문서를 읽어 계산만 하므로 제출 표시가 없는 과거 투표도 감지할 수 있다.
+- 재투표 확인은 본인 인증이 아니다. 이름을 선택하고 교체를 승인하는 다른 사람을 막지는 않는다. 실시간 순위의 간접 추론 가능성도 남는다.
+
 ## 2026-09-23 추가 설계: 비공개 희망 포지션 설문
 
 사용자가 Google 로그인 방식을 승인했다. 아래 경로는 구현 코드이며, 운영 컬렉션 생성이나 Rules 배포를 했다는 뜻은 아니다. 기능은 접근 권한 배포 전까지 `POSITION_SURVEY_ENABLED=false`로 닫혀 있다.

@@ -3,6 +3,8 @@ import { cleanName, escapeHtml as esc, chooseReviewDate } from './coachCore.js?v
 import { lessonHtml, addCoachStyles } from './weeklyContent.js?v=4';
 import { compareResponseTime, confirmGuest } from './voteOrder.js?v=1';
 import { POSITION_SURVEY_ENABLED } from './positionPreferences.js?v=1';
+import { rememberedRatingName, rememberRatingName, ratingRememberEnabled, setRatingRememberEnabled, wasRatingSubmittedHere, markRatingSubmittedHere, ratingConfirmation } from './ratingIdentity.js?v=1';
+import { RATING_SERVICE_ENABLED, requestRating } from './ratingService.js?v=1';
 let dispose = () => {};
 const readLang = () => { try { return localStorage.getItem('bp_lang') === 'en' ? 'en' : 'ko'; } catch { return 'ko'; } };
 const dubaiToday = () => new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
@@ -151,30 +153,66 @@ export async function renderVote(db, voteId) {
 }
 export function mountRatings(db, container, date, names, lang) {
     const en=lang==='en', t=(ko,english)=>en?english:ko;
-    let picks=[], mine='', saving=false;
+    const remembered=ratingRememberEnabled()?rememberedRatingName():'';
+    let picks=[], mine=names.includes(remembered)?remembered:'', saving=false, alive=true;
     container.innerHTML=`<section class="coach-card"><h2>${t('지난 경기 활약 투표','Previous match appreciation')} · ${esc(date)}</h2><p class="coach-note">${t('지난 경기에 참여했다면 인상 깊었던 3명을 순서대로 선택하세요. 수비·도움·동료 지원도 생각해 주세요. 이번 참석 신청과 별개이며 건너뛰어도 됩니다.','If you played that match, pick three teammates in order. Remember defending, effort and support too. This is optional and separate from your RSVP.')}</p><div class="review-video"><a id="review-match-video" href="https://www.youtube.com/@FC%EB%B0%94%EB%A0%88%EC%95%84" target="_blank" rel="noopener noreferrer">▷ ${t('지난 경기 영상','Previous match footage')} ↗</a><p>${t('팀 유튜브 채널에서 위 경기 날짜의 영상을 확인해 보세요. 새 탭에서 열립니다.','Find the match date above on our team’s YouTube channel. Opens in a new tab.')}</p></div><label>${t('지난 경기 참가자 본인 이름','Your name from that match')}<select id="review-name"><option value="">${t('선택','Select')}</option>${names.map(n=>`<option>${esc(n)}</option>`).join('')}</select></label><div id="review-picks"></div><button id="review-save" class="coach-primary" disabled>${t('투표 저장','Save vote')}</button><p id="review-msg" role="status"></p><div id="review-result"></div></section>`;
     const select=container.querySelector('#review-name'), save=container.querySelector('#review-save'), msg=container.querySelector('#review-msg');
+    select.insertAdjacentHTML('afterend',`<span class="coach-note" style="display:block">${t('이름이 다르면 위에서 다시 선택하세요. 이름 기억은 본인 인증이 아닙니다.','Wrong name? Select yours above. Remembering a name does not verify identity.')}</span>`);
+    select.closest('label').insertAdjacentHTML('afterend',`<label class="preference-check"><input type="checkbox" id="review-remember" checked>${t('이 기기에 내 이름 기억하기 · 공용 기기에서는 해제','Remember my name on this device · turn off on shared devices')}</label><p class="coach-note" id="review-memory-message" role="status"></p>`);
+    const remember=container.querySelector('#review-remember'),memoryMessage=container.querySelector('#review-memory-message');
+    remember.checked=ratingRememberEnabled();
+    select.value=mine;
+    if(remembered&&!mine)memoryMessage.textContent=t('기억된 이름이 이번 경기 명단에 없습니다. 참가자 본인 이름을 선택해 주세요.','The remembered name is not on this match roster. Select your own name.');
+    const storeName=()=>{
+        const ok=rememberRatingName(remember.checked?mine:'');
+        memoryMessage.textContent=!ok?t('이 브라우저에서는 이름을 기억할 수 없습니다. 투표는 계속할 수 있습니다.','This browser cannot remember your name. You can still vote.'):remember.checked&&mine?t('이 브라우저에서 다음에도 이름을 선택해 드립니다. 선택한 선수 정보는 기기에 저장하지 않습니다.','Your name will be selected next time in this browser. Ballot choices are not stored on the device.'):t('이 기기에 기억한 이름을 지웠습니다.','The remembered name has been removed from this device.');
+    };
+    remember.onchange=()=>{setRatingRememberEnabled(remember.checked);storeName();};
     const draw=()=>{
         container.querySelector('#review-picks').innerHTML=mine?names.filter(n=>n!==mine).map(n=>`<button data-player="${esc(n)}" class="${picks.includes(n)?'coach-selected':''}" ${saving?'disabled':''}>${esc(n)} ${picks.includes(n)?`(${3-picks.indexOf(n)}${en?' pts':'점'})`:''}</button>`).join(''):'';
         save.disabled=!mine || picks.length!==3 || saving;
         container.querySelectorAll('[data-player]').forEach(b=>b.onclick=()=>{const n=b.dataset.player; if(picks.includes(n)) picks=picks.filter(p=>p!==n); else if(picks.length<3) picks.push(n); draw();});
     };
     // A selected name is not proof of identity. Never retrieve an existing ballot here.
-    select.onchange=()=>{mine=select.value; picks=[]; msg.textContent='';draw();};
+    select.onchange=()=>{mine=select.value; picks=[]; msg.textContent='';storeName();draw();};
     save.onclick=async()=>{
         if(saving || !names.includes(mine) || picks.length!==3 || new Set(picks).size!==3) return;
         saving=true; select.disabled=true;draw();
+        const submittedName=mine,submittedPicks=[...picks];
         try {
-            await setDoc(doc(db,'ratings',date),{date,votes:{[mine]:{picks:[...picks],at:Date.now()}}},{merge:true});
-            picks=[]; mine=''; select.value='';
-            msg.textContent=t('저장되었습니다. 선택 내용은 화면에서 지웠습니다. 다시 제출하려면 본인 이름과 3명을 새로 선택해 주세요.','Saved. Your selections have been cleared from this screen. To submit again, select your own name and three teammates afresh.');
+            if(RATING_SERVICE_ENABLED) {
+                const status=await requestRating({action:'status',date,name:submittedName});
+                if(!alive)return;
+                const question=status.exists?t(`${submittedName}님 이름으로 이미 제출된 투표가 있습니다. 이번에 선택한 3명으로 교체할까요? 기존 선택 내용은 표시하지 않습니다.`,`${submittedName} already has a saved vote. Replace it with your three new choices? Previous choices will not be shown.`):t(`${submittedName}님 본인의 투표를 저장할까요?`,`Save your own vote as ${submittedName}?`);
+                if(!confirm(question))return;
+                await requestRating({action:'submit',date,name:submittedName,picks:submittedPicks,expectedVersion:status.version});
+            } else {
+                // Interim mode: never download raw ballots just to check existence.
+                // Always warn about possible replacement, including on a new device.
+                if(!confirm(ratingConfirmation(submittedName,wasRatingSubmittedHere(date,submittedName),en)))return;
+                await setDoc(doc(db,'ratings',date),{date,votes:{[submittedName]:{picks:submittedPicks,at:Date.now()}}},{merge:true});
+            }
+            markRatingSubmittedHere(date,submittedName);
+            if(!alive)return;
+            picks=[];
+            msg.textContent=t('저장되었습니다. 선택 내용은 화면에서 지웠습니다. 다시 제출하면 기존 투표를 교체할지 확인합니다.','Saved. Your choices have been cleared. Submitting again asks for confirmation before replacing the vote.');
         }
-        catch { msg.textContent=t('저장 실패. 다시 시도하세요.','Could not save. Please retry.'); }
-        finally {saving=false;select.disabled=false;draw();}
+        catch(error) { if(alive)msg.textContent=error.code==='changed'?t('확인하는 동안 이 이름의 투표가 다른 곳에서 변경되었습니다. 아직 저장하지 않았습니다. 저장 버튼을 다시 눌러 교체 여부를 확인해 주세요.','This vote changed elsewhere while you were confirming. Nothing was saved. Press Save again to confirm replacement.'):t('저장하지 못했습니다. 선택 내용은 유지했습니다. 잠시 후 다시 시도해 주세요.','Could not save. Your current choices are kept on screen. Please retry shortly.'); }
+        finally {if(alive){saving=false;select.disabled=false;draw();}}
     };
-    // UI mitigation only: server Rules must also restrict raw ratings reads.
-    // Even a live aggregate can reveal a ballot through before/after score differences.
-    container.querySelector('#review-result').textContent=t('이 화면에서는 이전 선택과 실시간 집계를 표시하지 않습니다. 본인 이름으로만 투표해 주세요.','Previous selections and live totals are not displayed here. Please vote only under your own name.');
+    const resultBox=container.querySelector('#review-result');
+    let stopResults=()=>{},liveReceived=false;
+    if(RATING_SERVICE_ENABLED) {
+        const showLeaders=value=>{
+            if(!alive)return;
+            const leaders=Array.isArray(value)?[...new Set(value.filter(n=>typeof n==='string'&&names.includes(n)))].slice(0,3):[];
+            resultBox.innerHTML=`<h3>${t('동료들이 주목한 활약 · 현재 TOP 3','Recognised by teammates · Live TOP 3')}</h3><p class="coach-note">${t('포인트와 개인별 선택은 공개하지 않습니다. 동점이면 이름순으로 최대 3명을 표시합니다.','Points and individual choices are private. Ties are ordered by name, showing up to three players.')}</p>${leaders.length?`<div class="coach-grid">${leaders.map(n=>`<strong class="coach-note">★ ${esc(n)}</strong>`).join('')}</div>`:`<p>${t('아직 집계할 투표가 없습니다.','No votes to display yet.')}</p>`}`;
+        };
+        resultBox.textContent=t('현재 활약 투표 결과를 확인하고 있습니다…','Loading the current top three…');
+        // Existing votes are aggregated on the server without modifying/migrating them.
+        requestRating({action:'leaders',date}).then(data=>{if(!liveReceived)showLeaders(data.leaders);}).catch(()=>{if(alive&&!liveReceived)resultBox.textContent=t('집계를 불러오지 못했습니다. 투표와 별개로 다시 접속해 확인해 주세요.','Results are unavailable. You can still submit your vote.');});
+        stopResults=onSnapshot(doc(db,'ratingResults',date),snap=>{if(!alive||!snap.exists())return;liveReceived=true;showLeaders(snap.data().leaders);},()=>{if(alive)resultBox.insertAdjacentHTML('beforeend',`<p class="coach-note">${t('실시간 갱신 연결을 확인해 주세요.','Live updates are unavailable. Please reload.')}</p>`);});
+    } else resultBox.textContent=t('이전 선택은 표시하지 않습니다. 다른 기기의 제출 여부 확인과 실시간 TOP 3는 서버 연결 준비 중입니다.','Previous choices are private on this screen. Cross-device submission checks and live TOP 3 are awaiting server setup.');
     draw();
-    return ()=>{};
+    return ()=>{alive=false;stopResults();};
 }

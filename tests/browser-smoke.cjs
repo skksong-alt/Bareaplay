@@ -25,7 +25,8 @@ export const setDoc=async(p,v,o)=>{globalThis.__writes.push({path:p,value:struct
 export const updateDoc=async(p,v)=>{globalThis.__writes.push({path:p,value:structuredClone(v),update:true});Object.assign(data[p],structuredClone(v));emit(p);};
 export const addDoc=async(p,v)=>{const id='new-'+globalThis.__writes.length;await setDoc(p+'/'+id,v);return{id};};
 export const deleteDoc=async()=>{throw new Error('DELETE FORBIDDEN IN TEST');};`;
-let server,browser,enableSurveyForTest=false;
+let server,browser,enableSurveyForTest=false,enableRatingServiceForTest=false;
+let ratingFailure='',ratingServerExists=true;const ratingRequests=[];
 data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch'},teams:meeting.teams,lineups:meeting.teamLineupCache,teamNames:['Test A','Test B']};
 (async()=>{
   server=createServer(async(req,res)=>{
@@ -38,6 +39,16 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   await context.addInitScript(f=>{window.__fixture=f;window.__writes=[];window.__reads=[];window.Chart=class{destroy(){}update(){}};},data);
   await context.route('**/*',async route=>{
     const url=route.request().url();
+    if(url===base+'/api/ratings') {
+      const payload=route.request().postDataJSON();ratingRequests.push(payload);
+      if(ratingFailure)return route.fulfill({status:ratingFailure==='changed'?409:503,contentType:'application/json',body:JSON.stringify({error:ratingFailure})});
+      const result=payload.action==='leaders'?{leaders:['Test 03','Test 04','Test 05']}:payload.action==='status'?{exists:ratingServerExists,version:'opaque-test-version'}:{saved:true};
+      return route.fulfill({contentType:'application/json',body:JSON.stringify(result)});
+    }
+    if(url.startsWith(base)&&url.includes('/js/modules/ratingService.js')&&enableRatingServiceForTest) {
+      const source=await readFile(path.join(root,'js/modules/ratingService.js'),'utf8');
+      return route.fulfill({contentType:'text/javascript',body:source.replace('RATING_SERVICE_ENABLED=false','RATING_SERVICE_ENABLED=true')});
+    }
     if(url.startsWith(base)&&url.includes('/js/modules/positionPreferences.js')&&enableSurveyForTest) {
       const source=await readFile(path.join(root,'js/modules/positionPreferences.js'),'utf8');
       return route.fulfill({contentType:'text/javascript',body:source.replace('POSITION_SURVEY_ENABLED=false','POSITION_SURVEY_ENABLED=true')});
@@ -50,8 +61,8 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
     if(url.includes('tailwindcss'))return route.fulfill({contentType:'text/javascript',body:'const s=document.createElement("style");s.textContent=".hidden{display:none!important}.fixed{position:fixed}.grid{display:grid} .bg-gray-100{background:#f3f4f6}";document.head.append(s);'});
     return route.fulfill({status:200,body:''});
   });
-  const page=await context.newPage(), errors=[];let cancelGuest=false;
-  page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>cancelGuest&&/Guest|guest/.test(d.message())?d.dismiss():d.accept());
+  const page=await context.newPage(), errors=[],dialogs=[];let cancelGuest=false,cancelRating=false;
+  page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>{dialogs.push(d.message());return (cancelGuest&&/Guest|guest/.test(d.message()))||cancelRating?d.dismiss():d.accept();});
   await page.goto(base+'/?vote=current');await page.waitForSelector('.match-review-link');
   assert.equal(await page.locator('#review-name').count(),0,'ratings must have a separate screen');
   assert.equal(await page.locator('.preparation-card').getAttribute('open'),null,'resources start collapsed');
@@ -99,16 +110,53 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   const publicWrites=await page.evaluate(()=>__writes);assert.deepEqual(publicWrites.map(w=>w.path),['votes/test-vote/responses/Guest Friend',`ratings/${past}`]);
   assert.deepEqual(await page.evaluate(p=>__fixture['ratings/'+p].votes['Test 02'],past),{picks:['Test 01','Test 03','Test 04'],at:1},'other ballots remain exactly unchanged');
   assert.deepEqual(await page.evaluate(p=>__fixture['ratings/'+p].votes['Test 01'].picks,past),['Test 03','Test 04','Test 05']);
-  await page.waitForFunction(()=>document.querySelector('#review-name').value==='');
-  assert.equal(await page.locator('#review-picks [data-player]').count(),0,'successful submission clears choices');
+  await page.waitForFunction(()=>document.querySelector('#review-name').value==='Test 01'&&!document.querySelector('#review-picks .coach-selected'));
+  assert.equal(await page.locator('#review-picks .coach-selected').count(),0,'successful submission clears choices but keeps the chosen name');
   await page.locator('#review-name').selectOption('Test 01');
   assert.equal(await page.locator('#review-picks .coach-selected').count(),0,'even a just-saved ballot is never reloaded');
+  if(process.argv.includes('--ratings')) {
+    await page.reload();await page.waitForSelector('#review-name');
+    assert.equal(await page.locator('#review-name').inputValue(),'Test 01','name remembered across reload');
+    assert.equal(await page.locator('#review-picks .coach-selected').count(),0);
+    for(const name of ['Test 03','Test 04','Test 05'])await page.locator(`[data-player="${name}"]`).click();
+    cancelRating=true;await page.locator('#review-save').click();
+    assert.equal(await page.evaluate(()=>__writes.length),0,'cancel replacement writes nothing');
+    assert.match(dialogs.at(-1),/previous submission recorded on this device/);
+    assert.equal(await page.locator('#review-picks .coach-selected').count(),3,'cancel retains current draft');cancelRating=false;
+    await page.locator('#review-name').selectOption('Test 02');assert.equal(await page.locator('#review-picks .coach-selected').count(),0);
+    await page.locator('#review-remember').uncheck();await page.reload();await page.waitForSelector('#review-name');
+    assert.equal(await page.locator('#review-name').inputValue(),'','forget name on shared devices');
+    assert.equal(await page.locator('#review-remember').isChecked(),false,'shared-device opt-out survives reload');
+    enableRatingServiceForTest=true;await page.reload();await page.waitForSelector('#review-name');
+    await page.getByText('Recognised by teammates · Live TOP 3',{exact:true}).waitFor();
+    assert.equal(await page.locator('#review-result strong').count(),3);
+    await page.locator('#review-name').selectOption('Test 02');
+    for(const name of ['Test 03','Test 04','Test 05'])await page.locator(`[data-player="${name}"]`).click();
+    cancelRating=true;await page.locator('#review-save').click();await page.waitForFunction(()=>!document.querySelector('#review-save').disabled);
+    assert.match(dialogs.at(-1),/already has a saved vote/);
+    assert.equal(ratingRequests.filter(r=>r.action==='submit').length,0,'server-confirmed replacement can be cancelled');
+    cancelRating=false;await page.locator('#review-save').click();await page.waitForFunction(()=>document.querySelector('#review-msg').textContent.startsWith('Saved'));
+    assert.equal(ratingRequests.filter(r=>r.action==='submit').length,1);
+    assert.equal(ratingRequests.at(-1).expectedVersion,'opaque-test-version');
+    assert.equal(await page.evaluate(()=>__writes.length),0,'server mode never directly writes Firestore');
+    assert.deepEqual(await page.evaluate(()=>__reads.filter(p=>p==='ratings'||p.startsWith('ratings/'))),[]);
+    // Live result updates contain only the three recognised names, never a voter's picks.
+    await page.evaluate(async d=>{const f=await import('https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js');await f.setDoc(f.doc({},'ratingResults',d),{leaders:['Test 06','Test 07','Test 08']});__writes=[];},past);
+    await page.getByText('★ Test 06',{exact:true}).waitFor();
+    for(const name of ['Test 03','Test 04','Test 05'])await page.locator(`[data-player="${name}"]`).click();
+    ratingFailure='changed';await page.locator('#review-save').click();await page.waitForFunction(()=>document.querySelector('#review-msg').textContent.includes('changed elsewhere'));
+    assert.equal(await page.locator('#review-picks .coach-selected').count(),3);
+    ratingFailure='unavailable';await page.locator('#review-save').click();await page.waitForFunction(()=>document.querySelector('#review-msg').textContent.includes('Could not save'));
+    assert.equal(await page.evaluate(()=>__writes.length),0,'no insecure fallback when API fails');
+    assert.deepEqual(errors,[]);console.log('PASS: device name memory/forget, safe cancellation, cross-device confirmation, score-free live TOP 3, no raw ballot reads and fail-closed server errors.');
+    await context.close();return;
+  }
   await page.locator('[data-review-back]').last().click();await page.waitForSelector('#v-name');
   assert.equal(await page.locator('#v-name').inputValue(),'Guest Friend');
   if(process.argv.includes('--operations')) {
     await page.evaluate(async()=>{
       for(const [status,ns] of [['maybe',['Test 02','Test 03']],['absent',['Test 04','Test 05']]])ns.forEach((name,i)=>{__fixture['votes/test-vote/responses/'+name]={name,status,updatedAt:{seconds:2,nanoseconds:i?1:9},attendingSince:{seconds:i?90:1}};});
-      const m=await import('/js/modules/votePage.js?v=5');await m.renderVote({},'test-vote');
+      const m=await import('/js/modules/votePage.js?v=6');await m.renderVote({},'test-vote');
     });
     await page.waitForSelector('.attendance-group.maybe li');
     assert.deepEqual(await page.locator('.attendance-group.maybe .roster-name').allTextContents(),['Test 03','Test 02']);
@@ -234,7 +282,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   await page.evaluate(()=>localStorage.setItem('bp_lang','ko'));
   await page.goto(base+'/?vote=current');await page.waitForSelector('.match-review-link');
   await page.evaluate(ns=>{ns.slice(1,18).forEach((name,i)=>{__fixture['votes/test-vote/responses/'+name]={name,status:i<13?'attend':i<15?'maybe':'absent',guest:false,waitlist:false,attendingSince:{seconds:11+i}};});},names);
-  await page.evaluate(async()=>{const m=await import('/js/modules/votePage.js?v=5');await m.renderVote({},'test-vote');});await page.waitForSelector('.match-review-link');
+  await page.evaluate(async()=>{const m=await import('/js/modules/votePage.js?v=6');await m.renderVote({},'test-vote');});await page.waitForSelector('.match-review-link');
   assert.equal(await page.locator('.attendance-group.attend li').count(),14);
   assert.equal(await page.evaluate(()=>__writes.length),0);
   await page.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-vote-mobile-preview.png'),fullPage:true});
