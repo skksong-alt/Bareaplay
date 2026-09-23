@@ -79,7 +79,16 @@ export async function renderVote(db, voteId) {
             content.querySelectorAll('[data-status]').forEach(b=>b.disabled=!!vote.closed || saving);
         };
         const timer=setInterval(deadline,30000); cleanups.push(()=>clearInterval(timer)); deadline();
-        cleanups.push(onSnapshot(doc(db,'votes',voteId),snap=>{ if (!alive) return; if(snap.exists()) vote=snap.data(); else vote.closed=true; deadline(); },()=>{message.textContent=t('투표 상태 갱신 실패. 새로고침해 주세요.','Could not refresh RSVP status. Reload the page.');}));
+        cleanups.push(onSnapshot(doc(db,'votes',voteId),snap=>{
+            if (!alive) return;
+            if (snap.exists()) {
+                const next=snap.data();
+                const scheduleChanged=next.date!==vote.date || next.time!==vote.time;
+                vote=next;
+                if (scheduleChanged) { renderVote(db,voteId); return; }
+            } else vote.closed=true;
+            deadline();
+        },()=>{message.textContent=t('투표 상태 갱신 실패. 새로고침해 주세요.','Could not refresh RSVP status. Reload the page.');}));
         content.querySelectorAll('[data-status]').forEach(button=>button.onclick=async()=>{
             if(saving) return;
             const name=cleanName(input.value), status=button.dataset.status;

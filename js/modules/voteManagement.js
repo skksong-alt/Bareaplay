@@ -1,9 +1,10 @@
 // js/modules/voteManagement.js
 // 묶음 C: 참석 투표 (로그인 없이 링크로 참여) + 관리자 확정 → 팀 배정 연결
 import { doc, setDoc, getDoc, getDocs, addDoc, deleteDoc, collection, query, where, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
-import { renderVote } from './votePage.js?v=11';
+import { renderVote } from './votePage.js?v=12';
 import { syncMeetingInfo } from './shareManagement.js?v=11';
 import { compareResponseTime } from './voteOrder.js?v=1';
+import { canOpenVote } from './voteTiming.js?v=1';
 
 let db, state;
 let activeVoteId = null;          // 관리자 화면에서 현재 보고 있는 투표
@@ -117,9 +118,8 @@ export function init(dependencies) {
         });
     }
 
-    const today = new Date();
-    const off = today.getTimezoneOffset() * 60000;
-    document.getElementById('vote-date').value = new Date(today.getTime() - off).toISOString().split('T')[0];
+    // 새 투표는 날짜를 반드시 직접 선택하게 한다. 기본값이 오늘이면 다음 주 제목만 바꾼 채 게시하기 쉽다.
+    document.getElementById('vote-date').value = '';
 
     document.getElementById('vote-create-btn').addEventListener('click', createVote);
 
@@ -141,6 +141,18 @@ async function createVote() {
     const time = document.getElementById('vote-time').value;
     const location = document.getElementById('vote-location').value.trim();
     if (!date) { window.showNotification('날짜를 선택해주세요.', 'error'); return; }
+    const timing = canOpenVote(date, time);
+    if (timing.reason) {
+        window.showNotification(timing.reason === 'deadline-passed'
+            ? '선택한 경기의 자동 마감 시각이 이미 지났습니다. 실제 경기 날짜와 시간을 확인해 주세요.'
+            : '경기 날짜와 시간을 다시 확인해 주세요.', 'error');
+        return;
+    }
+    const dateLabel = new Intl.DateTimeFormat('ko-KR', {
+        timeZone: 'Asia/Dubai', year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
+        hour: '2-digit', minute: '2-digit', hour12: false
+    }).format(new Date(timing.startAtMs));
+    if (!confirm(`실제 경기 날짜: ${dateLabel} (두바이)\n투표 제목: ${title || '(제목 없음)'}\n\n제목과 실제 경기 날짜가 일치하는지 확인해 주세요. 이 날짜로 투표를 시작할까요?`)) return;
 
     // [A방식] 진행 중인 투표가 있으면 새로 시작할지 확인 → 지난 투표는 삭제하지 않고 '보관(closed)' 처리
     let prevVoteId = null;
@@ -152,13 +164,8 @@ async function createVote() {
         if (!confirm('새 모임 투표를 시작하면, 현재 진행 중인 투표는 종료되어 지난 기록으로 보관됩니다.\n(고정 링크는 새 투표로 연결됩니다)\n\n계속할까요?')) return;
     }
 
-    // [v55 변경] 투표 자동 마감: 운동 시작 시각 '2시간 전'.
-    // 마감 후에도 참석 투표 자체는 가능하지만, 그 사람은 '대기자(waitlist)'로 따로 등록된다.
-    let startAtMs = null, deadlineMs = null;
-    if (date && time) {
-        const t = Date.parse(`${date}T${time}:00`);
-        if (!isNaN(t)) { startAtMs = t; deadlineMs = t - 2 * 60 * 60 * 1000; }
-    }
+    // 두바이 경기 시각 기준으로 자동 마감을 계산한다. 운영자 기기의 시간대와 무관하다.
+    const { startAtMs, deadlineMs } = timing;
 
     try {
         const ref = await addDoc(collection(db, "votes"), {
@@ -285,6 +292,15 @@ function renderAdminStatus() {
                 <button id="vote-to-balancer" class="bg-indigo-600 text-white text-sm font-bold py-2 px-4 rounded-lg hover:bg-indigo-700">이 투표로 팀 짜기 →</button>
             </div>
             ${adminVoteInfo && adminVoteInfo.deadlineMs ? `<p class="text-xs font-bold mb-1 ${Date.now() > adminVoteInfo.deadlineMs ? 'text-red-500' : 'text-emerald-600'}">⏰ 자동 마감: ${fmtMs(adminVoteInfo.deadlineMs)} — 경기 시작 2시간 전${Date.now() > adminVoteInfo.deadlineMs ? ' · 마감됨 (이후 참석 투표는 대기자로 등록됩니다)' : ''}</p>` : ''}
+            <details class="text-sm mb-3"><summary class="cursor-pointer font-semibold">투표 경기 날짜·시간 정정</summary>
+                <p class="mt-2 text-gray-600">기존 응답과 신청 시각은 유지됩니다. 제목·날짜가 다른 경우에만 사용하세요.</p>
+                <p class="mt-1">투표 제목: ${esc(adminVoteInfo?.title || '(없음)')}</p>
+                <div class="flex flex-wrap gap-2 mt-2">
+                    <input id="vote-correct-date" type="date" value="${esc(adminVoteInfo?.date || '')}" class="p-2 border rounded-lg" aria-label="정정할 경기 날짜">
+                    <input id="vote-correct-time" type="time" value="${esc(adminVoteInfo?.time || '')}" class="p-2 border rounded-lg" aria-label="정정할 경기 시간">
+                    <button id="vote-correct-schedule" class="p-2 border rounded-lg font-semibold">날짜·시간 정정</button>
+                </div>
+            </details>
             <p class="text-xs text-gray-400 mb-2">※ 참석자는 투표가 늦은 사람일수록 아래쪽에 있으며, 팀 배정 후 늦은 투표부터 전체 심판 / 팀별 키퍼·휴식을 순환합니다. (미정은 팀 배정에 포함되지 않습니다)</p>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div><p class="font-semibold text-green-700 mb-1">✅ 참석 (투표순)</p><ul class="text-sm">${attendRows || '<li class="text-gray-400 py-2">아직 없음</li>'}</ul>
@@ -307,6 +323,43 @@ function renderAdminStatus() {
     if (addBtn) addBtn.onclick = adminAdd;
     const balBtn = document.getElementById('vote-to-balancer');
     if (balBtn) balBtn.onclick = sendToBalancer;
+    const correctBtn = document.getElementById('vote-correct-schedule');
+    if (correctBtn) correctBtn.onclick = correctVoteSchedule;
+}
+
+async function correctVoteSchedule() {
+    if (!state.isAdmin || !activeVoteId) return;
+    const date = document.getElementById('vote-correct-date').value;
+    const time = document.getElementById('vote-correct-time').value;
+    const timing = canOpenVote(date, time);
+    if (timing.reason) {
+        window.showNotification('새 경기 날짜·시간을 확인해 주세요. 자동 마감 시각은 미래여야 합니다.', 'error');
+        return;
+    }
+    const voteId = activeVoteId;
+    try {
+        const previous = await getDoc(doc(db, 'votes', voteId));
+        if (!previous.exists() || previous.data().closed) {
+            window.showNotification('진행 중인 투표를 확인할 수 없습니다.', 'error');
+            return;
+        }
+        const old = previous.data();
+        if (old.date === date && old.time === time) return;
+        if (!confirm(`투표 제목: ${old.title || '(없음)'}\n경기 날짜: ${old.date} ${old.time} → ${date} ${time} (두바이)\n\n기존 응답과 신청 시각은 그대로 두고 이 투표의 날짜·마감 시각만 정정할까요? 다른 날짜의 팀·라인업 기록은 변경하지 않습니다.`)) return;
+        const updated = {
+            date, time, startAtMs: timing.startAtMs, deadlineMs: timing.deadlineMs
+        };
+        await setDoc(doc(db, 'votes', voteId), updated, { merge: true });
+        if (activeVoteId === voteId) {
+            adminVoteInfo = { ...old, ...updated };
+            syncMeetingInfo(adminVoteInfo);
+            renderAdminStatus();
+        }
+        window.showNotification('경기 날짜·시간을 정정했습니다. 잘못 대기 처리된 응답은 별도로 참석 확정해 주세요.');
+    } catch (e) {
+        console.error(e);
+        window.showNotification('날짜 정정에 실패했습니다. 다시 확인해 주세요.', 'error');
+    }
 }
 
 async function adminSetStatus(respId, status) {
