@@ -50,7 +50,10 @@ function createHandler({env=process.env,services=req=>productionServices(env,req
         res.setHeader('X-Content-Type-Options','nosniff');
         const send=(status,data)=>res.status(status).json(data);
         if(req.method!=='POST'){res.setHeader('Allow','POST');return send(405,{error:'method'});}
-        if(!['true','read-only'].includes(env.BAREA_RATINGS_ENABLED))return send(503,{error:'unavailable'});
+        if(!['true','read-only'].includes(env.BAREA_RATINGS_ENABLED)) {
+            console.warn('ratings-connection','disabled-mode');
+            return send(503,{error:'unavailable'});
+        }
         let activeServices;
         try {
             // This is an intentional anonymous endpoint, NOT proof of a player's identity.
@@ -90,7 +93,7 @@ function createHandler({env=process.env,services=req=>productionServices(env,req
         } catch(error) {
             // Do not echo SDK errors, request contents, credentials or ballot data.
             const known=['request','changed','unavailable'].includes(error.code);
-            if(env.VERCEL==='1'&&(!known||error.diagnostic)) {
+            if(!known||error.diagnostic) {
                 // Allow-listed categories only. Never log SDK messages, response bodies,
                 // request names, token values or environment-variable contents.
                 const categories=['invalid_grant','invalid_target','unauthorized_client','invalid_request'];
