@@ -12,8 +12,11 @@ test('position survey pitch displays 4-2-3-1 without changing stored roles',()=>
     assert.equal(PREFERENCE_PITCH.length,11);
     const rows=Object.groupBy(PREFERENCE_PITCH,p=>p[2]);
     assert.deepEqual(Object.values(rows).map(row=>row.length),[1,3,2,4,1]);
+    assert.equal(PREFERENCE_PITCH.filter(p=>p[0]==='DM').length,2);
+    assert.equal(PREFERENCE_PITCH.some(p=>p[0]==='CM'),false);
     assert.equal(PREFERENCE_PITCH.filter(p=>p[0]==='CB').length,2);
-    assert.deepEqual([...new Set(PREFERENCE_PITCH.map(p=>p[0]))].sort(),POSITIONS.map(p=>p[0]).sort());
+    assert.deepEqual([...new Set(PREFERENCE_PITCH.map(p=>p[0]))].sort(),POSITIONS.filter(p=>p[0]!=='CM').map(p=>p[0]).sort());
+    assert.equal(validatePreference({name:'A',first:'CM',second:'DM',stable:false,flexible:false,note:''},['A']),true,'older CM answers remain valid');
     assert.equal(preferenceSummary([]).rows.filter(r=>r.code==='CB').length,1);
 });
 

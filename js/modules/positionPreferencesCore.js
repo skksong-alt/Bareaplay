@@ -3,12 +3,12 @@ export const POSITIONS = [
     ['AM','공격형 미들','Attacking mid',50,31],['CM','중앙 미들','Central mid',50,46],['DM','수비형 미들','Holding mid',50,61],
     ['LB','왼쪽 풀백','Left back',17,75],['CB','중앙 수비','Centre back',50,77],['RB','오른쪽 풀백','Right back',83,75],['GK','골키퍼','Goalkeeper',50,92]
 ];
-// Display slots are separate from stored role codes: both centre-back slots
-// record CB, preserving existing answers and the coach's one-row-per-role summary.
+// Display slots are separate from stored role codes: paired holding-midfielder
+// and centre-back slots record DM and CB respectively. Existing CM answers remain valid.
 export const PREFERENCE_PITCH = [
     ['FW',50,16],
     ['LW',17,31],['AM',50,31],['RW',83,31],
-    ['CM',34,51],['DM',66,51],
+    ['DM',34,51],['DM',66,51],
     ['LB',12,73],['CB',37,73],['CB',63,73],['RB',88,73],
     ['GK',50,92]
 ];
