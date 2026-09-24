@@ -1,6 +1,6 @@
 import { doc,getDoc,getDocs,collection,setDoc,serverTimestamp } from 'https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js';
 import { GoogleAuthProvider,signInWithPopup,onAuthStateChanged,signOut } from 'https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js';
-import { escapeHtml as esc,cleanName } from './coachCore.js?v=1';
+import { escapeHtml as esc,cleanName } from './coachCore.js?v=2';
 import { POSITIONS,PREFERENCE_PITCH,validatePreference,preferenceSummary,surveyRoleCode } from './positionPreferencesCore.js?v=4';
 
 // Release gate: enable ONLY after the coach-only Rules have been approved and deployed.

@@ -1,5 +1,5 @@
-import { escapeHtml as esc, validVideoUrl } from './coachCore.js?v=1';
-import { refereeLessonHtml } from './refereeEducation.js?v=1';
+import { escapeHtml as esc, validVideoUrl } from './coachCore.js?v=2';
+import { refereeLessonHtml } from './refereeEducation.js?v=2';
 export const LESSONS = [
     { ko:'받기 전에 보고, 첫 터치를 준비하기', en:'Look before receiving; prepare your first touch',
       actionKo:'공이 오기 전 주변을 확인하고 다음 패스가 가능한 방향으로 받으세요.', actionEn:'Look around before the ball arrives. Receive towards your next passing option.',

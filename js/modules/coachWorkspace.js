@@ -1,6 +1,7 @@
+import { quarterCount, activeQuarters, preserveInactiveQuarters } from './quarters.js?v=1';
 import { collection, doc, getDocs, getDoc, setDoc, serverTimestamp, addDoc } from 'https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js';
-import { cleanName, escapeHtml as esc, recentHistory, ROLES, validateLineup, lineupSummary, locate } from './coachCore.js?v=1';
-import { lessonFor, lessonHtml, addCoachStyles, TEAM_VIDEOS, parseGuidelines } from './weeklyContent.js?v=4';
+import { cleanName, escapeHtml as esc, recentHistory, ROLES, validateLineup, lineupSummary, locate } from './coachCore.js?v=2';
+import { lessonFor, lessonHtml, addCoachStyles, TEAM_VIDEOS, parseGuidelines } from './weeklyContent.js?v=5';
 let db, state;
 const dateNow = () => document.getElementById('balancer-date')?.value || window.getLocalDate();
 const requireAdmin = () => { if(!state.isAdmin) throw new Error('관리자 로그인이 필요합니다.'); };
@@ -68,7 +69,7 @@ export function init(dependencies) {
         box.prepend(videoEditor);
         box.querySelector('#coach-week-preview').onclick=()=>{box.querySelector('#coach-week-sample').innerHTML=lessonHtml(date,payload(),'ko')+lessonHtml(date,payload(),'en');};
         box.querySelector('#coach-week-save').onclick=()=>guard(async()=>{
-            requireAdmin(); const values=payload(); const {validVideoUrl}=await import('./coachCore.js?v=1');
+            requireAdmin(); const values=payload(); const {validVideoUrl}=await import('./coachCore.js?v=2');
             if(!values.ko || !values.en || !values.actionKo || !values.actionEn)throw new Error('한국어·영어 목표와 실천 행동을 입력하세요.');
             if(values.url && !validVideoUrl(values.url))throw new Error('YouTube 또는 FIFA의 HTTPS 주소를 입력하세요.');
             for(const field of ['segmentKo','segmentEn']) {
@@ -105,6 +106,7 @@ export function init(dependencies) {
     reasonHelp.textContent='수정 이유는 다음 수동 조정을 기록할 때 붙이는 분류입니다. 선택만으로 배정·저장이 실행되지는 않습니다. 일시적인 사정은 “오늘만 팀 사정”, 반복해서 그 역할이 잘 맞는 경우만 “지속적으로 적합한 역할”을 선택하세요. 후자만 반복 성향 제안에 활용합니다.';
     panel.querySelector('#coach-reason').closest('label').after(reasonHelp);
     panel.querySelector('#coach-load').onclick=()=>guard(async()=>{await prepareCoach();renderPlanner(panel);});
+    document.addEventListener('barea:quarters',()=>{panel.querySelector('#coach-planner-body').textContent='쿼터 수가 바뀌었습니다. 선택 날짜를 다시 불러와 고정 조건과 비교를 확인하세요.';});
     // Make the board easy to find, before the six pitches.
     const display=document.getElementById('lineup-display');if(display)display.before(panel);
 }
@@ -133,9 +135,9 @@ function renderPlanner(panel) {
         body.querySelector('#coach-partial-result').innerHTML='';
         if(!result){grid.textContent='먼저 이 팀의 라인업을 생성하세요.';return;}
         const locks=plan.lineupLocks?.[i] || [];
-        grid.innerHTML=`<p class="coach-note">필드 포지션 고정만 적용합니다. 투표순으로 정해지는 심판·키퍼·휴식은 고정보다 우선합니다.</p><div style="overflow:auto"><table class="coach-table"><tr><th>선수</th>${Array.from({length:6},(_,q)=>`<th>Q${q+1}</th>`).join('')}</tr>${(teams[i]||[]).map(p=>`<tr><td>${esc(p.name)}</td>${Array.from({length:6},(_,q)=>{const loc=locate(result,q,p.name);return `<td><label><input type="checkbox" data-lock-name="${esc(p.name)}" data-q="${q}" ${locks.some(l=>l.name===p.name&&l.q===q)?'checked':''} ${loc&&!['GK','REST'].includes(loc.pos)?'':'disabled'}> ${esc(loc?.pos||'—')}</label></td>`;}).join('')}</tr>`).join('')}</table></div>`;
+        grid.innerHTML=`<p class="coach-note">필드 포지션 고정만 적용합니다. 투표순으로 정해지는 심판·키퍼·휴식은 고정보다 우선합니다.</p><div style="overflow:auto"><table class="coach-table"><tr><th>선수</th>${Array.from({length:quarterCount(state)},(_,q)=>`<th>Q${q+1}</th>`).join('')}</tr>${(teams[i]||[]).map(p=>`<tr><td>${esc(p.name)}</td>${Array.from({length:quarterCount(state)},(_,q)=>{const loc=locate(result,q,p.name);return `<td><label><input type="checkbox" data-lock-name="${esc(p.name)}" data-q="${q}" ${locks.some(l=>l.name===p.name&&l.q===q)?'checked':''} ${loc&&!['GK','REST'].includes(loc.pos)?'':'disabled'}> ${esc(loc?.pos||'—')}</label></td>`;}).join('')}</tr>`).join('')}</table></div>`;
     };teamSelect.onchange=drawLocks;drawLocks();
-    const selectedLocks=()=>[...body.querySelectorAll('[data-lock-name]:checked:not(:disabled)')].map(el=>({name:el.dataset.lockName,q:Number(el.dataset.q)}));
+    const selectedLocks=()=>[...(plan.lineupLocks?.[Number(teamSelect.value)]||[]).filter(lock=>lock.q>=quarterCount(state)), ...[...body.querySelectorAll('[data-lock-name]:checked:not(:disabled)')].map(el=>({name:el.dataset.lockName,q:Number(el.dataset.q)}))];
     body.querySelector('#coach-save-locks').onclick=()=>guard(async()=>{
         checkDate();const i=Number(teamSelect.value), locks=selectedLocks();
         await setDoc(doc(db,'coachPlans',date),{date,lineupLocks:{[i]:locks},updatedAt:serverTimestamp()},{merge:true});
@@ -144,18 +146,18 @@ function renderPlanner(panel) {
     body.querySelector('#coach-partial-preview').onclick=()=>guard(async()=>{
         checkDate();const i=Number(teamSelect.value), original=state.teamLineupCache?.[i];
         if(!original)throw new Error('먼저 라인업을 생성하세요.');
-        const roster=teams[i].map(p=>p.name), locks=selectedLocks(), fingerprint=JSON.stringify(original), rosterKey=JSON.stringify(roster);
+        const roster=teams[i].map(p=>p.name), locks=selectedLocks(), fingerprint=JSON.stringify(original), rosterKey=JSON.stringify(roster), requestedCount=quarterCount(state);
         await prepareCoach(date);
         const candidate=await window.lineup.executeLineupGeneration(roster,original.formations,true,{locks,original});
         if(!candidate || !validateLineup(candidate,roster))throw new Error('고정 조건을 만족하는 후보가 없습니다. 조건을 줄여 주세요.');
-        const changes=[];for(let q=0;q<6;q++)for(const name of roster){const a=locate(original,q,name)?.pos,b=locate(candidate,q,name)?.pos;if(a!==b)changes.push(`Q${q+1} ${name}: ${a} → ${b}`);}
+        const changes=[];for(let q=0;q<quarterCount(state);q++)for(const name of roster){const a=locate(original,q,name)?.pos,b=locate(candidate,q,name)?.pos;if(a!==b)changes.push(`Q${q+1} ${name}: ${a} → ${b}`);}
         const out=body.querySelector('#coach-partial-result');
-        const opportunity=(result,name)=>{const wish=state.playerDB[name]?.wishPos||[];let field=0,gk=0,wanted=0;for(let q=0;q<6;q++){const pos=locate(result,q,name)?.pos;if(pos&&pos!=='REST')field++;if(pos==='GK')gk++;if(wish.includes(pos))wanted++;}return `${field} / ${gk} / ${wanted}`;};
+        const opportunity=(result,name)=>{const wish=state.playerDB[name]?.wishPos||[];let field=0,gk=0,wanted=0;for(let q=0;q<quarterCount(state);q++){const pos=locate(result,q,name)?.pos;if(pos&&pos!=='REST')field++;if(pos==='GK')gk++;if(wish.includes(pos))wanted++;}return `${field} / ${gk} / ${wanted}`;};
         out.innerHTML=`<p>${changes.length}개 배정 변경 · 아직 저장되지 않았습니다.</p><details><summary>선수별 영향: 출전 / GK / 희망 횟수</summary><div style="overflow:auto"><table class="coach-table"><tr><th>선수</th><th>현재</th><th>후보</th></tr>${roster.map(n=>`<tr><td>${esc(n)}</td><td>${opportunity(original,n)}</td><td>${opportunity(candidate,n)}</td></tr>`).join('')}</table></div></details><div style="max-height:240px;overflow:auto">${changes.map(s=>`<p>${esc(s)}</p>`).join('')||'변경 없음'}</div><button id="coach-apply" class="coach-primary">이 후보 적용·저장</button>`;
         out.querySelector('button').onclick=()=>guard(async()=>{
-            checkDate();if(fingerprint!==JSON.stringify(state.teamLineupCache?.[i]) || rosterKey!==JSON.stringify(state.teams[i]?.map(p=>p.name)))throw new Error('미리보기 이후 명단·라인업이 변경되었습니다. 다시 생성하세요.');
+            checkDate();if(requestedCount!==quarterCount(state)||fingerprint!==JSON.stringify(state.teamLineupCache?.[i]) || rosterKey!==JSON.stringify(state.teams[i]?.map(p=>p.name)))throw new Error('미리보기 이후 명단·라인업이 변경되었습니다. 다시 생성하세요.');
             if(!confirm(`${date} ${window.teamName?.(i)||`Team ${i+1}`}의 ${changes.length}개 배정을 적용할까요?`))return;
-            state.teamLineupCache[i]=candidate;window.lineup.renderTeamSelectTabs(state.teams);window.saveDailyMeetingData();
+            state.teamLineupCache[i]=preserveInactiveQuarters(candidate,original,requestedCount);window.lineup.renderTeamSelectTabs(state.teams);window.saveDailyMeetingData();
             await addDoc(collection(db,'coachAdjustments'),{date,team:i,reason:window.coachReason||'temporary',kind:'partial-lineup',changes,at:serverTimestamp()});
             out.textContent='후보를 적용했습니다. 기존 저장 결과 알림을 확인하세요.';
         });
@@ -163,8 +165,8 @@ function renderPlanner(panel) {
     body.querySelector('#coach-compare').onclick=()=>guard(async()=>{
         checkDate();const a=Number(body.querySelector('#coach-compare-a').value),b=Number(body.querySelector('#coach-compare-b').value);
         if(a===b)throw new Error('서로 다른 팀을 선택하세요.');
-        const A=lineupSummary(state.teamLineupCache?.[a],state.playerDB,state.coachProfiles), B=lineupSummary(state.teamLineupCache?.[b],state.playerDB,state.coachProfiles);
-        if(A.length!==6||B.length!==6)throw new Error('두 팀 모두 라인업이 필요합니다.');
+        const A=lineupSummary(activeQuarters(state.teamLineupCache?.[a],quarterCount(state)),state.playerDB,state.coachProfiles), B=lineupSummary(activeQuarters(state.teamLineupCache?.[b],quarterCount(state)),state.playerDB,state.coachProfiles);
+        if(A.length!==quarterCount(state)||B.length!==quarterCount(state))throw new Error('두 팀 모두 라인업이 필요합니다.');
         body.querySelector('#coach-comparison').innerHTML=`<div style="overflow:auto"><table class="coach-table"><tr><th>쿼터</th><th>평균 A / B</th><th>차이</th><th>역할 점검</th></tr>${A.map((x,q)=>{
             const y=B[q],notes=[];for(const [label,r] of [['A',x],['B',y]]){if(!r.roleCounts.connector)notes.push(`${label}: 연결 역할 미지정/부재`);if(r.roleCounts.learner&&!r.roleCounts.mentor)notes.push(`${label}: 학습 선수의 안내 역할 부재`);}
             return `<tr><td>Q${q+1}</td><td>${x.average.toFixed(1)} / ${y.average.toFixed(1)}</td><td>${Math.abs(x.average-y.average).toFixed(1)}</td><td>${notes.join(' · ')||'등록된 역할 기준 특이사항 없음'}</td></tr>`;

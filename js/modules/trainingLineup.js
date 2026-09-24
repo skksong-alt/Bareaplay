@@ -58,8 +58,8 @@ export function applyTrainingRoles(result, members, positionMap, players = {}, l
         let played = 0, primary = 0;
         for (const lineup of copy.lineups) for (const [pos, names] of Object.entries(lineup))
             if (names.includes(name)) { played++; if (players[name]?.pos1?.includes(pos)) primary++; }
-        guaranteeShort += Math.max(0, Math.min(2, played) - primary);
-        preferShort += Math.max(0, Math.min(3, played) - primary);
+        guaranteeShort += Math.max(0, Math.min(copy.lineups.length===4?1:2, played) - primary);
+        preferShort += Math.max(0, Math.min(copy.lineups.length/2, played) - primary);
     }
     copy.guaranteeShort = guaranteeShort; copy.preferShort = preferShort;
     return copy;

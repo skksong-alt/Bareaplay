@@ -34,6 +34,7 @@ export function recentHistory(meetings, beforeDate, count = 4) {
         const item = name => day[cleanName(name)] ||= { ATT:0, MID:0, DEF:0, GK:0, REST:0, REF:0, positions:{} };
         for (const result of Object.values(meeting.teamLineupCache || {})) {
             (result?.lineups || []).forEach((lineup, q) => {
+                if(q>=(meeting.quarterCount===4?4:6))return;
                 for (const [pos, names] of Object.entries(lineup || {})) for (const name of names || []) {
                     if (!name) continue;
                     const p = item(name); p[positionGroup(pos, result.formations?.[q])]++;
@@ -88,8 +89,8 @@ export function locate(result, q, name) {
     return index >= 0 ? { pos:'REST', index } : null;
 }
 export function validateLineup(result, members) {
-    if (!result || result.lineups?.length !== 6) return false;
-    for (let q=0; q<6; q++) {
+    if (!result || ![4,6].includes(result.lineups?.length)) return false;
+    for (let q=0; q<result.lineups.length; q++) {
         const names = [...Object.values(result.lineups[q]).flat(), ...(quarterValue(result.resters,q) || [])];
         if (names.length !== members.length || new Set(names).size !== members.length || names.some(n => !members.includes(n))) return false;
     }
@@ -100,6 +101,7 @@ export function applyLocks(candidate, original, locks = []) {
     const result = clone(candidate);
     const lockedSlots = new Set();
     for (const { name, q } of locks) {
+        if(q>=result.lineups.length)continue;
         const target = locate(original,q,name), from = locate(result,q,name);
         if (!target || !from) return null;
         const key = `${q}:${target.pos}:${target.index}`;
@@ -111,7 +113,7 @@ export function applyLocks(candidate, original, locks = []) {
         lockedSlots.add(key);
     }
     // Recalculate referees after swaps; manual choices that still rest are preserved.
-    result.manualReferees = Array.from({length:6},(_,q) => {
+    result.manualReferees = Array.from({length:result.lineups.length},(_,q) => {
         const old = quarterValue(original.manualReferees,q);
         return result.resters[q]?.includes(old) ? old : null;
     });
@@ -151,8 +153,8 @@ export function candidateCost(result, players, history = {}, original = null) {
     });
     for(const [name,c] of Object.entries(counts)) {
         const p=players[name] || {};
-        if(p.pos1?.length)cost+=Math.max(0,Math.min(2,c.played)-c.primary)*1000;
-        cost+=Math.max(0,Math.min(p.wishQuota||0,c.played)-c.wish)*250;
+        if(p.pos1?.length)cost+=Math.max(0,Math.min(result.lineups.length===4?1:2,c.played)-c.primary)*1000;
+        cost+=Math.max(0,Math.min(Math.ceil((p.wishQuota||0)*result.lineups.length/6),c.played)-c.wish)*250;
         if(!(p.pos1?.includes('GK')&&p.pos2?.includes('GK')))cost+=Math.max(0,(gks[name]||0)-1)*600;
     }
     return cost;

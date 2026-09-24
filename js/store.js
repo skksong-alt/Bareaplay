@@ -5,6 +5,7 @@ export const state = {
     expenseLog: [],
     locations: [],
     teams: [],
+    quarterCount: 6,
     lineupResults: null,
     memoContent: "",
     isAdmin: false,

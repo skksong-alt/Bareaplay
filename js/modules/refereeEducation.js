@@ -1,4 +1,4 @@
-import { escapeHtml as esc } from './coachCore.js?v=1';
+import { escapeHtml as esc } from './coachCore.js?v=2';
 const law12='https://www.theifab.com/laws/latest/fouls-and-misconduct/';
 const law15='https://www.theifab.com/laws/latest/the-throw-in/';
 export const REFEREE_LESSONS = [

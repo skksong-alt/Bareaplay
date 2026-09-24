@@ -3,19 +3,20 @@
 const clean = value => String(value ?? '').replace(' (신규)', '').normalize('NFC').trim();
 const quarter = (value, q) => Array.isArray(value) ? value[q] : value?.[`q_${q}`] ?? value?.[`q${q + 1}`];
 
-export function prepareShareLineups(lineups, squads, posCellMap) {
+export function prepareShareLineups(lineups, squads, posCellMap, count=6) {
+    count=count===4?4:6;
     if (!Array.isArray(lineups) || lineups.length !== squads.length) throw new Error('팀과 라인업 수가 맞지 않습니다.');
     return lineups.map((result, teamIndex) => {
         const teamLabel=`팀 ${teamIndex + 1}`;
         const roster=(squads[teamIndex] || []).map(clean);
         const rosterSet=new Set(roster);
         if (roster.length !== rosterSet.size) throw new Error(`${teamLabel}: 팀 명단에 중복 선수가 있습니다.`);
-        if (!result || result.lineups?.length !== 6 || result.formations?.length !== 6) {
-            throw new Error(`${teamLabel}: 저장된 6쿼터 라인업 또는 포메이션이 없습니다.`);
+        if (!result || !(result.lineups?.length >= count) || !(result.formations?.length >= count)) {
+            throw new Error(`${teamLabel}: 저장된 ${count}쿼터 라인업 또는 포메이션이 없습니다.`);
         }
         const visibleLineups=[];
         const resters=[];
-        for (let q=0; q<6; q++) {
+        for (let q=0; q<count; q++) {
             const label=`${teamLabel} ${q + 1}쿼터`;
             const slots=posCellMap[result.formations[q]];
             if (!Array.isArray(slots) || !slots.length) throw new Error(`${label}: 지원하지 않는 포메이션입니다.`);
@@ -40,6 +41,6 @@ export function prepareShareLineups(lineups, squads, posCellMap) {
             visibleLineups.push(visible);
             resters.push([...rawRest]);
         }
-        return {...result,lineups:visibleLineups,resters};
+        return {...result,lineups:visibleLineups,resters,formations:result.formations.slice(0,count)};
     });
 }

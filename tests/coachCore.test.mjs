@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { quarterCount, preserveInactiveQuarters } from '../js/modules/quarters.js';
 import { applyTrainingRoles, trainingForDate } from '../js/modules/trainingLineup.js';
 import { recentHistory, positionGroup, roleTip, rolePenalty, applyLocks, validateLineup, chooseReviewDate, validVideoUrl, effectivePlayer, historyBonus } from '../js/modules/coachCore.js';
 import { lessonFor } from '../js/modules/weeklyContent.js';
@@ -45,13 +46,14 @@ test('real lineup generator: 9/10/11 players, substitutions, fixed slots',async(
     const core=await import('../js/modules/coachCore.js');
     let source=readFileSync(new URL('../js/modules/lineupGenerator.js',import.meta.url),'utf8');
     source=source.replace(/^import .*;\r?\n/gm,'').replace(/export /g,'').replace(/^\{ executeLineupGeneration \};\r?\n/gm,'');
-    const context=vm.createContext({...core,applyTrainingRoles,trainingForDate,planDuties,sharedRefereesFromLineups,Math,Set,Promise,window:{showNotification(){}},document:{},localStorage:{getItem(){return null;}},console});
+    const context=vm.createContext({...core,quarterCount,preserveInactiveQuarters,applyTrainingRoles,trainingForDate,planDuties,sharedRefereesFromLineups,Math,Set,Promise,window:{showNotification(){}},document:{},localStorage:{getItem(){return null;}},console});
     vm.runInContext(source+'\nglobalThis.generate=executeLineupGeneration; globalThis.assignState=(s)=>state=s;',context);
-    for(const [count,formation] of [[9,'3-4-1'],[10,'3-4-2'],[11,'4-4-2'],[13,'4-4-2']]){
+    for(const quarters of [4,6])for(const [count,formation] of [[9,'3-4-1'],[10,'3-4-2'],[11,'4-4-2'],[13,'4-4-2']]){
         const members=Array.from({length:count},(_,i)=>`Test ${i}`), playerDB=Object.fromEntries(members.map((name,i)=>[name,{name,s1:60+i,pos1:[['GK','CB','CM','FW'][i%4]],pos2:['CB','CM'],wishPos:['FW'],wishQuota:1}]));
-        context.assignState({playerDB,initialAttendeeOrder:members});
+        context.assignState({playerDB,initialAttendeeOrder:members,quarterCount:quarters});
         const before=JSON.stringify(playerDB), result=await context.generate(members,Array(6).fill(formation),true);
         assert.ok(validateLineup(result,members));assert.equal(JSON.stringify(playerDB),before);
+        assert.equal(result.lineups.length,quarters);
         const locked=await context.generate(members,Array(6).fill(formation),true,{original:result,locks:[{name:members[0],q:0}]});
         assert.ok(validateLineup(locked,members));assert.deepEqual(core.locate(locked,0,members[0]),core.locate(result,0,members[0]));
     }

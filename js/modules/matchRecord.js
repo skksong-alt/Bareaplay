@@ -1,11 +1,11 @@
 // js/modules/matchRecord.js
 // [신규] 🏆 경기기록 탭
 //  ① 쿼터 스코어 입력: 운영진이 쿼터당 숫자 2개만 입력 (하루 30초)
-//  ② 능력치 자동 보정(개인 Elo): 스코어를 바탕으로 s1을 소폭 자동 조정 — 미리보기 후 [반영]을 눌러야 적용
+//  ② 선수 평가는 8주 단위로 감독이 검토. 이 모듈은 players를 변경하지 않음.
 //  ③ 활약 투표 집계: 공유 보드에서 회원들이 뽑은 '오늘 잘한 3명' 결과 확인
 //  ④ 시즌 요약: 쌓인 기록에서 개인별 쿼터 승률·활약점수를 자동 파생 (추가 입력 없음)
 //  ※ 출석(attendance)·회비(expenses) 데이터는 전혀 건드리지 않는다. 새 컬렉션(matchRecords, ratings)만 사용.
-import { doc, getDoc, getDocs, setDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+import { doc, getDoc, getDocs, runTransaction, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 
 let db, state;
 let dateInput, teamsInfoEl, scoreRowsEl, eloBox, rateBox, seasonBox;
@@ -17,7 +17,7 @@ let currentRecord = null;  // matchRecords/{date} 문서 데이터
 function tn(i) {
     return (currentTeamNames && currentTeamNames[i]) ? String(currentTeamNames[i]) : `팀 ${i + 1}`;
 }
-const QUARTERS = 6;
+let currentQuarterCount=6, loadVersion=0, loadedDate='', saving=false;
 
 function localToday() { return window.getLocalDate ? window.getLocalDate() : new Date().toISOString().split('T')[0]; }
 function cleanName(s) { return String(s == null ? '' : s).replace(' (신규)', '').normalize('NFC').trim(); }
@@ -31,7 +31,7 @@ export function init(dependencies) {
     pageElement.innerHTML = `
         <div class="bg-white p-6 rounded-2xl shadow-lg">
             <h2 class="text-2xl font-bold mb-1">🏆 경기 기록 (운영진용)</h2>
-            <p class="text-sm text-gray-500 mb-4">쿼터가 끝날 때 <b>스코어 숫자만</b> 입력하면 됩니다. 팀 명단은 그날의 팀배정에서 자동으로 가져옵니다. 이 기록이 쌓이면 아래의 능력치 자동 보정과 시즌 요약이 계산됩니다.</p>
+            <p class="text-sm text-gray-500 mb-4">쿼터가 끝날 때 <b>스코어 숫자만</b> 입력하면 됩니다. 팀 명단은 그날의 팀배정에서 자동으로 가져옵니다. 결과는 팀 운영 참고용이며 선수 능력치를 자동 변경하지 않습니다.</p>
             <div class="flex flex-wrap items-end gap-3 mb-4">
                 <div><label class="block text-sm font-medium mb-1">📅 경기 날짜</label><input type="date" id="record-date" class="p-2 border rounded-lg"></div>
                 <button id="record-load-btn" class="bg-gray-100 border px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-200">불러오기</button>
@@ -44,7 +44,7 @@ export function init(dependencies) {
         <div id="record-rate-box" class="bg-white p-6 rounded-2xl shadow-lg mt-6"></div>
         <div class="bg-white p-6 rounded-2xl shadow-lg mt-6">
             <div class="flex items-center justify-between mb-2"><h3 class="text-xl font-bold">📈 시즌 요약</h3><button id="season-refresh-btn" class="text-sm text-indigo-600 hover:underline">집계 새로고침</button></div>
-            <p class="text-xs text-gray-400 mb-3">저장된 모든 쿼터 스코어와 활약 투표를 자동 집계합니다. (추가 입력 없음)</p>
+            <p class="text-xs text-gray-400 mb-3">선택된 4·6쿼터의 팀 결과를 당시 팀 명단에 집계합니다. 휴식·심판을 제외한 실제 개인 출전 승률은 아니며 능력치 평가에 직접 사용하지 않습니다.</p>
             <div id="season-box" class="overflow-x-auto"><p class="text-sm text-gray-400">[집계 새로고침]을 누르면 계산됩니다.</p></div>
         </div>`;
 
@@ -70,7 +70,8 @@ export function onShow() {
 }
 
 async function loadDate() {
-    const date = dateInput.value || localToday();
+    const date = dateInput.value || localToday(), version=++loadVersion;
+    loadedDate='';document.getElementById('record-save-btn').disabled=true;
     teamsInfoEl.innerHTML = '<p class="text-gray-400">불러오는 중...</p>';
     scoreRowsEl.innerHTML = '';
     currentTeams = []; currentTeamNames = []; currentRecord = null;
@@ -79,17 +80,19 @@ async function loadDate() {
             getDoc(doc(db, "dailyMeetings", date)),
             getDoc(doc(db, "matchRecords", date))
         ]);
+        if(version!==loadVersion)return;
+        loadedDate=date; currentQuarterCount=(mSnap.data()?.quarterCount ?? rSnap.data()?.quarterCount)===4?4:6;
         if (rSnap.exists()) currentRecord = rSnap.data();
-        if (mSnap.exists()) {
+        if(currentRecord?.teamsSnapshot) {
+            currentTeams=Object.keys(currentRecord.teamsSnapshot).sort().map(k=>currentRecord.teamsSnapshot[k]||[]);
+            currentTeamNames=mSnap.data()?.teamNames||[];
+        } else if (mSnap.exists()) {
             currentTeamNames = mSnap.data().teamNames || []; // [v58]
             const teamsObj = mSnap.data().teams || {};
             currentTeams = Object.keys(teamsObj).sort().map(k => (teamsObj[k] || []).map(p => cleanName(p.name)).filter(Boolean));
-        } else if (currentRecord && currentRecord.teamsSnapshot) {
-            // 팀배정 문서가 없어도(예: 과거 데이터 정리) 기록 저장 당시의 팀 스냅샷으로 표시
-            const ts = currentRecord.teamsSnapshot;
-            currentTeams = Object.keys(ts).sort().map(k => ts[k] || []);
         }
-    } catch (e) { console.error('경기기록 로드 실패:', e); }
+    } catch (e) { if(version!==loadVersion)return; teamsInfoEl.textContent='경기 정보를 불러오지 못했습니다. 다시 불러오기를 눌러 주세요.';return; }
+    document.getElementById('record-save-btn').disabled=saving;
     renderTeamsInfo();
     renderScoreRows();
     renderEloBox();
@@ -111,7 +114,7 @@ function renderScoreRows() {
     const teamOptions = (sel) => currentTeams.map((_, i) => `<option value="${i}" ${i === sel ? 'selected' : ''}>${tn(i)}</option>`).join('');
     const qs = (currentRecord && currentRecord.quarters) || {};
     let html = '';
-    for (let q = 0; q < QUARTERS; q++) {
+    for (let q = 0; q < currentQuarterCount; q++) {
         const d = qs[`q_${q}`] || {};
         const a = (d.a !== undefined) ? d.a : 0;
         const b = (d.b !== undefined) ? d.b : 1;
@@ -126,19 +129,22 @@ function renderScoreRows() {
             <select class="rq-b p-1.5 border rounded-lg text-sm bg-white">${teamOptions(b)}</select>
         </div>`;
     }
-    scoreRowsEl.innerHTML = html + '<p class="text-xs text-gray-400">스코어를 입력하지 않은 쿼터는 저장되지 않습니다. (일부 쿼터만 입력해도 됩니다)</p>';
+    scoreRowsEl.innerHTML = html + '<p class="text-xs text-gray-400">양쪽 점수를 입력한 쿼터만 갱신합니다. 빈칸과 보관 중인 5·6쿼터의 기존 점수는 삭제하지 않습니다. 팀 명단은 최초 기록의 스냅샷을 유지합니다.</p>';
 }
 
 async function saveScores() {
+    if(saving||loadedDate!==dateInput.value)return;
     if (!state.isAdmin) { window.showNotification('관리자만 저장할 수 있습니다.', 'error'); return; }
     if (currentTeams.length < 2) { window.showNotification('팀배정이 없어 저장할 수 없습니다.', 'error'); return; }
     const date = dateInput.value || localToday();
     const quarters = {};
+    let invalid=false;
     scoreRowsEl.querySelectorAll('[data-q]').forEach(row => {
         const q = parseInt(row.dataset.q, 10);
         const sa = row.querySelector('.rq-sa').value;
         const sb = row.querySelector('.rq-sb').value;
         if (sa === '' || sb === '') return; // 미입력 쿼터는 저장 안 함
+        if(!Number.isInteger(Number(sa))||!Number.isInteger(Number(sb))||Number(sa)<0||Number(sb)<0||row.querySelector('.rq-a').value===row.querySelector('.rq-b').value){invalid=true;return;}
         quarters[`q_${q}`] = {
             a: parseInt(row.querySelector('.rq-a').value, 10),
             b: parseInt(row.querySelector('.rq-b').value, 10),
@@ -146,122 +152,39 @@ async function saveScores() {
             sb: Math.max(0, parseInt(sb, 10) || 0)
         };
     });
+    if(invalid){window.showNotification('서로 다른 두 팀과 0 이상의 정수 점수를 입력하세요.','error');return;}
     const teamsSnapshot = {};
     currentTeams.forEach((t, i) => { teamsSnapshot[`team_${i}`] = t; });
+    saving=true;document.getElementById('record-save-btn').disabled=true;
+    const expected=JSON.stringify(currentRecord),count=currentQuarterCount;
     try {
-        await setDoc(doc(db, "matchRecords", date), {
+        const value=await runTransaction(db,async tx=>{
+            const ref=doc(db,'matchRecords',date), snap=await tx.get(ref), existing=snap.exists()?snap.data():null;
+            if(JSON.stringify(existing)!==expected)throw new Error('다른 기기에서 기록을 수정했습니다. 덮어쓰지 않았습니다. 다시 불러와 확인하세요.');
+            const value={...existing,
             date,
             teamsSnapshot,                                     // 저장 당시 팀 명단 (이후 팀배정이 바뀌어도 기록은 그대로)
-            quarters,
-            eloApplied: !!(currentRecord && currentRecord.eloApplied), // 이미 보정했으면 플래그 유지
+            quarterCount:count,
+            quarters:{...existing?.quarters,...Object.fromEntries(Object.entries(quarters).map(([key,value])=>[key,{...existing?.quarters?.[key],...value}]))},
+            eloApplied: !!existing?.eloApplied, // 이미 보정했으면 플래그 유지
             lastUpdatedAt: serverTimestamp()
+            };tx.set(ref,value);return value;
         });
-        currentRecord = { date, teamsSnapshot, quarters, eloApplied: !!(currentRecord && currentRecord.eloApplied) };
+        if(dateInput.value===date) {currentRecord=value;await loadDate();}
         window.showNotification(`${date} 스코어 ${Object.keys(quarters).length}개 쿼터 저장 완료!`);
         renderEloBox();
     } catch (e) {
-        console.error(e);
         window.showNotification('저장 실패: ' + e.message, 'error');
-    }
+    } finally {saving=false;document.getElementById('record-save-btn').disabled=loadedDate!==dateInput.value;}
 }
 
-/* ── ② 능력치 자동 보정 (개인 Elo) ───────────────────────────
-   그날 팀의 실력 = 팀원 s1 평균. 예상 승률 대비 실제 결과의 차이를
-   팀원 전원에게 소량(K=0.8/쿼터)씩 나눠준다. 매주 팀 조합이 바뀌기 때문에
-   여러 주가 쌓이면 개인별 기여 신호가 자연스럽게 분리된다. */
-function computeEloDeltas() {
-    const rec = currentRecord;
-    if (!rec || !rec.quarters) return {};
-    const teams = rec.teamsSnapshot
-        ? Object.keys(rec.teamsSnapshot).sort().map(k => rec.teamsSnapshot[k])
-        : currentTeams;
-    const s1Of = (n) => {
-        const p = state.playerDB[n];
-        return (p && typeof p.s1 === 'number') ? p.s1 : 65;
-    };
-    const K = 0.8; // 쿼터당 최대 변화폭
-    const deltas = {};
-    Object.keys(rec.quarters).sort().forEach(k => {
-        const q = rec.quarters[k];
-        const A = teams[q.a] || [], B = teams[q.b] || [];
-        if (!A.length || !B.length || q.a === q.b) return;
-        const ra = A.reduce((s, n) => s + s1Of(n) + (deltas[n] || 0), 0) / A.length;
-        const rb = B.reduce((s, n) => s + s1Of(n) + (deltas[n] || 0), 0) / B.length;
-        const expA = 1 / (1 + Math.pow(10, -(ra - rb) / 10)); // 평균 5점 차이 ≈ 76% 예상 승률
-        const resA = q.sa > q.sb ? 1 : (q.sa < q.sb ? 0 : 0.5);
-        const dA = K * (resA - expA);
-        A.forEach(n => { deltas[n] = (deltas[n] || 0) + dA; });
-        B.forEach(n => { deltas[n] = (deltas[n] || 0) - dA; });
-    });
-    return deltas;
-}
-
+// Team results cannot establish individual skill: do not write players here.
 function renderEloBox() {
-    if (!eloBox) return;
-    const has = currentRecord && currentRecord.quarters && Object.keys(currentRecord.quarters).length > 0;
-    eloBox.innerHTML = `
-        <h3 class="text-xl font-bold mb-2">⚡ 능력치 자동 보정 (개인 Elo)</h3>
-        <p class="text-xs text-gray-400 mb-3">쿼터 스코어를 바탕으로 이긴 팀원의 능력치(s1)를 소폭 올리고 진 팀원을 소폭 내립니다 (쿼터당 최대 ±0.8, 30~99 범위 유지). <b>미리보기를 확인한 뒤 [반영]을 눌러야만</b> 실제 선수 정보에 적용됩니다.</p>
-        ${currentRecord && currentRecord.eloApplied ? '<p class="text-sm font-bold text-emerald-600 mb-2">✅ 이 날짜는 이미 반영되었습니다. 다시 반영하면 중복 적용되니 주의하세요.</p>' : ''}
-        <button id="elo-preview-btn" class="bg-amber-500 text-white text-sm font-bold py-2 px-4 rounded-lg hover:bg-amber-600" ${has ? '' : 'disabled style="opacity:.5;cursor:not-allowed"'}>${has ? '보정 미리보기' : '먼저 쿼터 스코어를 저장하세요'}</button>
-        <div id="elo-preview-area" class="mt-3"></div>`;
-    const btn = document.getElementById('elo-preview-btn');
-    if (btn && has) btn.addEventListener('click', renderEloPreview);
-}
-
-function renderEloPreview() {
-    const area = document.getElementById('elo-preview-area');
-    if (!area) return;
-    const deltas = computeEloDeltas();
-    const names = Object.keys(deltas).sort((a, b) => Math.abs(deltas[b]) - Math.abs(deltas[a]));
-    if (names.length === 0) { area.innerHTML = '<p class="text-sm text-gray-400">계산할 스코어가 없습니다.</p>'; return; }
-    const rows = names.map(n => {
-        const p = state.playerDB[n];
-        const registered = !!p;
-        const cur = registered ? (p.s1 || 65) : 65;
-        const d = deltas[n];
-        const next = Math.max(30, Math.min(99, Math.round((cur + d) * 10) / 10));
-        const dTxt = (d >= 0 ? '+' : '') + (Math.round(d * 100) / 100);
-        const color = d > 0.01 ? 'text-emerald-600' : (d < -0.01 ? 'text-red-500' : 'text-gray-400');
-        return `<tr class="border-b">
-            <td class="py-1.5 px-3 font-medium">${n}${registered ? '' : ' <span class="text-xs text-amber-600">(미등록 · 반영 안 됨)</span>'}</td>
-            <td class="py-1.5 px-3 text-center">${registered ? cur : '-'}</td>
-            <td class="py-1.5 px-3 text-center font-bold ${color}">${dTxt}</td>
-            <td class="py-1.5 px-3 text-center font-bold">${registered ? next : '-'}</td>
-        </tr>`;
-    }).join('');
-    area.innerHTML = `
-        <div class="overflow-x-auto"><table class="w-full text-sm text-left">
-            <thead class="text-xs text-gray-600 uppercase bg-gray-50"><tr><th class="py-2 px-3">이름</th><th class="py-2 px-3 text-center">현재</th><th class="py-2 px-3 text-center">변화</th><th class="py-2 px-3 text-center">반영 후</th></tr></thead>
-            <tbody>${rows}</tbody>
-        </table></div>
-        <button id="elo-apply-btn" class="mt-3 bg-emerald-600 text-white text-sm font-bold py-2 px-5 rounded-lg hover:bg-emerald-700">✅ 이대로 선수 능력치에 반영</button>`;
-    document.getElementById('elo-apply-btn').addEventListener('click', () => applyElo(deltas));
-}
-
-async function applyElo(deltas) {
-    if (!state.isAdmin) { window.showNotification('관리자만 반영할 수 있습니다.', 'error'); return; }
-    if (currentRecord && currentRecord.eloApplied) {
-        if (!confirm('이 날짜는 이미 반영된 기록이 있습니다.\n다시 반영하면 중복 적용됩니다. 계속할까요?')) return;
-    }
-    const date = dateInput.value || localToday();
-    try {
-        const updates = [];
-        Object.keys(deltas).forEach(n => {
-            const p = state.playerDB[n];
-            if (!p) return; // 미등록(게스트)은 건너뜀
-            const next = Math.max(30, Math.min(99, Math.round(((p.s1 || 65) + deltas[n]) * 10) / 10));
-            updates.push(setDoc(doc(db, "players", n), { s1: next }, { merge: true }));
-        });
-        await Promise.all(updates);
-        await setDoc(doc(db, "matchRecords", date), { eloApplied: true, eloAppliedAt: serverTimestamp() }, { merge: true });
-        if (currentRecord) currentRecord.eloApplied = true;
-        window.showNotification(`${updates.length}명의 능력치가 보정되었습니다.`);
-        renderEloBox();
-    } catch (e) {
-        console.error(e);
-        window.showNotification('반영 실패: ' + e.message, 'error');
-    }
+    if(!eloBox)return;
+    eloBox.innerHTML=`<h3 class="text-xl font-bold mb-2">선수 평가는 8주 단위로</h3>
+    <p>승패만으로 능력치를 올리거나 내리지 않습니다. 휴식·심판, 상대 전력, 포지션과 호흡이 결과에 영향을 주기 때문입니다.</p>
+    <p>8주 동안 같은 역할에서의 기본기·판단·협력을 관찰하고, 선수 본인의 의견과 함께 감독이 검토해 주세요. 변경이 필요하면 선수 관리에서 직접 조정합니다.</p>
+    ${currentRecord?.eloApplied?'<p class="coach-note">과거 자동 보정 이력은 보존되어 있습니다. 이 화면에서는 재반영하거나 되돌리지 않습니다.</p>':''}`;
 }
 
 /* ── ③ 활약 투표 집계 (공유 보드에서 회원들이 투표) ── */
@@ -275,7 +198,7 @@ async function renderRateBox() {
         const voters = Object.keys(votes);
         if (voters.length === 0) {
             rateBox.innerHTML = `<h3 class="text-xl font-bold mb-2">🏅 활약 투표 결과 <span class="text-sm font-normal text-gray-400">(${date})</span></h3>
-                <p class="text-sm text-gray-400">아직 투표가 없습니다. 회원들은 <b>공유 보드 링크</b> 하단에서 경기 후 '오늘 잘한 3명'을 뽑을 수 있습니다. (1순위 3점 · 2순위 2점 · 3순위 1점)</p>`;
+                <p class="text-sm text-gray-400">아직 투표가 없습니다. 회원들은 <b>다음 경기 참석 투표의 ‘지난 경기 활약투표’</b>에서 경기 후 '오늘 잘한 3명'을 뽑을 수 있습니다. (1순위 3점 · 2순위 2점 · 3순위 1점)</p>`;
             return;
         }
         const pts = {};
@@ -314,7 +237,7 @@ async function renderSeason() {
             const teams = rec.teamsSnapshot ? Object.keys(rec.teamsSnapshot).sort().map(k => rec.teamsSnapshot[k]) : [];
             if (!teams.length) return;
             teams.forEach(t => (t || []).forEach(n => ensure(n).days.add(rec.date || dSnap.id)));
-            Object.values(rec.quarters || {}).forEach(q => {
+            Object.entries(rec.quarters || {}).filter(([key])=>Number(key.replace('q_',''))<(rec.quarterCount===4?4:6)).forEach(([,q]) => {
                 const A = teams[q.a] || [], B = teams[q.b] || [];
                 const resA = q.sa > q.sb ? 'w' : (q.sa < q.sb ? 'l' : 'd');
                 const resB = resA === 'w' ? 'l' : (resA === 'l' ? 'w' : 'd');
@@ -350,7 +273,7 @@ async function renderSeason() {
             </tr>`;
         }).join('');
         seasonBox.innerHTML = `<table class="w-full text-sm text-left">
-            <thead class="text-xs text-gray-600 uppercase bg-gray-50"><tr><th class="py-2 px-3">이름</th><th class="py-2 px-3 text-center">기록일수</th><th class="py-2 px-3 text-center">쿼터 승-무-패</th><th class="py-2 px-3 text-center">승률</th><th class="py-2 px-3 text-center">활약점수</th></tr></thead>
+            <thead class="text-xs text-gray-600 uppercase bg-gray-50"><tr><th class="py-2 px-3">이름</th><th class="py-2 px-3 text-center">기록일수</th><th class="py-2 px-3 text-center">소속 팀 쿼터 승-무-패</th><th class="py-2 px-3 text-center">소속 팀 승률</th><th class="py-2 px-3 text-center">활약점수</th></tr></thead>
             <tbody>${rows}</tbody>
         </table>`;
     } catch (e) {

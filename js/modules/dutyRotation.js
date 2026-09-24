@@ -9,7 +9,9 @@ export function planDuties(teams, earlyFirst, fieldCounts, dedicatedNames=[]) {
     const result=teams.map(()=>({gks:[],resters:[],referees:[]})), notes=[];
     const rotate=(queue,name)=>{const i=queue.indexOf(name);if(i>=0){queue.splice(i,1);queue.push(name);}};
     let lastRefTeam=-1;
-    for(let q=0;q<6;q++) {
+    const count=fieldCounts[0]?.length;
+    if(![4,6].includes(count)||fieldCounts.some(row=>row.length!==count))throw new Error('쿼터 수를 확인해 주세요.');
+    for(let q=0;q<count;q++) {
         const spaces=teams.map((team,t)=>team.length-fieldCounts[t][q]);
         if(spaces.some(n=>n<0))throw new Error('팀 인원보다 출전 인원이 많습니다.');
         // Alternate the referee's team whenever both teams have an off-field player.
@@ -45,12 +47,12 @@ export function planDuties(teams, earlyFirst, fieldCounts, dedicatedNames=[]) {
 
 // Preserve existing field positions and resters when only the shared referee duty needs repair.
 // This is read-only: callers decide whether to save the returned referee names.
-export function sharedRefereesFromLineups(lineups, earlyFirst=[]) {
+export function sharedRefereesFromLineups(lineups, earlyFirst=[], count=6) {
     const entries=Array.isArray(lineups)?lineups.map((value,index)=>[index,value]):Object.entries(lineups||{});
     const rank=new Map(earlyFirst.map((name,index)=>[name,index]));
     const at=(value,q)=>Array.isArray(value)?value[q]:value?.[`q_${q}`]??value?.[`q${q+1}`];
     let lastTeam=null;
-    return Array.from({length:6},(_,q)=>{
+    return Array.from({length:count===4?4:6},(_,q)=>{
         const available=entries.flatMap(([index,lineup])=>{
             const names=at(lineup?.resters,q);
             return Array.isArray(names)&&names.length?[{team:Number(index),lineup,names}]:[];

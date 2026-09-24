@@ -1,7 +1,7 @@
 // js/modules/voteManagement.js
 // 묶음 C: 참석 투표 (로그인 없이 링크로 참여) + 관리자 확정 → 팀 배정 연결
 import { doc, setDoc, getDoc, getDocs, addDoc, deleteDoc, collection, query, where, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
-import { renderVote } from './votePage.js?v=13';
+import { renderVote } from './votePage.js?v=14';
 import { compareResponseTime } from './voteOrder.js?v=1';
 import { canOpenVote } from './voteTiming.js?v=1';
 
@@ -91,7 +91,8 @@ export function init(dependencies) {
     `;
     sharePage.appendChild(box);
     const publication=document.getElementById('meeting-publication');
-    if(publication)box.querySelector('#meeting-publication-slot').append(publication);
+     if(publication)document.getElementById('lineup-publication-host').append(publication);
+     box.querySelector('#meeting-publication-slot').innerHTML='<p class="coach-note">팀·라인업의 최종 확정과 공개는 <b>라인업·공개</b> 메뉴에서 진행합니다.</p>';
     const saved=box.querySelector('#vote-location-saved');
     const populateSaved=()=>{
         const previous=saved.value;

@@ -22,7 +22,7 @@ export const onSnapshot=(p,options,callback,error)=>{const cb=typeof options==='
 const emit=p=>listeners.slice().filter(f=>f.path===p || (p.startsWith(f.path+'/') && p.split('/').length===f.path.split('/').length+1)).forEach(f=>f());
 function merge(a,b){for(const [k,v]of Object.entries(b)){if(v&&typeof v==='object'&&!Array.isArray(v)){a[k]||={};merge(a[k],v);}else a[k]=structuredClone(v);}return a;}
 export const setDoc=async(p,v,o)=>{globalThis.__writes.push({path:p,value:structuredClone(v),merge:!!o?.merge});data[p]=o?.merge?merge(data[p]||{},v):structuredClone(v);emit(p);};
-export const runTransaction=async(_,fn)=>{if(globalThis.__failSave)throw new Error('simulated offline');const writes=[];const value=await fn({get:getDoc,set:(p,v)=>writes.push([p,v])});for(const [p,v] of writes)await setDoc(p,v);return value;};
+export const runTransaction=async(_,fn)=>{if(globalThis.__failSave)throw new Error('simulated offline');const writes=[];const value=await fn({get:getDoc,set:(p,v,o)=>writes.push([p,v,o])});for(const [p,v,o] of writes)await setDoc(p,v,o);return value;};
 export const updateDoc=async(p,v)=>{globalThis.__writes.push({path:p,value:structuredClone(v),update:true});Object.assign(data[p],structuredClone(v));emit(p);};
 export const addDoc=async(p,v)=>{const id='new-'+globalThis.__writes.length;await setDoc(p+'/'+id,v);return{id};};
 export const deleteDoc=async()=>{throw new Error('DELETE FORBIDDEN IN TEST');};`;
@@ -72,6 +72,73 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   });
   const page=await context.newPage(), errors=[],dialogs=[];let cancelGuest=false,cancelRating=false;
   page.on('pageerror',e=>{errors.push(e.message);console.error('Isolated browser error:',e.message);});page.on('dialog',d=>{dialogs.push(d.message());return (cancelGuest&&/Guest|guest/.test(d.message()))||cancelRating?d.dismiss():d.accept();});
+  if(process.argv.includes('--remodel2')) {
+    await context.addInitScript(({today,names})=>{
+      names.forEach((name,i)=>__fixture['votes/test-vote/responses/'+name]={name,status:'attend',waitlist:false,attendingSince:{seconds:i+10}});
+      __fixture['attendance/a']={date:today,name:names[0],paymentStatus:'✕',paymentAmount:0,sentinel:'A'};
+      __fixture['attendance/b']={date:today,name:names[1],paymentStatus:'✕',paymentAmount:0,sentinel:'B'};
+      __fixture['matchRecords/'+today]={date:today,quarters:{q_4:{a:0,b:1,sa:2,sb:1},q_5:{a:0,b:1,sa:3,sb:3}},eloApplied:true,sentinel:'history'};
+      __fixture['shares/four-share']={...structuredClone(__fixture['shares/test-share']),quarterCount:4};
+    },{today,names});
+    await page.setViewportSize({width:1440,height:1000});
+    await page.goto(base+'/');await page.waitForFunction(()=>document.getElementById('operator-save')?.textContent.includes('저장됨'));
+    assert.equal(await page.evaluate(()=>__writes.length),0);
+    assert.equal(await page.locator('#w_skill').count(),0);
+    await page.locator('#tab-lineup').click();
+    const originalTail=await page.evaluate(async()=>{const {state}=await import('/js/store.js?v=3');return state.teamLineupCache[0].lineups.slice(4);});
+    await page.locator('#quarter-count').selectOption('4');assert.equal(await page.locator('.quarter-block:visible').count(),4);
+    await page.evaluate(()=>flushMeetingSave());
+    assert.equal(await page.evaluate(today=>__fixture['dailyMeetings/'+today].quarterCount,today),4);
+    await page.locator('#generateLineupButton').click();await page.waitForFunction(()=>!document.getElementById('generateLineupButton').disabled);
+    await page.evaluate(()=>flushMeetingSave());
+    assert.deepEqual(await page.evaluate(async()=>{const {state}=await import('/js/store.js?v=3');return state.teamLineupCache[0].lineups.slice(4);}),originalTail);
+    await page.locator('#quarter-count').selectOption('6');assert.equal(await page.locator('.quarter-block:visible').count(),6);
+    await page.locator('#quarter-count').selectOption('4');await page.evaluate(()=>flushMeetingSave());
+    await page.locator('#tab-share').click();await page.waitForSelector('#vote-status-panel button');
+    await page.locator('#tab-lineup').click();await page.locator('#generate-share-btn').click();
+    await page.waitForFunction(()=>__writes.some(w=>w.path.startsWith('shares/')));
+    const published=await page.evaluate(()=>__writes.find(w=>w.path.startsWith('shares/')).value);
+    assert.equal(published.quarterCount,4);assert.equal(published.lineups.team1.lineups.length,4);assert.equal(published.lineups.team2.lineups.length,4);
+    await page.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-remodel2-lineup-desktop.png'),fullPage:true});
+    await page.locator('#tab-record').click();await page.waitForSelector('#record-score-rows [data-q]');
+    assert.equal(await page.locator('#record-score-rows [data-q]').count(),4);
+    assert.equal(await page.locator('#elo-apply-btn,#elo-preview-btn').count(),0);
+    await page.locator('[data-q="0"] .rq-sa').fill('2');await page.locator('[data-q="0"] .rq-sb').fill('1');await page.locator('#record-save-btn').click();
+    await page.waitForFunction(today=>__fixture['matchRecords/'+today].quarterCount===4,today);
+    const rec=await page.evaluate(today=>__fixture['matchRecords/'+today],today);
+    assert.equal(rec.sentinel,'history');assert.equal(rec.eloApplied,true);assert.deepEqual(rec.quarters.q_5,{a:0,b:1,sa:3,sb:3});
+    await page.locator('#tab-accounting').click();await page.waitForSelector('.log-status-select[data-id="a"]');
+    await page.locator('.log-status-select[data-id="a"]').selectOption('●');
+    await page.locator('.log-status-select[data-id="b"]').selectOption('△');
+    await page.locator('.log-amount-input[data-id="b"]').fill('25');await page.locator('.log-amount-input[data-id="b"]').dispatchEvent('change');
+    await page.evaluate(()=>flushAccountingSave());
+    assert.equal(await page.evaluate(()=>__fixture['attendance/a'].paymentAmount),50);
+    assert.equal(await page.evaluate(()=>__fixture['attendance/a'].sentinel),'A');
+    assert.equal(await page.evaluate(()=>__fixture['attendance/b'].paymentStatus),'△');
+    assert.equal(await page.evaluate(()=>__fixture['attendance/b'].paymentAmount),'25');
+    await page.evaluate(()=>__failSave=true);
+    await page.locator('.log-amount-input[data-id="a"]').fill('45');await page.locator('.log-amount-input[data-id="a"]').dispatchEvent('change');
+    await page.evaluate(()=>flushAccountingSave().catch(()=>{}));assert.equal(await page.evaluate(()=>hasUnsavedMeeting()),true);
+    assert.match(await page.locator('.ledger-save-status').textContent(),/저장 실패/);
+    await page.evaluate(()=>__failSave=false);await page.locator('.ledger-save-status button').click();
+    await page.waitForFunction(()=>!hasUnsavedAccounting());assert.equal(await page.evaluate(()=>__fixture['attendance/a'].paymentAmount),'45');
+    await page.locator('#uncheck-all-btn').click();await page.locator('#record-attendance-btn').click();
+    await page.waitForFunction(()=>!document.getElementById('record-attendance-btn').disabled);
+    assert.equal(await page.evaluate(()=>__fixture['attendance/a'].paymentAmount),'45','unchecking must never remove paid records');
+    await page.locator('#collect-mode-btn').click();await page.locator('#collect-hide-btn').click();
+    assert.equal(await page.locator('.log-status-select[data-id="b"]').count(),1,'partial payment stays outstanding');
+    await page.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-remodel2-ledger-desktop.png'),fullPage:true});
+    await page.setViewportSize({width:390,height:844});await page.locator('#tab-lineup').click();
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'operator mobile must not overflow');
+    await page.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-remodel2-lineup-mobile.png'),fullPage:true});
+    assert.ok((await page.evaluate(()=>__writes)).every(w=>!/^(players|votes|ratings|privatePositionPreferences|expenses|incomes)\//.test(w.path)));
+    await page.goto(base+'/share.html?shareId=four-share');await page.waitForSelector('#bp-image-open');
+    assert.equal(await page.locator('.bp-quarter').count(),8,'public view includes four quarters per team');
+    assert.equal(await page.locator('#bp-score-body').textContent(),'','inactive scores must not leak into four-quarter public results');
+    assert.equal(await page.evaluate(()=>__writes.length),0);
+    assert.deepEqual(errors,[]);console.log('PASS: four/six quarter preservation, publish, score history, independent ledger saves, retry, add-only attendance, partial balance, mobile layout.');
+    await context.close();return;
+  }
   if(process.argv.includes('--loading')) {
     await context.addInitScript(()=>{__failReads=['incomes'];localStorage.setItem('playerDB','broken-cache');});
     await page.goto(base+'/');await page.waitForFunction(()=>document.getElementById('operator-save')?.textContent.includes('저장됨'));
@@ -418,7 +485,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   assert.match(await page.locator('#coach-planner .coach-help').textContent(),/미리보기만으로 기존 라인업은 바뀌지 않습니다/);
   await page.locator('#tab-share').click();await page.locator('#vote-location-saved').selectOption('Test pitch');
   assert.equal(await page.locator('#vote-location').inputValue(),'Test pitch');
-  assert.equal(await page.locator('#meeting-publication-slot #generate-share-btn').count(),1);
+  assert.equal(await page.locator('#lineup-publication-host #generate-share-btn').count(),1);
   assert.equal(await page.evaluate(()=>__writes.length),0,'selecting a venue is not a database write');
   await page.locator('#tab-lineup').click();await page.locator('#coach-planner>summary').click();await page.locator('#coach-load').click();await page.waitForSelector('#coach-compare');
   await page.locator('#coach-compare').click();await page.locator('#coach-comparison table').waitFor();
@@ -435,22 +502,22 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   await page.locator('[data-team-lock="Test 01"]').check();await page.locator('#coach-save-team-locks').click();
   await page.waitForFunction(d=>__fixture['coachPlans/'+d].teamLocks?.['Test 01']===0,today);
   await page.locator('#tab-balancer').click();await page.locator('#attendees').fill(names.join('\n')+'\nGuest X');await page.locator('#generateButton').click();
-  await page.waitForFunction(async()=>{const {state}=await import('/js/store.js?v=2');return state.teams.flat().some(p=>p.name==='Guest X');});
+  await page.waitForFunction(async()=>{const {state}=await import('/js/store.js?v=3');return state.teams.flat().some(p=>p.name==='Guest X');});
   await page.waitForTimeout(1500);
-  const generated=await page.evaluate(async()=>{const {state}=await import('/js/store.js?v=2');return state.teams;});
+  const generated=await page.evaluate(async()=>{const {state}=await import('/js/store.js?v=3');return state.teams;});
   assert.equal(generated.flat().length,25,JSON.stringify(generated.map(t=>t.map(p=>p.name))));assert.equal(new Set(generated.flat().map(p=>p.name)).size,25);assert.ok(generated[0].some(p=>p.name==='Test 01'));
   await page.waitForTimeout(1300);
   // A changed roster must have fresh, timestamp-aligned duties before publication.
   await page.evaluate(async()=>{
     __fixture['votes/test-vote/responses/Guest X']={name:'Guest X',status:'attend',guest:true,attendingSince:{seconds:99},waitlist:false};
-    const {state}=await import('/js/store.js?v=2');
+    const {state}=await import('/js/store.js?v=3');
     for(let i=0;i<state.teams.length;i++){
       const result=await window.lineup.executeLineupGeneration(state.teams[i].map(p=>p.name),Array(6).fill('4-4-2'),true);
       if(!result)throw new Error('Synthetic lineup generation failed');
       state.teamLineupCache[i]=result;
     }
   });
-  await page.locator('#tab-share').click();
+  await page.locator('#tab-lineup').click();
   const beforeBlocked=await page.evaluate(()=>__writes.length);
   await page.evaluate(d=>{document.getElementById('balancer-date').value=d;},next);await page.locator('#generate-share-btn').click();
   assert.equal(await page.evaluate(()=>__writes.length),beforeBlocked,'different match date must block publication');

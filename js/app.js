@@ -2,13 +2,13 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
 import { getFirestore, collection, doc, onSnapshot, getDocs, getDoc, setDoc, deleteDoc, addDoc, serverTimestamp, runTransaction } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
-import { state, setAdmin } from './store.js?v=2';
+import { state, setAdmin } from './store.js?v=3';
 let playerMgmt, balancer, lineup, accounting, shareMgmt, voteMgmt, lineupStats, coachWorkspace, adminWorkflow;
 import { createMeetingSession, meetingFingerprint, meetingConflict } from './modules/meetingSession.js?v=1';
 import { ensureLibrary } from './modules/optionalLibraries.js?v=1';
-import { roleTip } from './modules/coachCore.js?v=1';
+import { roleTip } from './modules/coachCore.js?v=2';
 let matchRecord;
-import { sharedRefereesFromLineups } from './modules/dutyRotation.js?v=2';
+import { sharedRefereesFromLineups } from './modules/dutyRotation.js?v=3';
 
 const firebaseConfig = {
     apiKey: "AIzaSyD_2tm5-hYbCeU8yi0QiWW9Oqm0O7oPBco",
@@ -105,9 +105,9 @@ const meetingSession = createMeetingSession({
     }
 });
 window.flushMeetingSave = () => meetingSession.flush();
-window.hasUnsavedMeeting = () => meetingSession.dirty;
+window.hasUnsavedMeeting = () => meetingSession.dirty || !!window.hasUnsavedAccounting?.();
 window.addEventListener('beforeunload', event => {
-    if (meetingSession.dirty) {event.preventDefault();event.returnValue = '';}
+    if (window.hasUnsavedMeeting()) {event.preventDefault();event.returnValue = '';}
 });
 function saveDailyMeetingData() {
     if (!state.isAdmin || applyingMeeting) return;
@@ -124,7 +124,7 @@ function saveDailyMeetingData() {
     const transformedCache = {};
     // Do not silently rewrite historical referee records during an unrelated edit.
     const sharedReferees = today >= window.getLocalDate()
-        ? sharedRefereesFromLineups(state.teamLineupCache || {}, state.initialAttendeeOrder || []) : [];
+        ? sharedRefereesFromLineups(state.teamLineupCache || {}, state.initialAttendeeOrder || [],state.quarterCount===4?4:6) : [];
     Object.keys(state.teamLineupCache || {}).forEach(teamIndex => {
         const originalLineup = state.teamLineupCache[teamIndex];
         if (originalLineup && Array.isArray(originalLineup.resters)) {
@@ -154,6 +154,7 @@ function saveDailyMeetingData() {
 
     const dataToSave = {
         date: today,
+        quarterCount: state.quarterCount===4?4:6,
         teams: teamsObject,
         teamLineupCache: transformedCache,
         initialAttendeeOrder: state.initialAttendeeOrder || [],
@@ -197,6 +198,7 @@ window.updatePlayerPref = async function(name, patch) {
 
 // [A방식] 서버 문서 데이터를 화면/상태에 반영 (명단·에이스·팀배정·라인업 복원)
 function applyMeetingData(data) {
+    state.quarterCount=data?.quarterCount===4?4:6;
     if (data) {
         state.teams = Object.values(data.teams || {});
         state.teamNames = data.teamNames || []; // [v58] 팀 이름 복원
@@ -450,14 +452,17 @@ function renderManual() {
       <ol>
         <li><h3>참석·모임정보</h3><p>경기 날짜·시각·구장을 확인하고 참석 투표를 만들어 공유합니다. 경기 2시간 전 마감 이후 신청은 대기입니다. 참석자를 가져오면 해당 경기 날짜로 이동합니다.</p></li>
         <li><h3>팀 배정</h3><p>상단의 작업 날짜를 확인합니다. 기존 자동 배정 또는 직접 입력을 사용하세요. 8주 고정팀 운영 시 계획과 당일 결원 보충을 먼저 미리보기하고, 명단을 확인한 후 적용합니다. 당일 차출로 원소속은 바뀌지 않습니다.</p></li>
-        <li><h3>6쿼터 라인업</h3><p>팀·9/10/11인제·포메이션을 고르고 생성한 뒤 6쿼터를 한눈에 보며 수정합니다. 이미 만든 결과를 유지하려면 다시 생성하지 마세요. 심판은 양 팀 공동 순번, 키퍼·휴식은 팀별 늦은 참석 신청순으로 순환합니다. 전담 GK는 예외입니다.</p><p>고정팀 훈련 포지션은 별도로 켠 후 새로 생성할 때만 우선합니다. 수동 고정·의무 순번과 인원 조건이 먼저이며 모든 희망 자리를 보장하지는 않습니다. 날짜 전환·새로고침 후에는 다시 선택하세요.</p></li>
-        <li><h3>저장 확인 → 팀원에게 공개</h3><p>상단의 ‘저장됨’을 확인한 뒤 참석·모임정보에서 공개합니다. 저장과 공개는 별개입니다. 공개 뒤 편집했으면 확인 후 다시 공개해야 합니다. 기존 공유 링크는 당시 결과를 유지합니다.</p><p>공개 페이지의 이미지 버튼으로 팀별 6쿼터 PNG를 저장하거나 공유할 수 있습니다. 카카오톡에 파일을 직접 올려 두면 사이트가 안 열리는 팀원도 볼 수 있습니다.</p></li>
-        <li><h3>경기 후 기록</h3><p>출석·회계에서 실제 출석과 납부를 확인합니다. 참석 투표를 했다고 회비 납부나 실제 출석이 기록되는 것은 아닙니다. 경기기록에서 스코어를 남기고, 능력치 반영은 내용을 확인한 뒤 별도로 실행합니다.</p></li>
+        <li><h3>4·6쿼터 라인업</h3><p>팀·9/10/11인제·포메이션을 고르고 6쿼터(기본) 또는 4쿼터를 선택해 생성한 뒤 전체 쿼터를 한눈에 보며 수정합니다. 이미 만든 결과를 유지하려면 다시 생성하지 마세요. 심판은 양 팀 공동 순번, 키퍼·휴식은 팀별 늦은 참석 신청순으로 순환합니다. 전담 GK는 예외입니다.</p><p>고정팀 훈련 포지션은 별도로 켠 후 새로 생성할 때만 우선합니다. 수동 고정·의무 순번과 인원 조건이 먼저이며 모든 희망 자리를 보장하지는 않습니다. 날짜 전환·새로고침 후에는 다시 선택하세요.</p></li>
+        <li><h3>저장 확인 → 팀원에게 공개</h3><p>상단의 ‘저장됨’을 확인한 뒤 라인업·공개 탭 맨 아래에서 확정·공개합니다. 저장과 공개는 별개입니다. 공개 뒤 편집했으면 확인 후 다시 공개해야 합니다. 기존 공유 링크는 당시 결과를 유지합니다.</p><p>공개 페이지의 이미지 버튼으로 팀별 전체 쿼터 PNG를 저장하거나 공유할 수 있습니다. 카카오톡에 파일을 직접 올려 두면 사이트가 안 열리는 팀원도 볼 수 있습니다.</p></li>
+        <li><h3>경기 후 기록</h3><p>출석·회계에서 실제 출석과 납부를 확인합니다. 참석 투표를 했다고 회비 납부나 실제 출석이 기록되는 것은 아닙니다. 경기기록에서 스코어를 남기고, 선수 능력치는 승패로 자동 변경하지 않습니다.</p></li>
       </ol>
       <details><summary>8주 고정팀과 비공개 희망 포지션</summary><p>선수 관리에서 응답·수요를 확인합니다. 두 지망이 같으면 한 자리 집중 희망, 다르면 두 역할을 배우고 싶은 뜻입니다. 비공개 설문은 지정된 감독 계정만 전체 조회할 수 있습니다. 고정팀 도구의 최근 3개월 명단에서 미응답·중복을 확인하고 포지션별 인원과 실력을 나눠 초안을 만드세요. 실제 저장은 권한 적용 후 가능합니다.</p><p>매주 고정팀에서 참석자만 추리고 부족한 팀에 최소한의 차출을 제안합니다. 차출 이유와 미등록 참석자를 확인하세요. 8주가 끝나면 새 계획을 만들며, 이전 계획·선수 평가·설문을 자동 변경하지 않습니다.</p></details>
       <details><summary>필요할 때만 쓰는 고급 도구</summary><p>감독 보드의 최근 이력·부분 재배정·고정 조건은 선택 도구입니다. 단순 수동 편집에는 필요하지 않습니다. 이력은 실제 출전시간이 아닌 저장된 배정 기록입니다. 영상·15분 연습 자료는 참석·모임정보에서 날짜별로 편집합니다.</p></details>
       <details><summary>저장 실패·충돌·접속 지연</summary><p>저장 실패나 충돌이 보이면 창을 닫지 마세요. 연결 문제는 ‘저장 다시 시도’, 다른 기기와 충돌했다면 현재 작업을 확인한 후 ‘서버 내용 다시 불러오기’를 선택합니다. 다시 불러올 때 미저장 편집을 버릴지 묻습니다. 다른 기기의 결과를 자동 덮어쓰지 않습니다.</p><p>접속이 오래 걸리면 네트워크를 바꾸거나 카카오톡 밖의 브라우저로 열어 보세요. 활약투표에서 한도 오류가 나면 재투표를 반복하지 말고 운영자에게 알려 주세요. 선택 원본을 공개하거나 권한을 완화해서 해결하면 안 됩니다.</p></details>
-      <details><summary>삭제·엑셀 업로드와 감독 계정 인계</summary><p>선수 엑셀 업로드는 기존 선수 목록을 통째로 교체하는 기능입니다. 일반적인 수정에는 개별 선수 편집을 사용하세요. 출석 체크 해제 후 저장·범위 삭제·지난 투표 삭제도 기존 자료를 지울 수 있으므로 먼저 대상을 확인해야 합니다.</p><p>새 감독에게 관리자 권한을 주는 것과 비공개 설문 전체 조회 권한을 주는 것은 별도입니다. 계정을 공유하지 말고 소유자의 승인 아래 인계하세요. Firebase 설정·Rules·배포는 저장소 운영 문서를 기준으로 별도 승인 후 진행합니다.</p></details>
+      <details><summary>삭제·엑셀 업로드와 감독 계정 인계</summary><p>선수 엑셀 업로드는 기존 선수 목록을 통째로 교체하는 기능입니다. 일반적인 수정에는 개별 선수 편집을 사용하세요. 출석 체크 저장은 이제 추가만 합니다. 체크 해제·중복 기록은 삭제하지 않습니다. 행별 삭제·범위 삭제·지난 투표 삭제는 여전히 영구 삭제이므로 확인과 별도 승인이 필요합니다.</p><p>새 감독에게 관리자 권한을 주는 것과 비공개 설문 전체 조회 권한을 주는 것은 별도입니다. 계정을 공유하지 말고 소유자의 승인 아래 인계하세요. Firebase 설정·Rules·배포는 저장소 운영 문서를 기준으로 별도 승인 후 진행합니다.</p></details>
+      <details><summary>경기 인원·4/6쿼터를 바꿀 때</summary><p>9인제는 3-4-1, 10인제는 3-4-2, 11인제는 포메이션을 선택합니다. 인원 수와 쿼터 수는 다릅니다. 4쿼터로 바꾸면 보관된 5·6쿼터는 공개·집계에 포함되지 않습니다. 다시 6쿼터로 바꾼 뒤 명단·포메이션·빈자리를 확인하고 공개하세요. 쿼터 선택만으로 필드 배치를 다시 만들지 않습니다.</p><p>팀별 탭에서 모든 쿼터를 보며 선수를 이동합니다. ‘라인업 생성’은 해당 팀의 배치를 다시 만들므로 수동으로 완성한 뒤에는 누르지 마세요. 마지막으로 양 팀 심판·키퍼·휴식을 함께 확인합니다.</p></details>
+      <details><summary>현장 출석·수금: 한 명씩 눌러도 저장되나요?</summary><p>참석 투표를 실제 출석으로 간주하지 마세요. 경기 날짜와 실제 도착자를 확인해 출석에 추가한 뒤 수금 체크를 사용합니다. 완납은 정해진 회비를 자동 채우고, 일부 납부는 실제 받은 금액과 납부방식을 입력합니다. 일부 납부자는 미수금 목록에 계속 남습니다.</p><p>일반·학생·운영진 구분과 천연잔디 여부를 먼저 확인하세요. 기록을 추가한 뒤 선수의 회비유형을 바꾸어도 과거 금액을 일괄 변경하지 않습니다. 비고는 해당 날짜 기록과 다음 모임용 선수 비고에 각각 저장됩니다. 과거 비고를 자동 고치지 않습니다.</p><p>회계 상단의 ‘모든 변경 저장됨’을 확인합니다. 실패 시 창을 닫지 않고 ‘다시 저장’을 누르세요. 입력은 기기 메모리에만 남아 있으므로 새로고침하면 잃을 수 있습니다. 불참 처리는 단순 체크 해제가 아니라 해당 날짜의 실제 기록을 검토해 결정하세요.</p></details>
+      <details><summary>새 감독에게 인계: 앱 권한과 서비스 소유권은 다릅니다</summary><p><b>비밀번호를 넘기지 말고 새 감독 본인 계정을 초대하세요.</b> ① 앱 운영자 권한 ② 비공개 포지션 설문 전체 조회 권한 ③ Firebase/Google Cloud 운영·청구 권한 ④ GitHub 저장소 권한 ⑤ Vercel 프로젝트 권한을 각각 확인해야 합니다.</p><p>Firebase는 기존 프로젝트의 담당자를 인계하는 것이 기본입니다. 새 프로젝트로 데이터를 옮기는 작업은 필요하지 않습니다. 기존 담당자는 새 담당자의 접근과 비용 책임이 확인될 때까지 남아 있어야 합니다. 앱 관리자 등록만으로 Firebase Console 권한이나 비공개 설문 권한이 생기지는 않습니다.</p><p>GitHub·Vercel은 먼저 공동 접근을 설정하고, 소유권을 실제로 옮길 필요가 있을 때 별도 승인 후 이전하세요. 저장소 이름·연결·운영 브랜치 master·도메인·배포 설정을 확인합니다. Vercel 팀을 바꾸면 Firebase 서버 연결에 사용 중인 OIDC 신뢰 조건도 재검토해야 합니다. 설정값과 토큰은 카톡이나 문서에 붙이지 마세요.</p><p>상세 체크리스트는 저장소 <b>docs/HANDOVER.md</b>에 있습니다. 새 담당자 확인 → 승인된 변경 → 운영 읽기 확인 → 기존 담당자 권한 정리 순서를 지킵니다. 코드를 이전 배포로 돌려도 이미 저장된 운영 데이터가 자동 복구되지는 않습니다.</p></details>
     </article>`;
 }
 
@@ -516,7 +521,7 @@ const BP_I18N = {
         qShort: (n) => `${n}쿼터`,
         scoreTitle: '📊 쿼터 스코어',
         rateTitle: '🏅 오늘의 활약 투표',
-        rateSub: '인기투표가 아닙니다 — 투표 결과는 쿼터 스코어와 함께 각 선수의 실력 데이터에 반영되어, 다음 팀 배정을 더 균형 있게 만드는 데 사용됩니다.',
+        rateSub: '동료의 좋은 플레이를 기억하고 응원하는 투표입니다. 결과는 선수 능력치를 자동 변경하지 않습니다.',
         rateExplain: '골·어시스트뿐 아니라 수비·헌신·궂은일까지, 오늘 경기 전체에서 인상 깊었던 3명을 뽑아주세요. 투표가 쌓일수록 팀 나누기가 점점 정확해져 매주 더 팽팽한 경기가 됩니다.',
         none: '없음',
         rateNoRoster: '팀 배정 명단이 없어 투표를 열 수 없습니다.',
@@ -548,7 +553,7 @@ const BP_I18N = {
         qShort: (n) => `Q${n}`,
         scoreTitle: '📊 Quarter Scores',
         rateTitle: "🏅 Today's MVP Vote",
-        rateSub: "Not a popularity contest — results feed into each player's skill data (together with quarter scores) to keep future team assignments balanced.",
+        rateSub: "Recognise and encourage your teammates. Results do not automatically change player skills.",
         rateExplain: "Pick the 3 players who impressed you most today — not only goals and assists, but defending, effort and dirty work too. The more votes we collect, the tighter and more exciting next week's matches become.",
         none: 'None',
         rateNoRoster: 'No team roster yet, so voting is unavailable.',
@@ -639,7 +644,7 @@ function renderSharePageView(shareData) {
     const lineupHtml = teamKeys.map((teamKey, teamIdx) => {
         const lu = lineups[teamKey] || lineups[`team${teamIdx + 1}`] || lineups[teamIdx];
         let q = '';
-        for (let i = 0; i < 6; i++) q += pitchHTML(lu, i, teamIdx);
+        for (let i = 0; i < (shareData.quarterCount===4?4:6); i++) q += pitchHTML(lu, i, teamIdx);
         return `<div style="margin-bottom:18px"><h3 style="font-weight:800;text-align:center;margin-bottom:8px">${tName(teamIdx)}</h3><div class="bp-qgrid">${q}</div></div>`;
     }).join('');
 
@@ -671,7 +676,7 @@ function renderSharePageView(shareData) {
     </style>
     <div class="bp-wrap">
         <div style="text-align:center;margin:12px 0;position:relative">
-            <h1 style="font-size:1.8rem;font-weight:800;color:#111827">BareaPlay ⚽</h1>
+            <div class="match-brand"><span class="match-crest" aria-hidden="true">B</span><div><strong>BareaPlay</strong><small>DUBAI · FOOTBALL CLUB</small></div></div>
             <p style="color:#6b7280;margin-top:4px">${T.boardSub}</p>
             <button id="bp-lang-btn" style="position:absolute;top:0;right:0;font-size:.78rem;font-weight:700;color:#4f46e5;background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;padding:6px 10px;cursor:pointer">${T.langBtn}</button>
         </div>
@@ -692,7 +697,7 @@ function renderSharePageView(shareData) {
     document.querySelector('.bp-wrap > footer').before(imageHost);
     exportButton.onclick=async()=>{
         exportButton.disabled=true;
-        try{const {mountLineupImage}=await import('./modules/lineupImage.js?v=1');
+        try{const {mountLineupImage}=await import('./modules/lineupImage.js?v=2');
             if(!imageHost.isConnected)return;
             mountLineupImage(imageHost,shareData,POS_MAP,__bpLang==='en');exportButton.remove();
         }catch{exportButton.disabled=false;exportButton.textContent=__bpLang==='en'?'Retry image tools':'이미지 도구 다시 불러오기';}
@@ -736,7 +741,8 @@ function setupShareBoardExtras(shareData) {
         getDoc(doc(db, "matchRecords", dateStr)).then(snap => {
             if (!snap.exists()) return;
             const qs = snap.data().quarters || {};
-            const rows = Object.keys(qs).sort().map(k => {
+            const visibleCount=Math.min(shareData.quarterCount===4?4:6,snap.data().quarterCount===4?4:6);
+            const rows = Object.keys(qs).filter(k=>Number(k.replace('q_',''))<visibleCount).sort().map(k => {
                 const q = qs[k];
                 const qNum = (parseInt(k.replace(/[^0-9]/g, ''), 10) + 1) || '';
                 return `<div style="display:flex;justify-content:center;gap:12px;padding:6px 0;border-bottom:1px solid #f3f4f6;font-weight:700"><span style="color:#9ca3af;min-width:52px">${T.qShort(qNum)}</span><span>${tShort(q.a ?? 0)}</span><span style="color:#4f46e5">${q.sa} : ${q.sb}</span><span>${tShort(q.b ?? 1)}</span></div>`;
@@ -758,13 +764,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         const __p = new URLSearchParams(window.location.search);
         if(__p.has('preferences')) {
             if(loadingOverlay)loadingOverlay.style.display='none';
-            const {renderPositionSurvey}=await import('./modules/positionPreferences.js?v=5');
+            const {renderPositionSurvey}=await import('./modules/positionPreferences.js?v=6');
             await renderPositionSurvey(db,auth);window.bareaBootReady?.();return;
         }
         const __voteId = __p.get('voteId');
         const __shareId = __p.get('shareId');
         const __voteCurrent = __p.get('vote'); // 고정 링크 ?vote=current
-        if (__voteCurrent || __voteId) voteMgmt=await import('./modules/voteManagement.js?v=23');
+        if (__voteCurrent || __voteId) voteMgmt=await import('./modules/voteManagement.js?v=24');
         if (__voteCurrent) {
             window.__db = db;
             if (loadingOverlay) loadingOverlay.style.display = 'none';
@@ -797,11 +803,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     [playerMgmt,balancer,lineup,accounting,shareMgmt,voteMgmt,lineupStats,matchRecord,coachWorkspace,adminWorkflow]=await Promise.all([
-        import('./modules/playerManagement.js?v=6'),import('./modules/teamBalancer.js?v=10'),
-        import('./modules/lineupGenerator.js?v=11'),import('./modules/accounting.js?v=8'),
-        import('./modules/shareManagement.js?v=12'),import('./modules/voteManagement.js?v=23'),
-        import('./modules/lineupStats.js?v=2'),import('./modules/matchRecord.js?v=2'),
-        import('./modules/coachWorkspace.js?v=5'),import('./modules/adminWorkflow.js?v=2')
+        import('./modules/playerManagement.js?v=6'),import('./modules/teamBalancer.js?v=11'),
+        import('./modules/lineupGenerator.js?v=12'),import('./modules/accounting.js?v=9'),
+        import('./modules/shareManagement.js?v=13'),import('./modules/voteManagement.js?v=24'),
+        import('./modules/lineupStats.js?v=3'),import('./modules/matchRecord.js?v=3'),
+        import('./modules/coachWorkspace.js?v=6'),import('./modules/adminWorkflow.js?v=3')
     ]);
     const modules = { playerMgmt, balancer, lineup, accounting, shareMgmt, voteMgmt, lineupStats, matchRecord, coachWorkspace, adminWorkflow };
     const dependencies = { db, state, auth };
@@ -818,10 +824,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             modules[moduleName].init(dependencies);
         }
     }
-    const {mountPreferenceAdmin}=await import('./modules/positionPreferences.js?v=5');
+    const {mountPreferenceAdmin}=await import('./modules/positionPreferences.js?v=6');
     mountPreferenceAdmin(db,state);
     // Do not add the cycle-planning bundle to public RSVP, survey or lineup loads.
-    try { const cycles=await import('./modules/teamCycles.js?v=1');cycles.init(dependencies); }
+    try { const cycles=await import('./modules/teamCycles.js?v=2');cycles.init(dependencies); }
     catch { window.showNotification('고정팀 도구를 불러오지 못했습니다. 기존 팀 배정은 계속 사용할 수 있습니다.','error'); }
     
     const urlParams = new URLSearchParams(window.location.search);

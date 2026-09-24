@@ -1,5 +1,5 @@
 import { collection, getDocs, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js';
-import { escapeHtml as esc } from './coachCore.js?v=1';
+import { escapeHtml as esc } from './coachCore.js?v=2';
 import { CYCLE_ROLES, recentParticipants, cycleCandidates, draftCycle, validateCycle, matchFromCycle, cycleContains } from './teamCycleCore.js?v=1';
 
 // Do not enable until the private collection Rules are reviewed and deployed.

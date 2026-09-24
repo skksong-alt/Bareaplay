@@ -2,7 +2,7 @@
 // 라인업 포지션 집계표 (운영진 전용) — 당일 라인업에서 각 선수가
 // 공격/미들/수비/GK/휴식을 각각 몇 번 맡는지 표시. 드래그로 바뀌면 자동 갱신.
 
-import { positionGroup } from './coachCore.js?v=1';
+import { positionGroup } from './coachCore.js?v=2';
 let state;
 let statsContainer = null;
 let observer = null;
@@ -51,7 +51,7 @@ function renderStats() {
             return counts[n];
         };
 
-        const quarters = results.lineups.length;
+        const quarters = state.quarterCount===4?4:6;
         for (let q = 0; q < quarters; q++) {
             const lineup = results.lineups[q] || {};
             Object.keys(lineup).forEach(pos => {
@@ -74,12 +74,7 @@ function renderStats() {
 
         const rows = names.map(n => {
             const c = counts[n];
-            // 전문 GK(키퍼를 4회 이상 맡는 선수)는 색칠 대상에서 제외
-            const isProGk = c.GK >= 4;
-            // 전문 GK가 아니면서 특정 포지션(공격/미들/수비 중 하나)을 4회 이상 맡으면 강조
-            const overloaded = !isProGk && (c.FWD >= 4 || c.MID >= 4 || c.DEF >= 4);
-            const warn = overloaded ? ' style="background:#fef2f2"' : '';
-            return `<tr${warn}>
+            return `<tr>
                 <td class="py-1.5 px-3 font-medium text-gray-900 whitespace-nowrap">${n}</td>
                 <td class="py-1.5 px-3 text-center">${c.FWD || ''}</td>
                 <td class="py-1.5 px-3 text-center">${c.MID || ''}</td>
@@ -90,12 +85,11 @@ function renderStats() {
             </tr>`;
         }).join('');
 
+        const expanded=!!statsContainer.querySelector('details')?.open;
         statsContainer.innerHTML = `
-            <div class="bg-white p-4 rounded-2xl shadow-lg">
-                <div class="flex items-center justify-between mb-2">
-                    <h3 class="text-lg font-bold">📊 포지션 집계 <span class="text-xs font-normal text-gray-400">(운영진 전용 · 드래그하면 자동 갱신)</span></h3>
-                </div>
-                <p class="text-xs text-gray-400 mb-2">전문 GK를 제외하고, 한 포지션(공격·미들·수비)을 4회 이상 맡은 선수는 붉게 표시됩니다. 너무 치우치면 드래그로 조정하세요.</p>
+            <details class="lineup-stats-details" ${expanded?'open':''}>
+                <summary>선수별 역할 횟수 · ${quarters}쿼터 집계</summary>
+                <p class="text-xs text-gray-400 mb-2">실제 출전 시간이 아닌 배정 횟수입니다. 한 포지션을 꾸준히 훈련하는 것은 정상이며, 선수 의견과 팀 상황을 함께 확인하세요. 휴식에는 심판이 포함됩니다.</p>
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm text-left">
                         <thead class="text-xs text-gray-600 uppercase bg-gray-50">
@@ -112,7 +106,7 @@ function renderStats() {
                         <tbody>${rows}</tbody>
                     </table>
                 </div>
-            </div>`;
+            </details>`;
     } finally {
         isRendering = false;
     }

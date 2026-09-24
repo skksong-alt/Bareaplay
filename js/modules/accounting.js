@@ -1,7 +1,9 @@
 // js/modules/accounting.js
 import { ensureLibrary } from './optionalLibraries.js?v=1';
-import { doc, getDocs, collection, setDoc, deleteDoc, addDoc, serverTimestamp, onSnapshot } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+import { createSaveQueue } from './saveQueue.js?v=1';
+import { doc, getDocs, collection, setDoc, deleteDoc, addDoc, serverTimestamp, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 let db, state;
+let saveQueue;
 let attendanceDate, checklistContainer, recordBtn, logBody, logFoot, memoArea, adminLoginBtn, accountingChart;
 let incomeTabBtn, expenseTabBtn, incomeLogSection, expenseLogSection, expenseForm, expenseLogBody, expenseLogFoot;
 let totalBalanceEl, filterStartDateEl, filterEndDateEl, filterPeriodSelectEl, excelDownloadBtn;
@@ -153,7 +155,7 @@ function renderAttendanceLogTable(logs) {
     logBody.innerHTML = '';
     logFoot.innerHTML = '';
 
-    const sortedLogs = logs.sort((a, b) => (a.date || '').localeCompare(b.date || '') || a.name.localeCompare(b.name, 'ko-KR'));
+    const sortedLogs = logs.map(log=>({...log,...saveQueue?.pending(`attendance:${log.id}`)})).sort((a, b) => (a.date || '').localeCompare(b.date || '') || a.name.localeCompare(b.name, 'ko-KR'));
 
     if (sortedLogs.length === 0) {
         logBody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-gray-500">해당 기간의 출석 로그가 없습니다.</td></tr>`;
@@ -184,11 +186,11 @@ function renderAttendanceLogTable(logs) {
         // 노쇼·운영진(무료)은 수금 대상에서 제외
         if (st !== NOSHOW && feeTypeOf(log.name) !== 'admin') {
             payEligible++;
-            if (st === '●' || st === '△') payDone++;
+            if (st === '●') payDone++;
         }
 
         // [추가] 수금모드 '안 낸 사람만 보기': 완납/일부/노쇼는 숨김
-        if (collectMode && collectHidePaid && (st === '●' || st === '△' || st === NOSHOW)) return;
+        if (collectMode && collectHidePaid && (st === '●' || st === NOSHOW)) return;
 
         const docId = log.id;
         const row = document.createElement('tr');
@@ -808,6 +810,7 @@ export function init(dependencies) {
         if (targets.length === 0) { window.showNotification('삭제할 회비 기록이 없습니다.', 'error'); return; }
         const rangeText = (startDate || endDate) ? `${startDate || '처음'} ~ ${endDate || '끝'}` : '전체 기간';
         if (!confirm(`[${rangeText}]의 회비 기록 ${targets.length}건을 모두 삭제합니다.\n정말 진행하시겠습니까? (되돌릴 수 없습니다)`)) return;
+        try { await saveQueue.flush(); } catch(error) { window.showNotification(error.message,'error');return; }
         const promises = targets.map(log => deleteDoc(doc(db, "attendance", log.id)));
         await Promise.all(promises);
         window.showNotification(`${targets.length}건의 회비 기록이 삭제되었습니다.`);
@@ -850,6 +853,7 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
     }
 
     if(recordBtn) recordBtn.addEventListener('click', async () => {
+        if(!state.isAdmin || state.accountingReady===false) return;
         const date = attendanceDate.value;
         if (!date) { window.showNotification('날짜를 선택해주세요.', 'error'); return; }
         const isGrass = !!(grassToggle && grassToggle.checked);
@@ -867,7 +871,7 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
             existingByName[key].push(log.id);
         });
 
-        const promises = [];
+        const additions = [];
 
         // 1) 체크된 이름 중 기존에 없는 것만 새로 추가
         currentlyCheckedNames.forEach(name => {
@@ -877,32 +881,64 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
                 //      (직전까지 쓰던 선수별 carry-forward 비고는 그대로 이어받아 표시)
                 const carryNote = (state.playerNotes && state.playerNotes[normName(name)]) || '';
                 const newLog = { date, name, paymentStatus: '✕', paymentAmount: 0, note: carryNote, grass: isGrass };
-                promises.push(setDoc(doc(db, "attendance", docId), newLog));
+                additions.push({ref:doc(db, "attendance", docId),data:newLog});
             }
         });
 
-        // 2) 기존 로그 정리: 체크 해제된 사람은 '실제 문서 id'로 전부 삭제,
-        //    체크돼 있는데 중복 문서가 있으면 1개만 남기고 삭제(기존 중복 자동 정리)
-        Object.keys(existingByName).forEach(name => {
-            const ids = existingByName[name];
-            if (!checkedSet.has(name)) {
-                ids.forEach(id => promises.push(deleteDoc(doc(db, "attendance", id))));
-            } else if (ids.length > 1) {
-                ids.slice(1).forEach(id => promises.push(deleteDoc(doc(db, "attendance", id))));
-            }
-        });
-
-        await Promise.all(promises);
-        window.showNotification(`${date} 출석 현황이 저장되었습니다.${isGrass ? ' (천연잔디 금액 적용)' : ''}`);
+        // Checklist adds only. Never remove unchecked/duplicate/paid historical records.
+        recordBtn.disabled=true;
+        try {
+            await saveQueue.flush();
+            await runTransaction(db,async tx=>{
+                const snapshots=await Promise.all(additions.map(item=>tx.get(item.ref)));
+                additions.forEach((item,i)=>{if(!snapshots[i].exists())tx.set(item.ref,item.data);});
+            });
+            const retained=Object.keys(existingByName).filter(name=>!checkedSet.has(name)||existingByName[name].length>1).length;
+            window.showNotification(`${date} 체크한 출석을 추가했습니다. 기존 납부·출석 기록은 유지됩니다.${retained?' 체크 해제·중복 기록은 회비표에서 확인하세요.':''}`);
+        } catch { window.showNotification('출석을 저장하지 못했습니다. 선택은 유지됩니다. 다시 시도하세요.','error'); }
+        finally { recordBtn.disabled=false; }
     });
 
-    const debouncedUpdate = window.debounce(async (docId, updatedField) => {
-        await setDoc(doc(db, "attendance", docId), updatedField, { merge: true });
-    }, 500);
-    // [추가] 수금모드 탭 토글이 호출하는 즉시 저장 핸들 (탭 반응성을 위해 짧은 디바운스)
-    window._collectSave = window.debounce(async (docId, updatedField) => {
-        await setDoc(doc(db, "attendance", docId), updatedField, { merge: true });
-    }, 250);
+    const saveStatus=document.createElement('div');
+    saveStatus.className='ledger-save-status'; saveStatus.setAttribute('role','status');
+    const saveLabel=document.createElement('span'), retry=document.createElement('button');
+    retry.type='button'; retry.textContent='다시 저장'; retry.hidden=true; saveLabel.textContent='모든 변경 저장됨';
+    saveStatus.append(saveLabel,retry); pageElement.prepend(saveStatus);
+    saveQueue=createSaveQueue(async(key,patch)=>{
+        if(!state.isAdmin) throw new Error('관리자 로그인이 필요합니다.');
+        if(key.startsWith('attendance:')) {
+            const ref=doc(db,'attendance',key.slice(11));
+            await runTransaction(db,async tx=>{
+                const snap=await tx.get(ref);
+                if(!snap.exists())throw new Error('기록이 없어 다시 생성하지 않았습니다.');
+                tx.set(ref,patch,{merge:true});
+            });
+        } else if(key.startsWith('note:')) {
+            const name=key.slice(5);
+            await runTransaction(db,async tx=>{
+                const snap=await tx.get(playerNotesDoc), notes={...(snap.exists()?snap.data().notes:{})};
+                if(patch.text.trim())notes[name]=patch.text.trim(); else delete notes[name];
+                tx.set(playerNotesDoc,{...(snap.exists()?snap.data():{}),notes});
+            });
+        } else await setDoc(memoDoc,patch,{merge:true});
+    },entries=>{
+        const failed=entries.some(e=>e.status==='error');
+        saveLabel.textContent=failed?'저장 실패 · 변경 내용은 이 화면에 보관 중입니다. 새로고침하지 마세요.':entries.length?`${entries.length}건 저장 중 · 화면을 닫지 마세요`:'모든 변경 저장됨';
+        saveStatus.dataset.status=failed?'error':entries.length?'pending':'saved'; retry.hidden=!failed;
+        logBody?.querySelectorAll('tr[data-id]').forEach(row=>{
+            const item=entries.find(e=>e.key===`attendance:${row.dataset.id}`);
+            row.dataset.saveStatus=item?.status||'saved';
+            row.title=item?.status==='error'?'저장 실패 · 상단에서 다시 저장':item?'저장 중':'';
+        });
+    });
+    window.flushAccountingSave=()=>saveQueue.flush(); window.hasUnsavedAccounting=()=>saveQueue.dirty();
+    retry.onclick=()=>saveQueue.flush().catch(error=>window.showNotification(error.message,'error'));
+    const debouncedUpdate=(docId,patch)=>{
+        if(!state.isAdmin)return;
+        const record=state.attendanceLog.find(log=>log.id===docId); if(record)Object.assign(record,patch);
+        saveQueue.enqueue(`attendance:${docId}`,patch);
+    };
+    window._collectSave=debouncedUpdate;
 
     // [추가] 수금 체크 모드 토글
     if (collectModeBtn) collectModeBtn.addEventListener('click', () => {
@@ -937,20 +973,15 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
     });
 
     // [추가] 선수별 영구 비고 저장 (내용이 비면 키 삭제 → 다음부터 안 보임)
-    const debouncedNoteSave = window.debounce(async (name, text) => {
+    const debouncedNoteSave = (name, text) => {
         const key = normName(name);
         if (!key) return;
         const next = { ...(state.playerNotes || {}) };
         const t = (text || '').trim();
         if (t) next[key] = t; else delete next[key];
         state.playerNotes = next;
-        try {
-            await setDoc(playerNotesDoc, { notes: next });
-        } catch (e) {
-            console.error("비고 저장 실패:", e);
-            window.showNotification("비고 저장에 실패했습니다.", "error");
-        }
-    }, 600);
+        saveQueue.enqueue(`note:${key}`,{text:t});
+    };
 
     if(logBody) logBody.addEventListener('change', (e) => {
         const target = e.target;
@@ -1019,15 +1050,13 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
         const row = btn.closest('tr');
         const nameText = row ? row.querySelector('td[data-label="이름"]').textContent.replace('✕', '').trim() : '';
         if (confirm(`'${nameText}' 회비 기록을 삭제하시겠습니까?`)) {
+            try { await saveQueue.flush(); } catch(error) { window.showNotification(error.message,'error'); return; }
             await deleteDoc(doc(db, "attendance", docId));
             window.showNotification('회비 기록이 삭제되었습니다.');
         }
     });
 
-    const debouncedMemoSave = window.debounce(async (content) => {
-        await setDoc(memoDoc, { content });
-        window.showNotification('메모가 저장되었습니다.', 'success');
-    }, 1000);
+    const debouncedMemoSave = content => {if(state.isAdmin)saveQueue.enqueue('memo',{content});};
 
     if(memoArea) memoArea.addEventListener('input', () => debouncedMemoSave(memoArea.value));
 

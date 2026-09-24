@@ -1,3 +1,4 @@
+import { quarterCount } from './quarters.js?v=1';
 // Render an existing PUBLIC snapshot locally. No fetch, Firebase, or DOM screenshots.
 export function imageTeams(share) {
     return Object.keys(share.teams||{}).sort((a,b)=>Number(a.replace(/\D/g,''))-Number(b.replace(/\D/g,'')));
@@ -5,9 +6,9 @@ export function imageTeams(share) {
 const quarter=(value,q)=>Array.isArray(value)?value[q]:value?.[`q${q+1}`]??value?.[`q_${q}`];
 export function lineupImageModel(share,key,positions) {
     const keys=imageTeams(share),index=keys.indexOf(key),data=share.lineups?.[key];
-    if(index<0||!Array.isArray(data?.lineups)||data.lineups.length!==6)throw new Error('공개된 6쿼터 라인업이 없습니다.');
+    if(index<0||!Array.isArray(data?.lineups)||data.lineups.length<quarterCount(share))throw new Error('선택한 쿼터의 공개 라인업이 없습니다.');
     return {team:share.teamNames?.[index]||`Team ${String.fromCharCode(65+index)}`,time:share.meetingInfo?.time||'',
-        venue:share.meetingInfo?.location||'',publishedAt:share.createdAt||'',quarters:data.lineups.map((lineup,q)=>{
+        venue:share.meetingInfo?.location||'',publishedAt:share.createdAt||'',quarters:data.lineups.slice(0,quarterCount(share)).map((lineup,q)=>{
             const formation=data.formations?.[q],slots=positions[formation];
             if(!slots?.length)throw new Error('확인할 수 없는 포메이션입니다. 원본 공개 페이지를 사용해 주세요.');
             const counters={},referee=quarter(data.referees,q)||'';
@@ -29,9 +30,9 @@ export async function createLineupImage(model) {
     ctx.fillStyle='#f1f5f2';ctx.fillRect(0,0,1500,1580);
     text(ctx,`BAREA PLAY  /  ${model.team}`,42,48,32,'#124b36',1416);
     text(ctx,`${model.time} · ${model.venue}`,42,93,22,'#425b4e',1416);
-    text(ctx,'확정 라인업 · 6쿼터 / PUBLISHED LINEUP',42,129,17,'#67766d',1416);
+    text(ctx,`확정 라인업 · ${model.quarters.length}쿼터 / PUBLISHED LINEUP`,42,129,17,'#67766d',1416);
     for(const card of model.quarters){
-        const x=30+((card.q-1)%3)*490,y=160+Math.floor((card.q-1)/3)*660;
+        const x=30+((card.q-1)%(model.quarters.length===4?2:3))*490+(model.quarters.length===4?245:0),y=160+Math.floor((card.q-1)/(model.quarters.length===4?2:3))*660;
         ctx.fillStyle='white';ctx.fillRect(x,y,460,642);
         text(ctx,`Q${card.q}  /  ${card.formation}`,x+18,y+30,24);
         const px=x+16,py=y+58,w=428,h=480;
@@ -60,7 +61,7 @@ export function mountLineupImage(host,share,positions,en=false) {
     const keys=imageTeams(share);if(!keys.length)return;
     const panel=document.createElement('section');panel.className='bp-card';
     const title=document.createElement('h2');title.className='bp-h2';title.textContent=en?'Save / share the lineup image':'단톡방에 공유할 라인업 이미지';
-    const hint=document.createElement('p');hint.textContent=en?'Creates a PNG from this published version. It does not change any assignment.':'이 공개본의 6쿼터를 팀별 PNG 한 장으로 만듭니다. 배정은 변경하지 않습니다.';
+    const hint=document.createElement('p');hint.textContent=en?'Creates a PNG from this published version. It does not change any assignment.':'이 공개본의 전체 쿼터를 팀별 PNG 한 장으로 만듭니다. 배정은 변경하지 않습니다.';
     const select=document.createElement('select');select.setAttribute('aria-label',en?'Team to export':'이미지로 만들 팀');
     keys.forEach((key,i)=>{const option=document.createElement('option');option.value=key;option.textContent=share.teamNames?.[i]||`Team ${String.fromCharCode(65+i)}`;select.append(option);});
     const prepare=document.createElement('button');prepare.type='button';prepare.textContent=en?'Prepare image':'이미지 만들기';
@@ -76,7 +77,7 @@ export function mountLineupImage(host,share,positions,en=false) {
             if(!panel.isConnected)return;
             const filename=`Barea-${model.time.slice(0,10).replace(/[^0-9-]/g,'')}-${select.value.replace(/[^a-z0-9_-]/gi,'')}.png`;
             objectUrl=URL.createObjectURL(blob);
-            const image=document.createElement('img');image.src=objectUrl;image.alt=`${model.team} · ${model.time} · 6쿼터`;image.style.cssText='display:block;width:100%;max-width:650px;margin:12px auto';
+            const image=document.createElement('img');image.src=objectUrl;image.alt=`${model.team} · ${model.time} · ${model.quarters.length}쿼터`;image.style.cssText='display:block;width:100%;max-width:650px;margin:12px auto';
             const download=document.createElement('a');download.href=objectUrl;download.download=filename;download.textContent=en?'Download PNG':'PNG 이미지 저장';download.style.cssText='display:inline-block;padding:12px;background:#17664d;color:white;border-radius:8px;margin:8px';
             output.append(download,image);
             if(typeof File!=='undefined'){

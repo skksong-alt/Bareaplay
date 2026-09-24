@@ -1,8 +1,8 @@
 import { doc, getDoc, getDocs, collection, query, where, setDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js';
-import { cleanName, escapeHtml as esc, chooseReviewDate } from './coachCore.js?v=1';
-import { lessonHtml, addCoachStyles } from './weeklyContent.js?v=4';
+import { cleanName, escapeHtml as esc, chooseReviewDate } from './coachCore.js?v=2';
+import { lessonHtml, addCoachStyles } from './weeklyContent.js?v=5';
 import { compareResponseTime, confirmGuest } from './voteOrder.js?v=1';
-import { POSITION_SURVEY_ENABLED } from './positionPreferences.js?v=5';
+import { POSITION_SURVEY_ENABLED } from './positionPreferences.js?v=6';
 import { rememberedRatingName, rememberRatingName, ratingRememberEnabled, setRatingRememberEnabled, wasRatingSubmittedHere, markRatingSubmittedHere, ratingConfirmation } from './ratingIdentity.js?v=1';
 import { RATING_SERVICE_ENABLED, requestRating, ratingFailureMessage } from './ratingService.js?v=3';
 let dispose = () => {};

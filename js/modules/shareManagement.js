@@ -1,9 +1,10 @@
+import { quarterCount } from './quarters.js?v=1';
 // js/modules/shareManagement.js
 import { doc, setDoc, collection, onSnapshot, addDoc, getDoc, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
-import { getPosCellMap } from './lineupGenerator.js?v=11'; // [정리] 포메이션 좌표 단일화
+import { getPosCellMap } from './lineupGenerator.js?v=12'; // [정리] 포메이션 좌표 단일화
 import { compareResponseTime } from './voteOrder.js?v=1';
-import { sharedRefereesFromLineups } from './dutyRotation.js?v=2';
-import { prepareShareLineups } from './shareLineupValidation.js?v=1';
+import { sharedRefereesFromLineups } from './dutyRotation.js?v=3';
+import { prepareShareLineups } from './shareLineupValidation.js?v=2';
 
 let db, state;
 let addLocationBtn, shareDate, shareTime, shareLocationSelect;
@@ -80,7 +81,7 @@ async function generateShareableLink() {
         window.showNotification('선택한 경기가 변경되었습니다. 다시 확인해 주세요.', 'error');return;
     }
     if(!confirm(`${selected.info.date} ${selected.info.time || ''}\n현재 팀·라인업을 확정하여 공개할까요? 기존 공유 링크는 유지됩니다.`))return;
-    const draftSignature=()=>JSON.stringify({date:state.meetingDate,teams:state.teams,lineups:state.teamLineupCache,names:state.teamNames});
+    const draftSignature=()=>JSON.stringify({date:state.meetingDate,quarterCount:quarterCount(state),teams:state.teams,lineups:state.teamLineupCache,names:state.teamNames});
     const confirmedSignature=draftSignature();
     generateShareBtn.disabled=true;
     syncMeetingInfo(selected.info);
@@ -98,11 +99,11 @@ async function generateShareableLink() {
         const squads=state.teams.map(team=>team.map(p=>normalizeName(String(p.name).replace(' (신규)',''))));
         // The public board uses the formation's visible slots. Legacy unused keys
         // must not invalidate or change a fully arranged lineup.
-        const readyLineups=prepareShareLineups(lineups,squads,posCellMap);
+        const readyLineups=prepareShareLineups(lineups,squads,posCellMap,quarterCount(state));
         // A previously saved lineup may use the old same-team referee rotation.
         // Keep every field position and off-field player; only reconcile who referees.
         const sharedReferees=selected.info.date >= window.getLocalDate()
-            ? sharedRefereesFromLineups(readyLineups,order) : null;
+            ? sharedRefereesFromLineups(readyLineups,order,quarterCount(state)) : null;
         
         readyLineups.forEach((originalLineup, i) => {
             if (originalLineup) {
@@ -148,6 +149,7 @@ async function generateShareableLink() {
         } catch (e) { console.error('attendance snapshot fail', e); }
 
         const shareData = {
+            quarterCount:quarterCount(state),
             meetingInfo: {
                 time: `${shareDate.value} ${shareTime.value}`,
                 location: shareLocationSelect.value,
@@ -184,7 +186,7 @@ async function generateShareableLink() {
         const shareLinkAnchor = document.getElementById('share-link-anchor');
         shareLinkContainer.classList.remove('hidden');
         shareLinkAnchor.href = shareUrl;
-        shareLinkAnchor.textContent = '공개된 팀·라인업 보기 ↗';
+        shareLinkAnchor.textContent = '공개본 보기 · 이미지 저장/공유 ↗';
 
         navigator.clipboard.writeText(shareUrl).then(() => {
             window.showNotification("공유 링크가 생성되어 클립보드에 복사되었습니다!");
@@ -359,9 +361,9 @@ export function generatePrintView(shareData) {
         fullHtml += `</div><div class="print-footer">© 2025 BareaPlay. Created by 송감독.</div></div>`;
         
         fullHtml += `<div class="page-break"></div><div class="print-container">`;
-        fullHtml += `<h2 class="single-team-title" style="border-bottom: 3px solid ${teamColor};">${__tn(teamIdx)} 라인업 (4-6쿼터)</h2>`;
+        fullHtml += `<h2 class="single-team-title" style="border-bottom: 3px solid ${teamColor};">${__tn(teamIdx)} 라인업 (4-${quarterCount(shareData)}쿼터)</h2>`;
         fullHtml += `<div class="lineup-grid-final">`;
-        for (let i = 3; i < 6; i++) { fullHtml += createQuarterHTML(lineup, teamIdx, i); }
+        for (let i = 3; i < quarterCount(shareData); i++) { fullHtml += createQuarterHTML(lineup, teamIdx, i); }
         fullHtml += `</div><div class="print-footer">© 2025 BareaPlay. Created by 송감독.</div></div>`;
     });
 
