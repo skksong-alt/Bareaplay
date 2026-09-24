@@ -125,7 +125,8 @@ async function handleTeamDrop(e, toTeamIndex) {
         if (fromTeamIndex === toTeamIndex) return;
         if (!state.isAdmin) return;
         const teamsBefore=JSON.stringify(state.teams);
-        if (window.prepareCoach) await window.prepareCoach();
+        if (window.prepareCoachLocks) await window.prepareCoachLocks();
+        else if (window.prepareCoach) await window.prepareCoach();
         if (teamsBefore!==JSON.stringify(state.teams)) throw new Error('명단이 변경되었습니다. 다시 시도하세요.');
         const locked=state.coachPlan?.teamLocks?.[playerName];
         if (locked!==undefined && locked!==toTeamIndex) throw new Error('팀이 고정된 선수입니다. 감독 보드에서 고정을 해제하세요.');
@@ -424,6 +425,7 @@ function mutate(chromosome, rate) {
 }
 
 function executeTeamAssignmentGA() {
+    if(state.playersReady===false){window.showNotification('선수 정보를 아직 받지 못했습니다. 기존 배정을 유지합니다.','error');renderResults(state.teams);resetUI();return;}
     // 1. 화면 초기화
     if(resultContainer) resultContainer.innerHTML = '';
     if(placeholder) placeholder.classList.remove('hidden');
@@ -581,8 +583,8 @@ function executeTeamAssignmentGA() {
     
     // 타 모듈 데이터 연동
     if (window.accounting && window.accounting.autoFillAttendees) window.accounting.autoFillAttendees(attendNames);
-    if (window.lineup && window.lineup.renderTeamSelectTabs) window.lineup.renderTeamSelectTabs(bestOverallTeams);
     if (window.shareMgmt && window.shareMgmt.updateTeamData) window.shareMgmt.updateTeamData(bestOverallTeams);
+    if (window.lineup && window.lineup.renderTeamSelectTabs) window.lineup.renderTeamSelectTabs(bestOverallTeams);
     if (window.saveDailyMeetingData) window.saveDailyMeetingData();
     
     resetUI();
@@ -608,6 +610,7 @@ function renderManualTeamInputs() {
 // [v58 추가] 📝 직접 팀 입력 → 자동 배정(GA)을 건너뛰고 입력한 그대로 팀 생성.
 //   이후 흐름(결과 카드·라인업 탭·공유 보드·회비 명단·날짜 문서 저장)은 자동 배정과 완전히 동일하다.
 function executeManualTeamAssignment() {
+    if(state.playersReady===false){window.showNotification('선수 정보를 모두 받은 후 팀을 적용해 주세요.','error');return;}
     const teamCount = parseInt(teamCountSelect.value, 10) || 2;
     ensureTeamNames(teamCount);
     const teams = [];
@@ -637,8 +640,8 @@ function executeManualTeamAssignment() {
 
     // 타 모듈 데이터 연동 (자동 배정과 동일한 파이프라인)
     if (window.accounting && window.accounting.autoFillAttendees) window.accounting.autoFillAttendees(orderedNames);
-    if (window.lineup && window.lineup.renderTeamSelectTabs) window.lineup.renderTeamSelectTabs(teams);
     if (window.shareMgmt && window.shareMgmt.updateTeamData) window.shareMgmt.updateTeamData(teams);
+    if (window.lineup && window.lineup.renderTeamSelectTabs) window.lineup.renderTeamSelectTabs(teams);
     if (window.saveDailyMeetingData) window.saveDailyMeetingData();
 
     window.showNotification('입력한 명단 그대로 팀을 만들었습니다.');
@@ -685,25 +688,25 @@ export function init(dependencies) {
     if (dateInput && !dateInput.value) dateInput.value = localToday();
 
     // 명단(textarea) → state 동기화 후 그 날짜 문서에 저장 (타이핑이 멈추면 저장)
-    const persistAttendees = window.debounce(() => {
+    const persistAttendees = () => {
         state.initialAttendeeOrder = attendeesTextarea.value.split('\n').map(n => normalizeName(n)).filter(Boolean);
         if (window.saveDailyMeetingData) window.saveDailyMeetingData();
-    }, 600);
+    };
     attendeesTextarea.addEventListener('input', persistAttendees);
 
     // 에이스(textarea) → state 동기화 후 저장
-    const persistAces = window.debounce(() => {
+    const persistAces = () => {
         if (acesTextarea) state.aceNames = acesTextarea.value.split('\n').map(n => normalizeName(n)).filter(Boolean);
         if (window.saveDailyMeetingData) window.saveDailyMeetingData();
-    }, 600);
+    };
     if (acesTextarea) acesTextarea.addEventListener('input', persistAces);
 
     // [추가] 함께/분리 지정도 날짜 문서에 함께 저장 (원본 줄 그대로 보관)
-    const persistPins = window.debounce(() => {
+    const persistPins = () => {
         state.pinTogether = pinTogetherTextarea ? pinTogetherTextarea.value.split('\n').map(s => s.trim()).filter(Boolean) : [];
         state.pinApart = pinApartTextarea ? pinApartTextarea.value.split('\n').map(s => s.trim()).filter(Boolean) : [];
         if (window.saveDailyMeetingData) window.saveDailyMeetingData();
-    }, 600);
+    };
     if (pinTogetherTextarea) pinTogetherTextarea.addEventListener('input', persistPins);
     if (pinApartTextarea) pinApartTextarea.addEventListener('input', persistPins);
 
@@ -754,6 +757,8 @@ export function init(dependencies) {
     generateButton.addEventListener('click', () => {
         if (!state.isAdmin) { window.promptForAdminPassword(); return; }
         if (!confirmExistingOverwrite()) return; // [v58] 기존 배정 덮어쓰기 경고
+        const inputKey=()=>JSON.stringify([state.meetingDate,state.teams,attendeesTextarea.value,acesTextarea?.value,pinTogetherTextarea?.value,pinApartTextarea?.value,teamCountSelect.value]);
+        const requested=inputKey();
         loadingSpinner.classList.remove('hidden');
         placeholder.classList.add('hidden');
         generateButton.disabled = true;
@@ -761,9 +766,11 @@ export function init(dependencies) {
         if(resultContainer) resultContainer.innerHTML = ''; // 버튼 클릭 즉시 결과창 초기화
         setTimeout(async () => {
             try {
+                if(!state.isAdmin || inputKey()!==requested)throw new Error('날짜·명단·조건이 변경되어 생성을 중단했습니다.');
                 if (window.prepareCoach) await window.prepareCoach();
                 if (Object.values(state.coachPlan?.lineupLocks || {}).some(locks=>locks.length)) throw new Error('포지션 고정 조건이 있습니다. 부분 라인업 재배정을 사용하거나 감독 보드에서 고정을 해제하세요.');
                 await loadRecentPairCounts();
+                if(!state.isAdmin || inputKey()!==requested)throw new Error('날짜·명단·조건이 변경되어 생성을 중단했습니다.');
                 executeTeamAssignmentGA();
             } catch (error) { renderResults(state.teams); resetUI(); window.showNotification(error.message || '배정 실패', 'error'); }
         }, 100);

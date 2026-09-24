@@ -6,6 +6,7 @@ import { REFEREE_LESSONS, refereeLessonIndex, refereeLessonHtml } from '../js/mo
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import * as core from '../js/modules/coachCore.js';
+import { applyTrainingRoles, trainingForDate } from '../js/modules/trainingLineup.js';
 import { POSITIONS,PREFERENCE_PITCH,validatePreference,preferenceSummary,surveyRoleCode } from '../js/modules/positionPreferencesCore.js';
 
 test('position survey pitch displays 4-2-3-1 without changing stored roles',()=>{
@@ -93,7 +94,7 @@ test('actual generator uses timestamp-derived order even when the editable roste
     const playerDB=Object.fromEntries(names.map(name=>[name,{name,pos1:['CM'],pos2:['CB'],s1:60}]));
     const state={playerDB,teams:teams.map(ns=>ns.map(n=>playerDB[n])),initialAttendeeOrder:[...names].reverse(),teamLineupCache:{}};
     const notifications=[];
-    const context=vm.createContext({...core,planDuties,sharedRefereesFromLineups,Math,Set,Promise,window:{voteMgmt:{getDutyOrder:async()=>names},showNotification:(text)=>notifications.push(text)},document:{getElementById:()=>({value:'2026-09-23'})},console});
+    const context=vm.createContext({...core,applyTrainingRoles,trainingForDate,planDuties,sharedRefereesFromLineups,Math,Set,Promise,window:{voteMgmt:{getDutyOrder:async()=>names},showNotification:(text)=>notifications.push(text)},document:{getElementById:()=>({value:'2026-09-23'})},console});
     const source=readFileSync(new URL('../js/modules/lineupGenerator.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/export /g,'').replace(/^\{ executeLineupGeneration \};\r?\n/gm,'');
     vm.runInContext(source+'\nglobalThis.generate=executeLineupGeneration;globalThis.assignState=s=>state=s;globalThis.shared=applySharedReferees;',context);context.assignState(state);
     for(let i=0;i<2;i++)state.teamLineupCache[i]=await context.generate(teams[i],Array(6).fill('4-4-2'),true);

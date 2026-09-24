@@ -105,6 +105,9 @@ function createHandler({env=process.env,services=req=>productionServices(env,req
                     (categories.includes(oauthCode)?oauthCode:numericCode?`code-${numericCode}`:
                         Number.isInteger(httpStatus)?`http-${httpStatus}`:errorKind));
             }
+            // Return only a safe category, never the SDK message or credential details.
+            const exhausted=String(error.code)==='8'||error.code==='resource-exhausted'||error.response?.status===429;
+            if(exhausted)return send(429,{error:'quota'});
             return send(known?error.status:503,{error:known?error.code:'unavailable'});
         } finally {
             // Best-effort cleanup; never turn a completed vote into an error.

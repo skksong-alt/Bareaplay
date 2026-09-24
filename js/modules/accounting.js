@@ -1,4 +1,5 @@
 // js/modules/accounting.js
+import { ensureLibrary } from './optionalLibraries.js?v=1';
 import { doc, getDocs, collection, setDoc, deleteDoc, addDoc, serverTimestamp, onSnapshot } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 let db, state;
 let attendanceDate, checklistContainer, recordBtn, logBody, logFoot, memoArea, adminLoginBtn, accountingChart;
@@ -455,8 +456,16 @@ function calculateAndRenderTotalBalance() {
     totalBalanceEl.textContent = `${balance.toLocaleString()} Dhs`;
 }
 
+let chartLoad=null;
 function renderAccountingChart() {
     if(!accountingChart) return;
+    if(document.getElementById('page-accounting')?.classList.contains('hidden'))return;
+    if(!window.Chart){
+        if(!chartLoad)chartLoad=ensureLibrary('Chart').then(()=>{chartLoad=null;renderAccountingChart();}).catch(()=>{
+            chartLoad=null;window.showNotification('차트를 불러오지 못했습니다. 금액·장부는 그대로 확인할 수 있습니다.','error');
+        });
+        return;
+    }
     const ctx = accountingChart.getContext('2d');
 
     const monthlyData = {};
@@ -501,7 +510,8 @@ function renderAccountingChart() {
 }
 
 // [전면 개편] 5개 시트(요약·인별집계·월별집계·상세회비·상세지출)로 완성도 높은 엑셀 생성
-function downloadExcel(incomeLogs, expenseLogs, startDate, endDate, extraLogs = []) {
+async function downloadExcel(incomeLogs, expenseLogs, startDate, endDate, extraLogs = []) {
+    try {await ensureLibrary('XLSX');}catch(error){window.showNotification(error.message,'error');return;}
     const totalIncome = incomeLogs.reduce((s, l) => s + Number(l.paymentAmount || 0), 0);
     const totalExtra = (extraLogs || []).reduce((s, l) => s + Number(l.amount || 0), 0); // [v58] 기타 수입
     const totalExpense = expenseLogs.reduce((s, l) => s + Number(l.amount || 0), 0);
@@ -626,6 +636,7 @@ function updateViewModeUI() {
 }
 
 export function renderForDate() {
+    if(state.accountingReady===false)return;
     const [startDate, endDate] = effectiveRange();
 
     const filteredAttendance = state.attendanceLog.filter(log => (!startDate || log.date >= startDate) && (!endDate || log.date <= endDate));
@@ -1035,4 +1046,3 @@ const manualAttendeeName = document.getElementById('manual-attendee-name');
     // [v58] 과거 기록 이관 버튼(setupMigration)은 이관 완료 후 제거되었습니다.
     //       이미 이관된 attendance/expenses 데이터(mig 태그)는 그대로 유지됩니다.
 }
-

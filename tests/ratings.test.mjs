@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { rememberedRatingName,rememberRatingName,ratingRememberEnabled,setRatingRememberEnabled,wasRatingSubmittedHere,markRatingSubmittedHere,ratingConfirmation } from '../js/modules/ratingIdentity.js';
 import ratings from '../server/ratings.cjs';
+import { ratingFailureMessage } from '../js/modules/ratingService.js';
 const {createHandler,topThree,productionServices}=ratings;
 const date='2026-09-20',names=['A','B','C','D','E'];
 function fixture() {
@@ -95,4 +96,14 @@ test('keyless service requires a Vercel token and can initialize without a priva
     const service=productionServices(env,{headers:{'x-vercel-oidc-token':'synthetic-test-token'}});
     assert.equal(typeof service.db.runTransaction,'function');
     await service.close();
+});
+
+test('quota failures return a safe category, never SDK details or a success',async()=>{
+    const handler=createHandler({env:{BAREA_RATINGS_ENABLED:'true',BAREA_PUBLIC_ORIGIN:'https://example.test'},services:()=>{throw Object.assign(new Error('private connection details'),{code:8});}});
+    let status,body;
+    await handler({method:'POST',headers:{origin:'https://example.test','content-type':'application/json'},body:{action:'leaders',date}},
+        {setHeader(){},status(value){status=value;return{json(value){body=value;}};}});
+    assert.equal(status,429);assert.deepEqual(body,{error:'quota'});
+    assert.match(ratingFailureMessage({code:'quota'}),/사용량 한도/);
+    assert.match(ratingFailureMessage({name:'AbortError'}),/완료 여부를 확인하지 못/);
 });

@@ -7,5 +7,5 @@
     "@google-cloud/firestore": "9.2.0",
     "google-auth-library": "10.9.1"
   },
-  "scripts": { "test:ratings": "node --test tests/ratings.test.mjs" }
+  "scripts": { "test": "node --test tests/*.test.mjs", "test:ratings": "node --test tests/ratings.test.mjs" }
 }

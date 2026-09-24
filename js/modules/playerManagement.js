@@ -1,4 +1,5 @@
 // js/modules/playerManagement.js
+import { ensureLibrary } from './optionalLibraries.js?v=1';
 import { doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 
 let db, state;
@@ -26,11 +27,8 @@ function feeTypeLabel(feeType) {
 }
 
 // [추가] 현재 선수정보를 '업로드 양식과 동일한' 엑셀로 다운로드
-function downloadPlayersExcel() {
-    if (typeof XLSX === 'undefined') {
-        window.showNotification('엑셀 모듈을 불러오지 못했습니다.', 'error');
-        return;
-    }
+async function downloadPlayersExcel() {
+    try {await ensureLibrary('XLSX');}catch(error){window.showNotification(error.message,'error');return;}
     const feeTypeKo = (t) => (t === 'admin' ? '운영진' : (t === 'student' ? '학생' : '일반'));
     const names = Object.keys(state.playerDB).sort((a, b) => a.localeCompare(b, 'ko-KR'));
     const rows = names.map(name => {

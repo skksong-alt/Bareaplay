@@ -1,8 +1,7 @@
 // js/modules/voteManagement.js
 // 묶음 C: 참석 투표 (로그인 없이 링크로 참여) + 관리자 확정 → 팀 배정 연결
 import { doc, setDoc, getDoc, getDocs, addDoc, deleteDoc, collection, query, where, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
-import { renderVote } from './votePage.js?v=12';
-import { syncMeetingInfo } from './shareManagement.js?v=11';
+import { renderVote } from './votePage.js?v=13';
 import { compareResponseTime } from './voteOrder.js?v=1';
 import { canOpenVote } from './voteTiming.js?v=1';
 
@@ -218,7 +217,7 @@ function loadAdminVote(voteId) {
     getDoc(doc(db, "votes", voteId)).then(s => {
         if(activeVoteId!==voteId)return;
         adminVoteInfo = s.exists() ? s.data() : null;
-        if(adminVoteInfo)syncMeetingInfo(adminVoteInfo);
+        if(adminVoteInfo)window.shareMgmt?.syncMeetingInfo(adminVoteInfo);
         renderAdminStatus();
     }).catch(() => {});
     if (respUnsub) respUnsub();
@@ -352,7 +351,7 @@ async function correctVoteSchedule() {
         await setDoc(doc(db, 'votes', voteId), updated, { merge: true });
         if (activeVoteId === voteId) {
             adminVoteInfo = { ...old, ...updated };
-            syncMeetingInfo(adminVoteInfo);
+            window.shareMgmt?.syncMeetingInfo(adminVoteInfo);
             renderAdminStatus();
         }
         window.showNotification('경기 날짜·시간을 정정했습니다. 잘못 대기 처리된 응답은 별도로 참석 확정해 주세요.');
@@ -398,7 +397,9 @@ async function adminAdd() {
     window.showNotification(`${name} 참석 추가됨`);
 }
 
-function sendToBalancer() {
+async function sendToBalancer() {
+    const selectedId=activeVoteId,targetDate=adminVoteInfo?.date;
+    if(!state.isAdmin || !targetDate)return;
     const attendAll = adminResponses.filter(r => r.status === 'attend')
         .sort(compareResponseTime);
     const attend = attendAll.filter(r => !r.waitlist);
@@ -412,6 +413,10 @@ function sendToBalancer() {
         if (inc) names = attendAll.map(r => r.name);
     }
     if (names.length === 0) { window.showNotification('불러올 참석자가 없습니다. (대기자만 있는 경우 대기자를 포함하거나 참석 확정하세요)', 'error'); return; }
+    if (state.meetingDate!==targetDate && !await window.changeMeetingDate?.(targetDate))return;
+    if (activeVoteId!==selectedId || adminVoteInfo?.date!==targetDate) {
+        window.showNotification('선택한 투표가 바뀌었습니다. 다시 가져오세요.','error');return;
+    }
     const textarea = document.getElementById('attendees');
     if (textarea) textarea.value = names.join('\n');
     const balTab = document.getElementById('tab-balancer');

@@ -4,7 +4,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 const root=resolve(import.meta.dirname,'..');
 const sw=readFileSync(resolve(root,'sw.js'),'utf8');
-test('all module URLs exist and versioned imports are precached',()=>{
+test('all module URLs exist and versioned imports match the cache manifest',()=>{
     const files=[...readdirSync(resolve(root,'js')).filter(n=>n.endsWith('.js')).map(n=>'js/'+n),...readdirSync(resolve(root,'js/modules')).filter(n=>n.endsWith('.js')).map(n=>'js/modules/'+n)];
     for(const file of files){
         const text=readFileSync(resolve(root,file),'utf8');
@@ -16,7 +16,8 @@ test('all module URLs exist and versioned imports are precached',()=>{
         }
     }
     for(const file of ['index.html','share.html']){
-        const html=readFileSync(resolve(root,file),'utf8');assert.ok(html.includes('js/app.js?v=28'));
+        const html=readFileSync(resolve(root,file),'utf8'),entry=html.match(/js\/app\.js\?v=\d+/)?.[0];
+        assert.ok(entry);assert.ok(sw.includes(`'/${entry}'`),`${file}: entry must match cache`);
     }
 });
 test('new coaching modules do not write accounting/player/attendance records',()=>{

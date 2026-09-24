@@ -1,6 +1,6 @@
 // js/modules/shareManagement.js
 import { doc, setDoc, collection, onSnapshot, addDoc, getDoc, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
-import { getPosCellMap } from './lineupGenerator.js?v=10'; // [정리] 포메이션 좌표 단일화
+import { getPosCellMap } from './lineupGenerator.js?v=11'; // [정리] 포메이션 좌표 단일화
 import { compareResponseTime } from './voteOrder.js?v=1';
 import { sharedRefereesFromLineups } from './dutyRotation.js?v=2';
 import { prepareShareLineups } from './shareLineupValidation.js?v=1';
@@ -80,6 +80,8 @@ async function generateShareableLink() {
         window.showNotification('선택한 경기가 변경되었습니다. 다시 확인해 주세요.', 'error');return;
     }
     if(!confirm(`${selected.info.date} ${selected.info.time || ''}\n현재 팀·라인업을 확정하여 공개할까요? 기존 공유 링크는 유지됩니다.`))return;
+    const draftSignature=()=>JSON.stringify({date:state.meetingDate,teams:state.teams,lineups:state.teamLineupCache,names:state.teamNames});
+    const confirmedSignature=draftSignature();
     generateShareBtn.disabled=true;
     syncMeetingInfo(selected.info);
 
@@ -88,7 +90,7 @@ async function generateShareableLink() {
     loadingOverlay.style.opacity = 1;
 
     try {
-        if (window.prepareCoach) await window.prepareCoach();
+        await window.flushMeetingSave?.();
         const allTeamLineups = {};
         const lineups = state.teams.map((_,i)=>state.teamLineupCache?.[i]);
         if (lineups.some(l => !l)) throw new Error('모든 팀의 저장된 라인업을 먼저 확인하세요. 기존 공개 결과는 유지됩니다.');
@@ -158,6 +160,8 @@ async function generateShareableLink() {
             createdAt: new Date().toISOString()
         };
 
+        if(state.meetingDate!==selected.info.date || draftSignature()!==confirmedSignature || window.voteMgmt.getSelectedMeeting().id!==selected.id)
+            throw new Error('확인 도중 경기·팀·라인업이 변경되었습니다. 다시 확인 후 공개하세요. 기존 공개 결과는 유지됩니다.');
         const shareDocRef = await addDoc(collection(db, "shares"), shareData);
         
         const meetingDate = new Date(shareData.meetingInfo.time);
@@ -173,6 +177,8 @@ async function generateShareableLink() {
         });
 
         const shareUrl = `${window.location.origin}/share.html?shareId=${shareDocRef.id}`;
+        state.lastPublished={date:selected.info.date,signature:confirmedSignature,url:shareUrl};
+        document.dispatchEvent(new CustomEvent('barea:save'));
         
         const shareLinkContainer = document.getElementById('share-link-container');
         const shareLinkAnchor = document.getElementById('share-link-anchor');
@@ -442,7 +448,7 @@ export function init(dependencies) {
         state.locations = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         populateLocations();
         renderLocationList();
-    });
+    },()=>window.showNotification('저장된 장소를 불러오지 못했습니다. 모임정보의 장소를 확인해 주세요.','error'));
 
     const today = new Date();
     const offset = today.getTimezoneOffset() * 60000;

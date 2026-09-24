@@ -3,11 +3,11 @@
 //  - 휴식·심판 로테이션 로직은 기존과 동일 (매 쿼터 휴식 인원 = 명단 − 경기 인원)
 import { roleTip, applyLocks, validateLineup, historyBonus, candidateCost, effectivePlayer } from './coachCore.js?v=1';
 import { planDuties, sharedRefereesFromLineups } from './dutyRotation.js?v=2';
+import { applyTrainingRoles, trainingForDate } from './trainingLineup.js?v=1';
 let state;
 let generateLineupButton, lineupDisplay, loadingLineupSpinner, placeholderLineup;
 let teamSelectTabsContainer, lineupMembersTextarea;
 let activeTeamIndex = -1;
-let quarterView='0';
 
 // [기능] 한글 자모 분리 현상 해결을 위한 정규화 함수
 function normalizeName(name) {
@@ -163,9 +163,10 @@ async function performSwap(qIndex, dragInfo, targetInfo) {
         window.showNotification('심판·키퍼·휴식은 투표 시각 순번으로 배정합니다. 필드 포지션끼리만 교체할 수 있습니다.','error');return;
     }
     const teamAtStart=activeTeamIndex;
-    try { if(window.prepareCoach) await window.prepareCoach(); }
+    const lineupAtStart=state.lineupResults, dateAtStart=state.meetingDate;
+    try { if(window.prepareCoachLocks)await window.prepareCoachLocks();else if(window.prepareCoach) await window.prepareCoach(); }
     catch(error) {window.showNotification(error.message || '고정 조건 조회 실패', 'error');return;}
-    if(teamAtStart!==activeTeamIndex)return;
+    if(teamAtStart!==activeTeamIndex || dateAtStart!==state.meetingDate || lineupAtStart!==state.lineupResults)return;
     const locks = state.coachDate === document.getElementById('balancer-date')?.value ? state.coachPlan?.lineupLocks?.[activeTeamIndex] || [] : [];
     if (locks.some(l => l.q === qIndex && [dragInfo.name,targetInfo.name].includes(l.name))) {
         window.showNotification('고정된 선수입니다. 감독 보드에서 해당 쿼터 고정을 해제하세요.', 'error'); return;
@@ -352,18 +353,8 @@ function renderAllQuarters() {
     lineupDisplay.className = "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"; 
 
     if (!state.lineupResults || !state.lineupResults.lineups) return;
-    const viewBar=document.createElement('div');viewBar.className='lineup-view-bar';viewBar.style.gridColumn='1 / -1';
-    viewBar.setAttribute('aria-label','표시할 쿼터');
-    const updateView=()=>{
-        lineupDisplay.style.gridTemplateColumns=quarterView==='all'?'':'minmax(0, 1fr)';
-        lineupDisplay.querySelectorAll('.quarter-block').forEach(block=>block.hidden=quarterView!=='all'&&block.dataset.q!==quarterView);
-        viewBar.querySelectorAll('button').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.view===quarterView)));
-    };
-    for(const [value,label] of [...Array.from({length:6},(_,q)=>[String(q),`${q+1}쿼터`]),['all','전체 보기']]){
-        const button=document.createElement('button');button.type='button';button.dataset.view=value;button.textContent=label;
-        button.onclick=()=>{quarterView=value;updateView();};viewBar.append(button);
-    }
-    lineupDisplay.append(viewBar);
+    // Always show all six quarters. Rendering must never change their assignments.
+    lineupDisplay.style.gridTemplateColumns='';
 
     const sharedReferees = applySharedReferees(); // [수정] 양팀 공동 심판 계산
     const dutyNote=document.createElement('p');dutyNote.className='coach-note';dutyNote.style.gridColumn='1 / -1';
@@ -444,12 +435,12 @@ function renderAllQuarters() {
         lineupDisplay.appendChild(quarterBlock);
     }
     // [중요] 렌더링 후 드래그 핸들러 연결
-    updateView();
     addDragAndDropHandlers();
 }
 
 // [기능 2, 3] 심판 및 슈퍼 GK 로직이 반영된 실행 함수
 async function executeLineupGeneration(members, formations, isSilent = false, options = {}) {
+    if(state.playersReady===false){window.showNotification('선수 정보를 아직 받지 못했습니다. 기존 라인업을 유지합니다.','error');return null;}
     let chronologicalOrder=state.initialAttendeeOrder || [];
     if(window.voteMgmt?.getDutyOrder) {
         const requestedDate=document.getElementById('balancer-date')?.value;
@@ -713,7 +704,12 @@ async function executeLineupGeneration(members, formations, isSilent = false, op
                 bestLineup = candidate;
             }
         }
-        resolve(bestLineup);
+        const training = trainingForDate(state.trainingCycle, state.meetingDate);
+        try {
+            resolve(applyTrainingRoles(bestLineup, training, posCellMap, localPlayerDB, options.locks || []));
+        } catch (error) {
+            window.showNotification(error.message, 'error'); resolve(null);
+        }
     });
 }
 
@@ -723,6 +719,7 @@ export function init(dependencies) {
     pageElement.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg">
             <h2 class="text-2xl font-bold mb-4 border-b pb-2">라인업 조건</h2>
+            <p id="lineup-mode-status" class="text-sm mb-4" role="status"></p>
             <div class="mb-4">
                 <label class="block text-md font-semibold text-gray-700 mb-2">팀 선택</label>
                 <div id="team-select-tabs-container" class="flex flex-wrap gap-2"><p class="text-sm text-gray-500">팀 배정기에서 먼저 팀을 생성해주세요.</p></div>
@@ -746,7 +743,7 @@ export function init(dependencies) {
                 <div><label for="formation-q6" class="block text-sm font-medium">6쿼터</label><select id="formation-q6" class="mt-1 w-full p-2 border rounded-lg bg-white"><option>4-4-2</option><option>4-3-3</option><option>3-5-2</option><option selected>4-2-3-1</option></select></div>
             </div>
             <div class="mt-8"><button id="generateLineupButton" class="w-full bg-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-teal-700 transition-transform transform hover:scale-105 shadow-lg">라인업 생성!</button></div>
-            <div id="pref-suggestions" class="mt-4 space-y-2"></div>
+            <details class="mt-4"><summary>고급 · 반복 수정에 따른 성향 제안</summary><p class="text-sm">반영하기 전까지 선수 정보는 바뀌지 않습니다.</p><button type="button" id="load-pref-suggestions">필요할 때 제안 조회</button><div id="pref-suggestions" class="mt-4 space-y-2"></div></details>
         </div>
         <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg">
             <div class="flex justify-between items-center mb-4 border-b pb-2">
@@ -778,11 +775,21 @@ export function init(dependencies) {
         });
     });
     setMatchSize(11);
+    const showMode=()=>{
+        document.getElementById('lineup-mode-status').textContent=trainingForDate(state.trainingCycle,state.meetingDate).length
+            ?'8주 훈련 포지션 우선 · 의무 순번·수동 고정은 유지합니다.'
+            :'기존 선수 포지션·희망 횟수 배분 · 고정팀 훈련 우선 꺼짐';
+    };
+    document.addEventListener('barea:training',showMode);showMode();
 
     generateLineupButton.addEventListener('click', async () => {
         if (!state.isAdmin) { window.promptForAdminPassword(); return; }
+        const requestedDate = state.meetingDate, requestedTeam = activeTeamIndex;
+        const requestedRoster = JSON.stringify(state.teams);
+        const unchanged = () => state.meetingDate === requestedDate && activeTeamIndex === requestedTeam && state.isAdmin && JSON.stringify(state.teams)===requestedRoster;
         try { if (window.prepareCoach) await window.prepareCoach(); }
         catch(error) { window.showNotification(error.message || '고정 조건을 불러오지 못했습니다.', 'error'); return; }
+        if (!unchanged()) { window.showNotification('날짜·선택 팀이 바뀌어 생성을 중단했습니다.', 'error'); return; }
         loadingLineupSpinner.classList.remove('hidden');
         lineupDisplay.classList.add('hidden');
         placeholderLineup.classList.add('hidden');
@@ -794,6 +801,10 @@ export function init(dependencies) {
         const original = state.teamLineupCache?.[activeTeamIndex];
         if (locks.length && !original) { window.showNotification('고정할 기존 라인업이 없습니다. 고정 조건을 확인하세요.', 'error'); resetLineupUI(); return; }
         const result = await executeLineupGeneration(members, formations, false, locks.length ? { locks, original } : {});
+        if (!unchanged() || state.teamLineupCache?.[requestedTeam] !== original) {
+            window.showNotification('작업 날짜·팀·라인업이 바뀌어 새 결과를 적용하지 않았습니다.', 'error');
+            resetLineupUI(); return;
+        }
         if (result) {
             // [v-매치사이즈] 인원 부족으로 자동 전환된 경우 버튼/셀렉트 UI 동기화
             setMatchSize(matchSizeOfFormations(result.formations), result.formations);
@@ -812,11 +823,9 @@ export function init(dependencies) {
             if (original) { state.lineupResults=original; lineupDisplay.classList.remove('hidden'); renderAllQuarters(); }
         }
         resetLineupUI();
-        renderPrefSuggestions(); // [학습] 쌓인 드래그 기록에서 반복 패턴을 찾아 제안 카드 표시
     });
 
-    // 관리자 로그인 등 초기화가 끝난 뒤 한 번 시도 (실패해도 무해)
-    setTimeout(() => { try { renderPrefSuggestions(); } catch (e) {} }, 5000);
+    document.getElementById('load-pref-suggestions').onclick=()=>renderPrefSuggestions();
     
     pageElement.addEventListener('click', (e) => {
         if (pageElement.classList.contains('view-only')) {
@@ -914,7 +923,8 @@ async function renderPrefSuggestions() {
     if (!state.isAdmin || !window.fetchAdjustLogs) { box.innerHTML = ''; return; }
 
     let logs = [];
-    try { logs = await window.fetchAdjustLogs(42); } catch (e) { return; }
+    try { logs = await window.fetchAdjustLogs(42); } catch (e) {box.textContent='기록을 불러오지 못했습니다. 다시 시도하세요.';return;}
+    if(!state.isAdmin){box.replaceChildren();return;}
 
     // 선수별 이동 집계: 어느 라인으로/어느 측면으로 옮겨졌는지, 서로 다른 날짜 기준으로 센다
     const acc = {}; // name -> { line: {DEF: Set(dates)...}, pos: {CB: n...}, side: {L: Set, R: Set} }
@@ -980,7 +990,7 @@ async function renderPrefSuggestions() {
         });
     });
 
-    if (suggestions.length === 0) { box.innerHTML = ''; return; }
+    if (suggestions.length === 0) { box.textContent = '반복된 수정 기록에서 제안할 내용이 아직 없습니다.'; return; }
 
     box.innerHTML = `<p class="text-sm font-bold text-indigo-700">🧠 감지된 성향 제안 <span class="text-xs font-normal text-gray-400">(드래그 기록 기반 · 반영해야만 저장됩니다)</span></p>` +
         suggestions.slice(0, 4).map((s, i) => `

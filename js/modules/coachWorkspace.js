@@ -10,6 +10,7 @@ const profileMap = (docs,date) => Object.fromEntries(docs.map(d=>[cleanName(d.id
 export async function prepareCoach(date = dateNow()) {
     requireAdmin();
     const [profiles,plan,meetings] = await Promise.all([getDocs(collection(db,'coachPlayers')),read('coachPlans',date),getDocs(collection(db,'dailyMeetings'))]);
+    requireAdmin();
     if(date!==dateNow()) throw new Error('날짜가 바뀌었습니다. 다시 시도하세요.');
     state.coachProfiles=profileMap(profiles.docs,date);
     state.coachPlan={...plan,date};
@@ -17,9 +18,16 @@ export async function prepareCoach(date = dateNow()) {
     state.coachDate=date;
     return {profiles:state.coachProfiles,plan:state.coachPlan,history:state.coachHistory};
 }
+// Manual field/team moves need fresh locks, not the full historical database.
+export async function prepareCoachLocks(date = dateNow()) {
+    requireAdmin();const plan=await read('coachPlans',date);requireAdmin();
+    if(date!==dateNow())throw new Error('날짜가 바뀌었습니다. 다시 시도하세요.');
+    state.coachPlan={...plan,date};state.coachDate=date;return state.coachPlan;
+}
 export function init(dependencies) {
     ({db,state}=dependencies); addCoachStyles();
     window.prepareCoach=prepareCoach;
+    window.prepareCoachLocks=prepareCoachLocks;
     window.coachReason='temporary';
     const share=document.getElementById('page-share'), players=document.getElementById('page-players'), lineup=document.getElementById('page-lineup');
     const make=(parent,id,html)=>{const node=document.createElement(id==='coach-planner'?'details':'section');node.id=id;node.className='coach-card';node.innerHTML=html;if(id==='coach-planner'){const summary=document.createElement('summary');summary.append(node.querySelector('h2'));node.prepend(summary);}parent?.append(node);return node;};

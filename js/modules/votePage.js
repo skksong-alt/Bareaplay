@@ -4,7 +4,7 @@ import { lessonHtml, addCoachStyles } from './weeklyContent.js?v=4';
 import { compareResponseTime, confirmGuest } from './voteOrder.js?v=1';
 import { POSITION_SURVEY_ENABLED } from './positionPreferences.js?v=5';
 import { rememberedRatingName, rememberRatingName, ratingRememberEnabled, setRatingRememberEnabled, wasRatingSubmittedHere, markRatingSubmittedHere, ratingConfirmation } from './ratingIdentity.js?v=1';
-import { RATING_SERVICE_ENABLED, requestRating } from './ratingService.js?v=2';
+import { RATING_SERVICE_ENABLED, requestRating, ratingFailureMessage } from './ratingService.js?v=3';
 let dispose = () => {};
 const readLang = () => { try { return localStorage.getItem('bp_lang') === 'en' ? 'en' : 'ko'; } catch { return 'ko'; } };
 const dubaiToday = () => new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
@@ -211,7 +211,7 @@ export function mountRatings(db, container, date, names, lang) {
             picks=[];
             msg.textContent=t('저장되었습니다. 선택 내용은 화면에서 지웠습니다. 다시 제출하면 기존 투표를 교체할지 확인합니다.','Saved. Your choices have been cleared. Submitting again asks for confirmation before replacing the vote.');
         }
-        catch(error) { if(alive)msg.textContent=error.code==='changed'?t('확인하는 동안 이 이름의 투표가 다른 곳에서 변경되었습니다. 아직 저장하지 않았습니다. 저장 버튼을 다시 눌러 교체 여부를 확인해 주세요.','This vote changed elsewhere while you were confirming. Nothing was saved. Press Save again to confirm replacement.'):t('저장하지 못했습니다. 선택 내용은 유지했습니다. 잠시 후 다시 시도해 주세요.','Could not save. Your current choices are kept on screen. Please retry shortly.'); }
+        catch(error) { if(alive)msg.textContent=error.code==='changed'?t('확인하는 동안 이 이름의 투표가 다른 곳에서 변경되었습니다. 아직 저장하지 않았습니다. 저장 버튼을 다시 눌러 교체 여부를 확인해 주세요.','This vote changed elsewhere while you were confirming. Nothing was saved. Press Save again to confirm replacement.'):ratingFailureMessage(error,en); }
         finally {if(alive){saving=false;select.disabled=false;draw();}}
     };
     const resultBox=container.querySelector('#review-result');
@@ -224,8 +224,22 @@ export function mountRatings(db, container, date, names, lang) {
         };
         resultBox.textContent=t('현재 활약 투표 결과를 확인하고 있습니다…','Loading the current top three…');
         // Existing votes are aggregated on the server without modifying/migrating them.
-        requestRating({action:'leaders',date}).then(data=>{if(!liveReceived)showLeaders(data.leaders);}).catch(()=>{if(alive&&!liveReceived)resultBox.textContent=t('집계를 불러오지 못했습니다. 투표와 별개로 다시 접속해 확인해 주세요.','Results are unavailable. You can still submit your vote.');});
-        stopResults=onSnapshot(doc(db,'ratingResults',date),snap=>{if(!alive||!snap.exists())return;liveReceived=true;showLeaders(snap.data().leaders);},()=>{if(alive)resultBox.insertAdjacentHTML('beforeend',`<p class="coach-note">${t('실시간 갱신 연결을 확인해 주세요.','Live updates are unavailable. Please reload.')}</p>`);});
+        // Most matches already have a public aggregate. Do not read all private
+        // ballots on every page visit as well as subscribing to that aggregate.
+        let requestedFallback=false;
+        const loadLegacyLeaders=()=>{
+            if(requestedFallback||!alive)return;requestedFallback=true;
+            requestRating({action:'leaders',date}).then(data=>{if(!liveReceived)showLeaders(data.leaders);}).catch(error=>{
+                if(alive&&!liveReceived)resultBox.textContent=error.code==='quota'
+                    ?t('사용량 한도로 집계를 불러올 수 없습니다. 감독에게 알려 주세요.','Results are unavailable due to a usage limit. Please tell the coach.')
+                    :t('집계를 불러오지 못했습니다. 잠시 후 다시 확인해 주세요.','Results are unavailable. Please check again later.');
+            });
+        };
+        stopResults=onSnapshot(doc(db,'ratingResults',date),snap=>{
+            if(!alive)return;
+            if(!snap.exists()){loadLegacyLeaders();return;}
+            liveReceived=true;showLeaders(snap.data().leaders);
+        },()=>{if(alive){loadLegacyLeaders();}});
     } else resultBox.textContent=t('이전 선택은 표시하지 않습니다. 다른 기기의 제출 여부 확인과 실시간 TOP 3는 서버 연결 준비 중입니다.','Previous choices are private on this screen. Cross-device submission checks and live TOP 3 are awaiting server setup.');
     draw();
     return ()=>{alive=false;stopResults();};

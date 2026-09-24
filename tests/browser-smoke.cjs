@@ -17,17 +17,19 @@ export const serverTimestamp=()=>({seconds:Date.now()/1000});
 const ds=(p)=>({id:p.split('/').at(-1),exists:()=>p in data,data:()=>structuredClone(data[p]),metadata:{hasPendingWrites:false}});
 const cs=p=>{const docs=Object.keys(data).filter(k=>k.startsWith(p+'/')&&k.split('/').length===p.split('/').length+1).map(ds);return {docs,forEach:fn=>docs.forEach(fn),empty:!docs.length,size:docs.length};};
 export const where=(field,op,value)=>({field,op,value});export const query=(path,...filters)=>({path,filters});
-export const getDoc=async p=>{globalThis.__reads.push(p);return ds(p);};export const getDocs=async p=>{globalThis.__reads.push(typeof p==='string'?p:p.path);if(globalThis.__failReads?.includes(typeof p==='string'?p:p.path))throw new Error('simulated read failure');if(typeof p==='string')return cs(p);const docs=cs(p.path).docs.filter(d=>p.filters.every(f=>f.op==='==' && f.field.split('.').reduce((v,k)=>v?.[k],d.data())===f.value));return{docs,empty:!docs.length};};
-export const onSnapshot=(p,cb)=>{globalThis.__reads.push(p);const run=()=>cb(p.split('/').length%2===0?ds(p):cs(p));run.path=p;listeners.push(run);queueMicrotask(run);return ()=>{const i=listeners.indexOf(run);if(i>=0)listeners.splice(i,1);};};
+export const getDoc=async p=>{globalThis.__reads.push(p);if(globalThis.__failReads?.includes(p))throw new Error('simulated read failure');return ds(p);};export const getDocs=async p=>{globalThis.__reads.push(typeof p==='string'?p:p.path);if(globalThis.__failReads?.includes(typeof p==='string'?p:p.path))throw new Error('simulated read failure');if(typeof p==='string')return cs(p);const docs=cs(p.path).docs.filter(d=>p.filters.every(f=>f.op==='==' && f.field.split('.').reduce((v,k)=>v?.[k],d.data())===f.value));return{docs,empty:!docs.length};};
+export const onSnapshot=(p,options,callback,error)=>{const cb=typeof options==='function'?options:callback,fail=typeof options==='function'?callback:error;globalThis.__reads.push(p);if(globalThis.__failReads?.includes(p)){queueMicrotask(()=>fail?.(new Error('simulated listener failure')));return()=>{};}const run=()=>cb(p.split('/').length%2===0?ds(p):cs(p));run.path=p;listeners.push(run);queueMicrotask(run);return ()=>{const i=listeners.indexOf(run);if(i>=0)listeners.splice(i,1);};};
 const emit=p=>listeners.slice().filter(f=>f.path===p || (p.startsWith(f.path+'/') && p.split('/').length===f.path.split('/').length+1)).forEach(f=>f());
 function merge(a,b){for(const [k,v]of Object.entries(b)){if(v&&typeof v==='object'&&!Array.isArray(v)){a[k]||={};merge(a[k],v);}else a[k]=structuredClone(v);}return a;}
 export const setDoc=async(p,v,o)=>{globalThis.__writes.push({path:p,value:structuredClone(v),merge:!!o?.merge});data[p]=o?.merge?merge(data[p]||{},v):structuredClone(v);emit(p);};
+export const runTransaction=async(_,fn)=>{if(globalThis.__failSave)throw new Error('simulated offline');const writes=[];const value=await fn({get:getDoc,set:(p,v)=>writes.push([p,v])});for(const [p,v] of writes)await setDoc(p,v);return value;};
 export const updateDoc=async(p,v)=>{globalThis.__writes.push({path:p,value:structuredClone(v),update:true});Object.assign(data[p],structuredClone(v));emit(p);};
 export const addDoc=async(p,v)=>{const id='new-'+globalThis.__writes.length;await setDoc(p+'/'+id,v);return{id};};
 export const deleteDoc=async()=>{throw new Error('DELETE FORBIDDEN IN TEST');};`;
 let server,browser,enableSurveyForTest=false,enableRatingServiceForTest=false;
 let ratingFailure='',ratingServerExists=true;const ratingRequests=[];
-data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch'},teams:meeting.teams,lineups:meeting.teamLineupCache,teamNames:['Test A','Test B']};
+let blockAdminBundles=false,blockApp=false;const requested=[];
+data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch'},teams:{team1:meeting.teams.team_0,team2:meeting.teams.team_1},lineups:{team1:meeting.teamLineupCache[0],team2:meeting.teamLineupCache[1]},teamNames:['Test A','Test B']};
 (async()=>{
   server=createServer(async(req,res)=>{
     const url=new URL(req.url,'http://local');const file=path.resolve(root,'.'+decodeURIComponent(url.pathname==='/'?'/index.html':url.pathname));
@@ -39,9 +41,16 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   await context.addInitScript(f=>{window.__fixture=f;window.__writes=[];window.__reads=[];window.Chart=class{destroy(){}update(){}};},data);
   await context.route('**/*',async route=>{
     const url=route.request().url();
+    requested.push(url);
+    if(blockApp&&url.startsWith(base+'/js/app.js'))return route.abort();
+    if(blockAdminBundles&&url.startsWith(base+'/js/modules/')&&/teamBalancer|accounting|playerManagement|lineupGenerator/.test(url))return route.abort();
+    if(url.startsWith(base)&&url.includes('/js/modules/teamCycles.js')&&process.argv.includes('--remodel')) {
+      const source=await readFile(path.join(root,'js/modules/teamCycles.js'),'utf8');
+      return route.fulfill({contentType:'text/javascript',body:source.replace('TEAM_CYCLE_STORAGE_ENABLED=false','TEAM_CYCLE_STORAGE_ENABLED=true')});
+    }
     if(url===base+'/api/ratings') {
       const payload=route.request().postDataJSON();ratingRequests.push(payload);
-      if(ratingFailure)return route.fulfill({status:ratingFailure==='changed'?409:503,contentType:'application/json',body:JSON.stringify({error:ratingFailure})});
+      if(ratingFailure)return route.fulfill({status:ratingFailure==='changed'?409:ratingFailure==='quota'?429:503,contentType:'application/json',body:JSON.stringify({error:ratingFailure})});
       const result=payload.action==='leaders'?{leaders:['Test 03','Test 04','Test 05']}:payload.action==='status'?{exists:ratingServerExists,version:'opaque-test-version'}:{saved:true};
       return route.fulfill({contentType:'application/json',body:JSON.stringify(result)});
     }
@@ -62,7 +71,103 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
     return route.fulfill({status:200,body:''});
   });
   const page=await context.newPage(), errors=[],dialogs=[];let cancelGuest=false,cancelRating=false;
-  page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>{dialogs.push(d.message());return (cancelGuest&&/Guest|guest/.test(d.message()))||cancelRating?d.dismiss():d.accept();});
+  page.on('pageerror',e=>{errors.push(e.message);console.error('Isolated browser error:',e.message);});page.on('dialog',d=>{dialogs.push(d.message());return (cancelGuest&&/Guest|guest/.test(d.message()))||cancelRating?d.dismiss():d.accept();});
+  if(process.argv.includes('--loading')) {
+    await context.addInitScript(()=>{__failReads=['incomes'];localStorage.setItem('playerDB','broken-cache');});
+    await page.goto(base+'/');await page.waitForFunction(()=>document.getElementById('operator-save')?.textContent.includes('저장됨'));
+    assert.equal(await page.evaluate(()=>document.getElementById('page-accounting').inert),true);
+    assert.match(await page.locator('#ledger-load-status').textContent(),/편집을 막았습니다/);
+    for(const path of ['attendance','expenses','incomes','players','locations'])assert.equal(await page.evaluate(p=>__reads.filter(x=>x===p).length,path),1,`one initial subscription for ${path}`);
+    assert.equal(requested.some(u=>u.includes('chart.js')||u.includes('xlsx')),false);
+    assert.equal(await page.evaluate(()=>__writes.length),0);
+    blockAdminBundles=true;
+    for(const url of ['/?vote=current','/share.html?shareId=test-share','/?preferences=1']){
+      enableSurveyForTest=true;const start=requested.length;
+      await page.goto(base+url);
+      await page.waitForSelector(url.includes('preferences')?'#preference-name':url.includes('shareId')?'#bp-image-open':'#v-name');
+      assert.equal(requested.slice(start).some(u=>/teamBalancer|accounting\.js|playerManagement|lineupGenerator/.test(u)),false,'public routes do not load admin modules');
+      assert.equal(await page.evaluate(()=>__writes.length),0);
+    }
+    assert.deepEqual(errors,[]);blockApp=true;
+    await page.goto(base+'/?vote=current');await page.waitForSelector('#boot-recovery',{timeout:16000});
+    assert.match(await page.locator('#boot-recovery').textContent(),/연결이 지연/);
+    assert.equal(await page.evaluate(()=>__writes.length),0);
+    console.log('PASS: one ledger subscription, failed ledger read blocks edits, invalid cache recovery, public routes independent of admin bundles, no eager chart/XLSX, boot recovery.');
+    await context.close();return;
+  }
+  if(process.argv.includes('--saves')) {
+    await context.addInitScript(today=>__fixture['dailyMeetings/'+today].legacySentinel={keep:true},today);
+    await page.goto(base+'/');await page.waitForFunction(()=>document.getElementById('operator-save')?.textContent.includes('저장됨'));
+    assert.equal(await page.evaluate(()=>__writes.length),0);
+    await page.locator('#attendees').fill('Test 01\nTest 02');
+    assert.equal(await page.evaluate(()=>hasUnsavedMeeting()),true);
+    await page.locator('#balancer-date').fill(next);await page.locator('#balancer-date').dispatchEvent('change');
+    await page.waitForFunction(next=>document.getElementById('operator-context').textContent.includes(next)&&document.getElementById('operator-save').textContent.includes('저장됨'),next);
+    assert.deepEqual(await page.evaluate(date=>__fixture['dailyMeetings/'+date].initialAttendeeOrder,today),['Test 01','Test 02']);
+    assert.deepEqual(await page.evaluate(date=>__fixture['dailyMeetings/'+date].legacySentinel,today),{keep:true});
+    assert.equal(await page.evaluate(next=>__fixture['dailyMeetings/'+next],next),undefined);
+    await page.evaluate(()=>__failSave=true);await page.locator('#attendees').fill('Test 03');
+    assert.equal(await page.evaluate(date=>changeMeetingDate(date),today),false);
+    assert.equal(await page.locator('#balancer-date').inputValue(),next);assert.equal(await page.locator('#attendees').inputValue(),'Test 03');
+    assert.match(await page.locator('#operator-save').textContent(),/저장 실패/);
+    await page.evaluate(()=>__failSave=false);await page.locator('#operator-retry').click();
+    await page.waitForFunction(()=>document.getElementById('operator-save').textContent.includes('저장됨'));
+    await page.locator('#attendees').fill('Test 04');
+    await page.evaluate(next=>__fixture['dailyMeetings/'+next].initialAttendeeOrder=['remote'],next);
+    await page.evaluate(()=>flushMeetingSave().catch(()=>{}));assert.match(await page.locator('#operator-save').textContent(),/충돌/);
+    assert.deepEqual(await page.evaluate(next=>__fixture['dailyMeetings/'+next].initialAttendeeOrder,next),['remote']);
+    await page.locator('#operator-reload').click();await page.waitForFunction(()=>document.getElementById('attendees').value==='remote');
+    await page.evaluate(today=>__failReads=['dailyMeetings/'+today],today);
+    assert.equal(await page.evaluate(today=>changeMeetingDate(today),today),false);
+    assert.equal(await page.locator('#balancer-date').inputValue(),next);assert.equal(await page.locator('#attendees').inputValue(),'remote');
+    assert.ok((await page.evaluate(()=>__writes)).every(w=>w.path.startsWith('dailyMeetings/')));
+    assert.deepEqual(errors,[]);console.log('PASS: immutable date saves, flush before switching, failed writes, retry, cross-device conflict, failed date load, no unrelated writes.');
+    await context.close();return;
+  }
+  if(process.argv.includes('--remodel')) {
+    await context.addInitScript(({names,today})=>{
+      names.forEach((name,i)=>{
+        __fixture[`attendance/cycle-${i}`]={name,date:today,paymentStatus:'●',paymentAmount:50};
+        const role=['DM','CB','FW'][i%3];
+        __fixture[`privatePositionPreferences/synthetic-${i}`]={name,first:role,second:role,note:'Never copy this private note'};
+      });
+    },{names,today});
+    await page.goto(base+'/');await page.waitForSelector('#operator-context:visible');
+    const initial=await page.evaluate(()=>structuredClone(__fixture));
+    assert.equal(await page.evaluate(()=>__writes.length),0);
+    assert.equal(await page.evaluate(()=>__reads.some(p=>p==='privatePositionPreferences'||p==='teamCycles')),false);
+    await page.locator('#team-cycle-panel>summary').click();await page.locator('#team-cycle-start').fill(today);
+    await page.locator('#team-cycle-roster').click();await page.locator('#team-cycle-build').click();
+    assert.equal(await page.locator('#team-cycle-draft [data-team]').count(),24);assert.equal(await page.evaluate(()=>__writes.length),0);
+    await page.locator('#team-cycle-save').click();await page.waitForFunction(()=>__writes.length===1);
+    const saved=await page.evaluate(()=>__writes[0]);assert.match(saved.path,/^teamCycles\//);
+    assert.ok(saved.value.members.every(p=>!('note' in p)&&!('skill' in p)));
+    await page.locator('#team-cycle-training').click();
+    assert.match(await page.locator('#team-cycle-training-status').textContent(),/8주 훈련 포지션 우선/);
+    assert.equal(await page.evaluate(()=>__writes.length),1,'training selection is not a write');
+    assert.match(await page.locator('#lineup-mode-status').textContent(),/훈련 포지션 우선/);
+    const homeA=saved.value.members.filter(p=>p.team===0),homeB=saved.value.members.filter(p=>p.team===1);
+    const present=[...homeA.slice(0,8),...homeB].map(p=>p.name);present.push('Synthetic Guest');
+    await page.evaluate(present=>document.getElementById('attendees').value=present.join('\n'),present);await page.locator('#team-cycle-match').click();
+    await page.locator('#team-cycle-use').click();assert.match(await page.locator('#team-cycle-status').textContent(),/임시 소속/);
+    await page.locator('[data-temporary="0"]').selectOption('0');await page.locator('#team-cycle-use').click();
+    const assigned=(await page.locator('#manual-team-ta-0').inputValue()+'\n'+await page.locator('#manual-team-ta-1').inputValue()).split('\n').filter(Boolean).sort();
+    assert.deepEqual(assigned,[...present].sort());assert.equal(await page.evaluate(()=>__writes.length),1,'preview does not save daily assignments');
+    for(const [key,value] of Object.entries(initial))assert.deepEqual(await page.evaluate(key=>__fixture[key],key),value,`preserve ${key}`);
+    assert.deepEqual(await page.evaluate(key=>__fixture[key],saved.path),saved.value,'loans do not change original memberships');
+    await page.evaluate(next=>changeMeetingDate(next),next);
+    assert.match(await page.locator('#team-cycle-training-status').textContent(),/꺼짐/);
+    await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-cycle-desktop.png'),fullPage:true});
+    await page.goto(base+'/share.html?shareId=test-share');await page.locator('#bp-image-open').click();
+    await page.getByRole('button',{name:'이미지 만들기',exact:true}).click();
+    const png=page.locator('img[alt*="6쿼터"]');await png.waitFor();
+    await page.waitForFunction(()=>document.querySelector('img[alt*="6쿼터"]')?.naturalWidth===1500);
+    assert.equal(await page.evaluate(()=>__writes.length),0,'image export never writes');
+    assert.equal(await page.locator('a[download$=".png"]').count(),1);
+    await png.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-lineup-export.png')});
+    assert.deepEqual(errors,[]);console.log('PASS: cycle draft/store (mock only), immutable original records, temporary guest, loans, no load writes, published PNG.');
+    await context.close();return;
+  }
   if(process.argv.includes('--survey')) {
     enableSurveyForTest=true;
     await page.goto(base+'/?preferences=1');await page.waitForSelector('#preference-name');
@@ -223,6 +328,12 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
     assert.equal(await page.locator('#review-picks .coach-selected').count(),3);
     ratingFailure='unavailable';await page.locator('#review-save').click();await page.waitForFunction(()=>document.querySelector('#review-msg').textContent.includes('Could not save'));
     assert.equal(await page.evaluate(()=>__writes.length),0,'no insecure fallback when API fails');
+    ratingFailure='quota';await page.locator('#review-save').click();await page.waitForFunction(()=>document.querySelector('#review-msg').textContent.includes('usage limit'));
+    assert.equal(await page.locator('#review-picks .coach-selected').count(),3,'quota failure keeps selected players');
+    ratingFailure='';const aggregateCalls=ratingRequests.filter(r=>r.action==='leaders').length;
+    await page.locator('[data-review-back]').last().click();await page.locator('.match-review-link').click();
+    await page.locator('#review-result strong').filter({hasText:'Test 06'}).waitFor();
+    assert.equal(ratingRequests.filter(r=>r.action==='leaders').length,aggregateCalls,'public aggregate avoids another private-ballot aggregation read');
     assert.deepEqual(errors,[]);console.log('PASS: device name memory/forget, safe cancellation, cross-device confirmation, score-free live TOP 3, no raw ballot reads and fail-closed server errors.');
     await context.close();return;
   }
@@ -245,15 +356,14 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
     await page.goto(base+'/');await page.waitForSelector('#operator-context:visible');
     assert.equal(await page.evaluate(()=>__writes.length),0,'operator dashboard must not auto-save');
     assert.equal(await page.locator('#avoid-repeat').isChecked(),false);
-    await page.locator('#tab-lineup').click();await page.waitForSelector('.lineup-view-bar');
-    assert.equal(await page.locator('.quarter-block:visible').count(),1,'one quarter at a time by default');
-    await page.locator('[data-view="all"]').click();assert.equal(await page.locator('.quarter-block:visible').count(),6);
+    await page.locator('#tab-lineup').click();await page.waitForSelector('.quarter-block');
+    assert.equal(await page.locator('.quarter-block:visible').count(),6,'all six quarters are visible without a mode switch');
+    assert.equal(await page.locator('.lineup-view-bar').count(),0);
     assert.equal(await page.locator('#coach-planner').getAttribute('open'),null,'advanced coach controls start collapsed');
-    await page.locator('.operator-cycle>summary').click();
-    await page.locator('#cycle-start').fill(past);await page.locator('#cycle-load').click();
-    await page.waitForFunction(()=>document.querySelector('#cycle-source').options[0].value!=='');
-    await page.locator('#cycle-preview').click();await page.locator('#cycle-use').click();
-    assert.equal(await page.evaluate(()=>__writes.length),0,'copying a previous team into inputs must not save');
+    assert.equal(await page.locator('.operator-steps').count(),0,'no duplicate navigation');
+    await page.locator('#tab-balancer').click();await page.locator('#team-cycle-panel>summary').click();
+    assert.equal(await page.locator('#team-cycle-load').isDisabled(),true,'cycle storage gated until Rules approval');
+    assert.equal(await page.evaluate(()=>__writes.length),0,'cycle tools must not save on load');
     await page.locator('#tab-share').click();await page.locator('#coach-week-load').click();await page.waitForSelector('.video-editor');
     assert.equal(await page.locator('.video-editor-row').count(),12);
     assert.equal(await page.evaluate(()=>__writes.length),0);

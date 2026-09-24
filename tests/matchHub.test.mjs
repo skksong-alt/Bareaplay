@@ -15,7 +15,9 @@ test('all four practices explain setup, timed stages and coaching cues in both l
     const custom={drillKo:'감독이 저장한 연습\n세부 지침 <변경 금지>'};
     const html=lessonHtml('2026-09-16',custom);
     assert.match(html,/감독이 저장한 연습/);assert.match(html,/&lt;변경 금지&gt;/);
-    assert.doesNotMatch(html,/0–5분|class="practice-source"/);
+    const practice=html.slice(html.indexOf('<div class="practice-block">'));
+    assert.doesNotMatch(practice,/0–5분|class="practice-source"/);
+    assert.match(html,/referee-lesson/,'custom practice does not remove referee education');
     assert.equal(custom.drillKo,'감독이 저장한 연습\n세부 지침 <변경 금지>');
 });
 
@@ -51,8 +53,9 @@ test('optional legacy text fields accept safe link lists, with language fallback
 
 test('match resources stylesheet is versioned and included in the offline cache',()=>{
     const root=new URL('../',import.meta.url);
-    assert.match(readFileSync(new URL('index.html',root),'utf8'),/css\/match-hub\.css\?v=3/);
-    assert.match(readFileSync(new URL('sw.js',root),'utf8'),/'\/css\/match-hub\.css\?v=3'/);
+    const css=readFileSync(new URL('index.html',root),'utf8').match(/css\/match-hub\.css\?v=\d+/)?.[0];
+    assert.ok(css);
+    assert.ok(readFileSync(new URL('sw.js',root),'utf8').includes(`'/${css}'`));
     const shared=readFileSync(new URL('js/app.js',root),'utf8');
     assert.doesNotMatch(shared,/Next match RSVP · Previous match appreciation/);
 });

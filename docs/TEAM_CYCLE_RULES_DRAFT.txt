@@ -1,0 +1,40 @@
+DRAFT ONLY — DEPLOYMENT NOT CONFIRMED. Review the complete live rules before applying.
+
+2026-09-24: user approved deployment. 499 actual local Emulator checks passed
+against the baseline and integrated rules. Console publish returned an error;
+a fresh Console tab could not load rule versions. Keep storage disabled until
+the active deployed rules are confirmed. No production documents were written.
+
+Read-only console comparison, 2026-09-24: the deployed common rule excludes
+admins, ratings, ratingResults, ratingParticipation and privatePositionPreferences.
+It does NOT yet exclude teamCycles. The deployed isAdmin() checks admins/{uid}.
+The proposed two new exclusions and the match below remain unapplied.
+The private survey coach UID was not copied into this repository.
+
+The existing /{collectionName}/{docId} public read/admin write rule must
+exclude teamCycles in BOTH conditions. Firestore allow rules are ORed.
+Do not change any condition for existing collections or the position survey.
+
+match /teamCycles/{cycleId} {
+  allow read: if isAdmin();
+  allow create: if isAdmin()
+    && request.resource.data.keys().hasOnly([
+      'schemaVersion', 'startDate', 'endDateExclusive', 'members', 'createdBy', 'createdAt'
+    ])
+    && request.resource.data.schemaVersion == 1
+    && request.resource.data.startDate is string
+    && request.resource.data.endDateExclusive is string
+    && request.resource.data.members is list
+    && request.resource.data.members.size() >= 2
+    && request.resource.data.members.size() <= 200
+    && request.resource.data.createdBy == request.auth.uid
+    && request.resource.data.createdAt == request.time;
+  allow update, delete: if false;
+}
+
+This is an integration fragment, not a replacement ruleset. Client validation
+checks dates/56-day range, roles, unique names and teams. The rule above does not
+validate every nested member or enforce non-overlapping cycles. Client validation
+is not a server integrity guarantee. Before enabling storage, test unauthenticated
+denial, non-admin denial, admin create/read, update/delete denial, catchall exclusion,
+and unchanged access to existing collections in an isolated Rules test environment.
