@@ -1,14 +1,16 @@
-DRAFT ONLY — DEPLOYMENT NOT CONFIRMED. Review the complete live rules before applying.
+REVIEWED FRAGMENT — DEPLOYMENT CONFIRMED 2026-09-24 14:41 Asia/Dubai.
+Not a standalone deployable ruleset. Keep all existing rules when integrating.
 
 2026-09-24: user approved deployment. 499 actual local Emulator checks passed
-against the baseline and integrated rules. Console publish returned an error;
-a fresh Console tab could not load rule versions. Keep storage disabled until
-the active deployed rules are confirmed. No production documents were written.
+again against the baseline and integrated rules. Automated Console publication
+returned an error; the user then published successfully. The 14:41 active version
+was read in a fresh Console tab and matched the approved integration exactly
+(ignoring whitespace). No production documents were written during this work.
 
-Read-only console comparison, 2026-09-24: the deployed common rule excludes
+Before this change, read-only console comparison showed the common rule excluded
 admins, ratings, ratingResults, ratingParticipation and privatePositionPreferences.
-It does NOT yet exclude teamCycles. The deployed isAdmin() checks admins/{uid}.
-The proposed two new exclusions and the match below remain unapplied.
+It did not exclude teamCycles. The deployed isAdmin() checks admins/{uid}.
+The two teamCycles exclusions and the match below are now confirmed applied.
 The private survey coach UID was not copied into this repository.
 
 The existing /{collectionName}/{docId} public read/admin write rule must

@@ -1,13 +1,13 @@
 // sw.js
-const CACHE_NAME = 'bareaplay-cache-v74';
+const CACHE_NAME = 'bareaplay-cache-v75';
 const urlsToCache = [
     '/', '/index.html', '/share.html', '/css/style.css',
     '/css/match-hub.css?v=5',
     '/css/operations.css?v=1',
-    '/css/brand.css?v=1',
+    '/css/brand.css?v=2',
     '/js/modules/quarters.js?v=1',
     '/js/modules/saveQueue.js?v=1',
-    '/js/app.js?v=30',
+    '/js/app.js?v=31',
     '/js/store.js?v=3',
     '/js/modules/playerManagement.js?v=6',
     '/js/modules/teamBalancer.js?v=11',
@@ -23,7 +23,7 @@ const urlsToCache = [
     '/js/modules/dutyRotation.js?v=3',
     '/js/modules/refereeEducation.js?v=2',
     '/js/modules/adminWorkflow.js?v=3',
-    '/js/modules/teamCycles.js?v=2',
+    '/js/modules/teamCycles.js?v=3',
     '/js/modules/teamCycleCore.js?v=1',
     '/js/modules/trainingLineup.js?v=2',
     '/js/modules/meetingSession.js?v=1',

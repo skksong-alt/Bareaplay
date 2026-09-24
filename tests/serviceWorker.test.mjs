@@ -6,7 +6,7 @@ test('worker installation does not replace editing clients or preload admin bund
     const handlers={},cached=[],removed=[];let activated=0,claimed=0,waiting;
     const sandbox={URL,Promise,console,fetch:async()=>({ok:true,clone(){return this;}}),
         self:{location:{origin:'https://local.test'},addEventListener:(name,fn)=>handlers[name]=fn,skipWaiting:()=>activated++,clients:{claim:()=>claimed++}},
-        caches:{open:async()=>({add:async url=>cached.push(url),put:async()=>{}}),keys:async()=>['bareaplay-cache-old','bareaplay-cache-v74'],delete:async key=>removed.push(key),match:async()=>null}};
+        caches:{open:async()=>({add:async url=>cached.push(url),put:async()=>{}}),keys:async()=>['bareaplay-cache-old','bareaplay-cache-v75'],delete:async key=>removed.push(key),match:async()=>null}};
     vm.runInNewContext(readFileSync(new URL('../sw.js',import.meta.url),'utf8'),sandbox);
     handlers.install({waitUntil:p=>waiting=p});await waiting;
     assert.equal(activated,0);assert.ok(cached.includes('/js/boot.js?v=1'));

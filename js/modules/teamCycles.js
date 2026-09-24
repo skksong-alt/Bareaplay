@@ -2,8 +2,8 @@ import { collection, getDocs, addDoc, serverTimestamp } from 'https://www.gstati
 import { escapeHtml as esc } from './coachCore.js?v=2';
 import { CYCLE_ROLES, recentParticipants, cycleCandidates, draftCycle, validateCycle, matchFromCycle, cycleContains } from './teamCycleCore.js?v=1';
 
-// Do not enable until the private collection Rules are reviewed and deployed.
-export const TEAM_CYCLE_STORAGE_ENABLED=false;
+// Admin-only create/read Rules verified against the approved version, 2026-09-24.
+export const TEAM_CYCLE_STORAGE_ENABLED=true;
 const roleOptions=value=>CYCLE_ROLES.map(role=>`<option ${value===role?'selected':''}>${role}</option>`).join('');
 export function init({db,state,auth}) {
     const host=document.getElementById('page-balancer');if(!host)return;

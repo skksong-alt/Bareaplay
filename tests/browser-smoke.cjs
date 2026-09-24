@@ -1,4 +1,5 @@
-// Completely isolated browser checks: every remote request is mocked or blocked.
+// Firebase is always mocked. Only --desktop loads the existing public Tailwind
+// compiler to check real utility styles; all other remote requests stay blocked.
 const { chromium } = require('playwright');
 const { createServer } = require('node:http');
 const { readFile } = require('node:fs/promises');
@@ -44,10 +45,6 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
     requested.push(url);
     if(blockApp&&url.startsWith(base+'/js/app.js'))return route.abort();
     if(blockAdminBundles&&url.startsWith(base+'/js/modules/')&&/teamBalancer|accounting|playerManagement|lineupGenerator/.test(url))return route.abort();
-    if(url.startsWith(base)&&url.includes('/js/modules/teamCycles.js')&&process.argv.includes('--remodel')) {
-      const source=await readFile(path.join(root,'js/modules/teamCycles.js'),'utf8');
-      return route.fulfill({contentType:'text/javascript',body:source.replace('TEAM_CYCLE_STORAGE_ENABLED=false','TEAM_CYCLE_STORAGE_ENABLED=true')});
-    }
     if(url===base+'/api/ratings') {
       const payload=route.request().postDataJSON();ratingRequests.push(payload);
       if(ratingFailure)return route.fulfill({status:ratingFailure==='changed'?409:ratingFailure==='quota'?429:503,contentType:'application/json',body:JSON.stringify({error:ratingFailure})});
@@ -67,11 +64,37 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
     if(url.includes('firebase-app.js'))return route.fulfill({contentType:'text/javascript',body:'export const initializeApp=()=>({});'});
     if(url.includes('firebase-auth.js'))return route.fulfill({contentType:'text/javascript',body:'const auth={currentUser:{uid:"test-admin"}};const listeners=[];export const getAuth=()=>auth;export class GoogleAuthProvider{};export const onAuthStateChanged=(_,cb)=>{listeners.push(cb);queueMicrotask(()=>cb(auth.currentUser));return()=>{const i=listeners.indexOf(cb);if(i>=0)listeners.splice(i,1);};};export const signInWithPopup=async()=>{auth.currentUser={uid:"test-admin"};listeners.forEach(cb=>cb(auth.currentUser));return {user:auth.currentUser};};export const signOut=async()=>{auth.currentUser=null;listeners.forEach(cb=>cb(null));};export const setPersistence=async()=>{};export const browserLocalPersistence={};'});
     // Local CSS equivalent for visibility; no CDN or Firebase request leaves this context.
+    if(url.startsWith('https://cdn.tailwindcss.com')&&process.argv.includes('--desktop'))return route.continue();
     if(url.includes('tailwindcss'))return route.fulfill({contentType:'text/javascript',body:'const s=document.createElement("style");s.textContent=".hidden{display:none!important}.fixed{position:fixed}.grid{display:grid} .bg-gray-100{background:#f3f4f6}";document.head.append(s);'});
     return route.fulfill({status:200,body:''});
   });
   const page=await context.newPage(), errors=[],dialogs=[];let cancelGuest=false,cancelRating=false;
   page.on('pageerror',e=>{errors.push(e.message);console.error('Isolated browser error:',e.message);});page.on('dialog',d=>{dialogs.push(d.message());return (cancelGuest&&/Guest|guest/.test(d.message()))||cancelRating?d.dismiss():d.accept();});
+  if(process.argv.includes('--desktop')) {
+    await page.goto(base+'/');await page.waitForSelector('#operator-context:visible');
+    await page.waitForFunction(()=>[...document.querySelectorAll('style')].some(el=>el.textContent.includes('.w-full')));
+    for(const width of [1440,1280,1100,1024,900,820,390,360]) {
+      await page.setViewportSize({width,height:1000});
+      const layout=await page.evaluate(()=>{
+        const nav=[...document.querySelectorAll('.operator-nav .tab-button')].map(el=>{const r=el.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,right:r.right};});
+        const labels=['label[for=attendees]','#reset-attendees-btn','#load-all-players-btn','label[for=aces]','#reset-aces-btn'].map(selector=>{
+          const el=document.querySelector(selector),r=document.createRange();r.selectNodeContents(el);
+          const rects=[...r.getClientRects()];const parent=el.closest('.bg-white').getBoundingClientRect();
+          return {selector,lines:new Set(rects.map(r=>Math.round(r.top))).size,inside:rects.every(r=>r.left>=parent.left&&r.right<=parent.right+1)};
+        });
+        const results=document.getElementById('result-container-balancer'),cards=[...results.children].filter(el=>getComputedStyle(el).display!=='none').map(el=>el.getBoundingClientRect());
+        return {nav,labels,overflow:document.documentElement.scrollWidth>innerWidth,sidebar:document.querySelector('#page-balancer>.grid>div').getBoundingClientRect().width,cards:cards.map(r=>({x:r.x,y:r.y,right:r.right})),resultRight:results.getBoundingClientRect().right};
+      });
+      assert.equal(layout.overflow,false,`page overflow at ${width}`);
+      for(const label of layout.labels){assert.equal(label.lines,1,`${label.selector} wraps at ${width}`);assert.ok(label.inside,`${label.selector} outside card at ${width}`);}
+      if(width>=900){assert.equal(new Set(layout.nav.map(n=>Math.round(n.y))).size,1);assert.ok(Math.max(...layout.nav.map(n=>n.width))-Math.min(...layout.nav.map(n=>n.width))<2);}
+      if(width>=1100){assert.equal(Math.round(layout.sidebar),360);assert.equal(layout.cards.length,2);assert.equal(layout.cards[0].y,layout.cards[1].y);assert.ok(Math.abs(layout.cards[1].right-layout.resultRight)<2,'two teams fill the result row');}
+      if(width===1440||width===390)await page.screenshot({path:path.join(process.env.TEMP||root,`bareaplay-desktop-fix-${width}.png`),fullPage:true});
+    }
+    assert.equal(await page.evaluate(()=>__writes.length),0,'layout checks do not write records');
+    assert.deepEqual(errors,[]);console.log('PASS: real Tailwind desktop/mobile layout at 8 widths, single-line labels, equal desktop navigation, no page overflow, zero mock writes.');
+    await context.close();return;
+  }
   if(process.argv.includes('--remodel2')) {
     await context.addInitScript(({today,names})=>{
       names.forEach((name,i)=>__fixture['votes/test-vote/responses/'+name]={name,status:'attend',waitlist:false,attendingSince:{seconds:i+10}});

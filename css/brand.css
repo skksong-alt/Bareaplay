@@ -12,7 +12,16 @@ button{touch-action:manipulation}button:disabled{cursor:not-allowed;opacity:.55}
 #realtime-link-placeholder:empty{display:none}#realtime-link-placeholder{flex-basis:100%;margin:0!important}
 #main-app .operator-nav{justify-content:flex-start;padding:6px;border:1px solid var(--b-line);background:#fff;box-shadow:var(--b-shadow);border-radius:14px}
 #main-app .operator-nav .tab-button{font-size:14px;padding:11px 17px;font-weight:650;color:#577063;background:transparent}
-#main-app .operator-nav .tab-button.active{background:var(--b-green);color:white;box-shadow:0 2px 4px #184f3d15}#main-app .operator-nav #tab-accounting{margin-left:auto}
+#main-app .operator-nav .tab-button.active{background:var(--b-green);color:white;box-shadow:0 2px 4px #184f3d15}
+#main-app .operator-nav .tab-button{white-space:nowrap;line-height:1.4;text-align:center;margin:0}
+@media(min-width:900px){#main-app .operator-nav{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;overflow:visible}#main-app .operator-nav .tab-button{padding:12px 8px;min-width:0}}
+/* A field title and its actions must not compete for one narrow line. */
+#page-balancer div:has(>label[for=attendees]){display:flex;flex-direction:column;align-items:stretch;gap:8px}
+#page-balancer div:has(>label[for=attendees])>div{display:flex;flex-wrap:wrap;gap:8px}
+#page-balancer :is(label[for=attendees],label[for=aces],#reset-attendees-btn,#load-all-players-btn,#reset-aces-btn){white-space:nowrap;flex-shrink:0}
+#page-balancer :is(#reset-attendees-btn,#load-all-players-btn){padding:5px 9px;border:1px solid var(--b-line);background:#f6f8f6;font-size:12px;font-weight:650}
+#page-balancer>.grid>div:first-child :is(p,summary){word-break:keep-all;overflow-wrap:anywhere;line-height:1.7}
+#result-container-balancer{grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));align-items:start;align-content:start}
 #main-app>div:has(>.operator-nav){margin-bottom:24px;box-shadow:none;background:transparent}
 .lineup-stats-details{border:1px solid var(--b-line);border-radius:10px;padding:12px 16px;margin-bottom:16px}.lineup-stats-details summary{font-size:13px;font-weight:700}.lineup-stats-details table{width:100%}
 #main-app .bg-white.p-6,#main-app .coach-card,#main-app .cycle-panel,#main-app .match-admin{border:1px solid var(--b-line);border-radius:18px;box-shadow:var(--b-shadow);background:#fff}
@@ -44,7 +53,7 @@ button{touch-action:manipulation}button:disabled{cursor:not-allowed;opacity:.55}
 #main-app .quarter-block{border:1px solid var(--b-line);border-radius:12px;background:#f7faf7;box-shadow:none;padding:12px}
 #main-app #lineup-display{gap:16px}#main-app #lineup-display.hidden{display:none}#main-app .pitch{background-color:#276348}#main-app .quarter-block .player-name{font-size:11px}
 #main-app .operator-guide{max-width:980px;padding:32px}.operator-guide a{color:var(--b-green);text-decoration:underline;text-underline-offset:3px}
-@media(min-width:1100px){#page-balancer>.grid,#page-lineup>.grid{display:grid;grid-template-columns:300px minmax(0,1fr);gap:24px}#page-balancer>.grid>div,#page-lineup>.grid>div{grid-column:auto;min-width:0}#lineup-display{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(min-width:1100px){#page-balancer>.grid,#page-lineup>.grid{display:grid;grid-template-columns:300px minmax(0,1fr);gap:24px}#page-balancer>.grid{grid-template-columns:360px minmax(0,1fr)}#page-balancer>.grid>div,#page-lineup>.grid>div{grid-column:auto;min-width:0}#lineup-display{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(min-width:1100px){#main-app #lineup-display[data-quarters="4"]{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:800px){#main-app{padding:20px 16px}#main-app>header{gap:12px}.operator-caption{display:none}#main-app .operator-nav #tab-accounting{margin-left:0}#main-app .operator-nav .tab-button{padding:10px 13px}#main-app .bg-white.p-6{padding:18px}#main-app h2{font-size:20px}.bp-wrap .bp-qgrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}#main-app .operator-guide{padding:20px}}
 @media(max-width:380px){.bp-wrap .bp-qgrid{grid-template-columns:1fr}}

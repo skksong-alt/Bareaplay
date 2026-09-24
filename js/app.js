@@ -827,7 +827,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const {mountPreferenceAdmin}=await import('./modules/positionPreferences.js?v=6');
     mountPreferenceAdmin(db,state);
     // Do not add the cycle-planning bundle to public RSVP, survey or lineup loads.
-    try { const cycles=await import('./modules/teamCycles.js?v=2');cycles.init(dependencies); }
+    try { const cycles=await import('./modules/teamCycles.js?v=3');cycles.init(dependencies); }
     catch { window.showNotification('고정팀 도구를 불러오지 못했습니다. 기존 팀 배정은 계속 사용할 수 있습니다.','error'); }
     
     const urlParams = new URLSearchParams(window.location.search);
