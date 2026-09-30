@@ -2,7 +2,7 @@
 // [v-매치사이즈 업데이트] 9vs9(3-4-1 고정) / 10vs10(3-4-2 고정) / 11vs11(자유) 경기 인원 선택 지원
 //  - 휴식·심판 로테이션 로직은 기존과 동일 (매 쿼터 휴식 인원 = 명단 − 경기 인원)
 import { roleTip, applyLocks, validateLineup, historyBonus, candidateCost, effectivePlayer } from './coachCore.js?v=2';
-import { planDuties, sharedRefereesFromLineups } from './dutyRotation.js?v=3';
+import { planDuties, sharedRefereesFromLineups, rosterDutyOrder } from './dutyRotation.js?v=4';
 import { applyTrainingRoles, trainingForDate } from './trainingLineup.js?v=2';
 import { quarterCount, preserveInactiveQuarters } from './quarters.js?v=1';
 let state;
@@ -13,46 +13,6 @@ let activeTeamIndex = -1;
 // [기능] 한글 자모 분리 현상 해결을 위한 정규화 함수
 function normalizeName(name) {
     return name ? name.normalize('NFC').trim() : '';
-}
-
-// Identity links exist only in this page/date. Never rename votes or invent timestamps.
-let dutyNameLinksDate = null;
-let dutyNameLinks = new Map();
-function reconcileDutyOrder(teams, earlyFirst, date, allowQuestions) {
-    const members=teams.flat(), order=earlyFirst.map(normalizeName);
-    const folded=name=>name.toLowerCase();
-    if(new Set(members).size!==members.length)throw new Error('팀 명단에 중복 선수가 있습니다.');
-    if(new Set(order).size!==order.length)throw new Error('참석 투표에 같은 이름이 중복돼 있습니다. 순번을 합치지 않고 기존 배정을 유지합니다.');
-    for(const name of members) {
-        if(members.filter(n=>folded(n)===folded(name)).length>1 || order.filter(n=>folded(n)===folded(name)).length>1)
-            throw new Error(`“${name}”의 대소문자만 다른 이름이 중복돼 있습니다. 동일인 여부를 확인해 주세요. 기존 배정은 유지됩니다.`);
-    }
-    const links=new Map(), used=new Set();
-    for(const name of members) {
-        const found=order.find(n=>folded(n)===folded(name));
-        if(found){links.set(found,name);used.add(found);}
-    }
-    const pending=new Map();
-    for(const name of members.filter(n=>![...links.values()].includes(n))) {
-        const available=order.filter(n=>!used.has(n));
-        const remembered=dutyNameLinksDate===date?dutyNameLinks.get(name):null;
-        let source=available.includes(remembered)?remembered:null;
-        if(!source && allowQuestions && available.length) {
-            const explanation=`팀 명단 “${name}”의 참석 투표 이름이 다릅니다.\n기존 투표와 시각은 변경하지 않고, 선택한 사람의 투표 순번만 연결합니다.\n다른 사람이라면 취소하세요.`;
-            if(available.length===1) {
-                if(window.confirm?.(`${explanation}\n\n투표 “${available[0]}”와 같은 사람입니까?`))source=available[0];
-            } else {
-                const answer=window.prompt?.(`${explanation}\n\n${available.map((n,i)=>`${i+1}. ${n}`).join('\n')}\n\n같은 사람의 번호를 입력하세요.`, '');
-                const index=/^\d+$/.test(String(answer||'').trim())?Number(answer)-1:-1;
-                source=available[index]||null;
-            }
-        }
-        if(!source)throw new Error(`“${name}”의 참석 투표 순번을 연결하지 못했습니다. 투표 이름과 팀 명단을 확인해 주세요. 기존 배정은 유지됩니다.`);
-        links.set(source,name);used.add(source);pending.set(name,source);
-    }
-    if(dutyNameLinksDate!==date){dutyNameLinksDate=date;dutyNameLinks=new Map();}
-    for(const [name,source] of pending)dutyNameLinks.set(name,source);
-    return order.map(n=>links.get(n)||n);
 }
 
 // [성향] 포지션 → 라인 분류 (성향 제안·점수 계산 공용)
@@ -401,7 +361,7 @@ function renderAllQuarters() {
     const sharedReferees = applySharedReferees(); // [수정] 양팀 공동 심판 계산
     const dutyNote=document.createElement('p');dutyNote.className='coach-note';dutyNote.style.gridColumn='1 / -1';
     const isHistorical=document.getElementById('balancer-date')?.value < window.getLocalDate?.();
-    dutyNote.textContent=(isHistorical?'심판: 당시 저장된 배정':'심판: 양 팀 번갈아')+' · 키퍼/휴식: 팀별 투표순 · 늦은 신청부터 순환 · 전담 GK 예외. '+(state.dutyNotes||[]).join(' ');
+    dutyNote.textContent=(isHistorical?'심판: 당시 저장된 배정':'심판: 양 팀 번갈아')+' · 키퍼/휴식: 불러온 신청순 · 수동 추가자는 마지막 순번 · 전담 GK 예외. '+(state.dutyNotes||[]).join(' ');
     lineupDisplay.append(dutyNote);
 
     for (let qIndex = 0; qIndex < quarterCount(state); qIndex++) {
@@ -490,15 +450,7 @@ async function executeLineupGeneration(members, formations, isSilent = false, op
     const count=quarterCount(state);
     formations=formations.slice(0,count);
     if(state.playersReady===false)return fail('선수 정보를 아직 받지 못했습니다. 기존 라인업을 유지합니다.');
-    let chronologicalOrder=state.initialAttendeeOrder || [];
-    if(window.voteMgmt?.getDutyOrder) {
-        const requestedDate=document.getElementById('balancer-date')?.value;
-        try {
-            chronologicalOrder=await window.voteMgmt.getDutyOrder(requestedDate);
-            if(document.getElementById('balancer-date')?.value!==requestedDate)throw new Error('날짜가 바뀌어 배정을 중단했습니다.');
-        }
-        catch(e) { return fail(e.message || '투표 시각을 확인하지 못해 배정을 중단했습니다.'); }
-    }
+    const chronologicalOrder=state.initialAttendeeOrder || [];
     return new Promise(resolve => {
         if(new Set(members).size!==members.length || members.some(n=>!n) || formations.length!==count) { resolve(fail('중복 선수 또는 쿼터별 포메이션을 확인해 주세요. 기존 배정은 유지됩니다.'));return; }
         // [v-매치사이즈] 인원 검증 및 자동 전환
@@ -520,9 +472,7 @@ async function executeLineupGeneration(members, formations, isSilent = false, op
         }
 
         const squads=(state.teams?.length?state.teams.map(team=>team.map(p=>normalizeName(String(p.name).replace(' (신규)','')))):[members]);
-        let initialOrder;
-        try { initialOrder=reconcileDutyOrder(squads,chronologicalOrder,state.meetingDate || document.getElementById?.('balancer-date')?.value || '',!isSilent); }
-        catch(error){resolve(fail(error.message));return;}
+        const initialOrder=rosterDutyOrder(squads,chronologicalOrder);
         const sortedMembers = [...members].sort((a, b) => { 
             const indexA = initialOrder.indexOf(normalizeName(a)); 
             const indexB = initialOrder.indexOf(normalizeName(b)); 

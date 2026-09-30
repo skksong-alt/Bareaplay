@@ -2,6 +2,7 @@
 import { state } from '../store.js?v=3'; // [중요] ?v=2를 붙여서 app.js와 주소를 통일함
 import { rolePenalty, effectivePlayer } from './coachCore.js?v=2';
 import { collection, getDocs } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js"; // [추가] 최근 같은팀 조합 조회용
+import { rosterDutyOrder } from './dutyRotation.js?v=4';
 
 let db; // [추가] Firestore 핸들 (최근 조합 반복 방지용)
 let generateButton, attendeesTextarea, teamCountSelect, resultContainer, loadingSpinner, placeholder, loadAllPlayersBtn, acesTextarea, dateInput;
@@ -49,8 +50,8 @@ function syncAfterRosterChange() {
         const n = normalizeName(String(p.name || '').replace(' (신규)', ''));
         if (n && !names.includes(n)) names.push(n);
     }));
-    state.initialAttendeeOrder = names;
-    if (attendeesTextarea && document.activeElement !== attendeesTextarea) attendeesTextarea.value = names.join('\n');
+    state.initialAttendeeOrder = rosterDutyOrder([names],state.initialAttendeeOrder);
+    if (attendeesTextarea && document.activeElement !== attendeesTextarea) attendeesTextarea.value = state.initialAttendeeOrder.join('\n');
     renderResults(state.teams);
     if (window.lineup && window.lineup.renderTeamSelectTabs) window.lineup.renderTeamSelectTabs(state.teams);
     // '오늘' 모임을 편집 중일 때만 출석&회계 탭의 참석 후보 명단도 즉시 갱신

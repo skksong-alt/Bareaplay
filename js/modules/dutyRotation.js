@@ -1,9 +1,22 @@
-// Pure planner: chronological order is supplied from server timestamps, never skill scores.
+// Final teams are authoritative. Loaded application order is a reference, not eligibility.
+export function rosterDutyOrder(teams, reference=[]) {
+    const all=teams.flat(), used=new Set(), ordered=[];
+    const norm=value=>String(value??'').normalize('NFC').trim();
+    for(const value of Array.isArray(reference)?reference:[]) {
+        const name=norm(value);
+        const matches=all.filter(n=>norm(n).toLowerCase()===name.toLowerCase());
+        const member=all.includes(name)?name:matches.length===1?matches[0]:null;
+        if(member!==null&&!used.has(member)){ordered.push(member);used.add(member);}
+    }
+    // No invented vote timestamps: manual additions follow the loaded names in roster order.
+    return ordered.concat(all.filter(name=>!used.has(name)));
+}
+
+// Shared referee and team-specific GK/rest queues use this complete roster order.
 export function planDuties(teams, earlyFirst, fieldCounts, dedicatedNames=[]) {
     const all=teams.flat(), dedicated=new Set(dedicatedNames);
     if(new Set(all).size!==all.length)throw new Error('팀 명단에 중복 선수가 있습니다.');
-    if(all.some(n=>!earlyFirst.includes(n)))throw new Error('참석 투표 시각이 없는 선수가 있습니다. 투표 명단을 확인해 주세요.');
-    const lateFirst=earlyFirst.filter(n=>all.includes(n)).slice().reverse();
+    const lateFirst=rosterDutyOrder(teams,earlyFirst).reverse();
     const queues=teams.map(team=>lateFirst.filter(n=>team.includes(n)&&!dedicated.has(n)));
     const refQueue=lateFirst.filter(n=>!dedicated.has(n));
     const result=teams.map(()=>({gks:[],resters:[],referees:[]})), notes=[];

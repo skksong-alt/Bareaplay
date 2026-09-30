@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import * as core from '../js/modules/coachCore.js';
-import {planDuties,sharedRefereesFromLineups} from '../js/modules/dutyRotation.js';
+import {planDuties,sharedRefereesFromLineups,rosterDutyOrder} from '../js/modules/dutyRotation.js';
 import {quarterCount,preserveInactiveQuarters} from '../js/modules/quarters.js';
 import {applyTrainingRoles,trainingForDate} from '../js/modules/trainingLineup.js';
 import {confirmGuest,registeredVoteName,responseIdentity} from '../js/modules/voteOrder.js';
@@ -13,46 +13,54 @@ function fixture(confirm=true) {
     names[13]='Correct Name';names[22]='Kei';
     const order=names.map(n=>n==='Correct Name'?'Misspelled Name':n==='Kei'?'kei':n);
     const playerDB=Object.fromEntries(names.map(name=>[name,{name,pos1:['CM'],pos2:['CB'],s1:65}]));
-    const state={meetingDate:'2026-09-30',playerDB,teams:[names.slice(0,12),names.slice(12)].map(ns=>ns.map(n=>playerDB[n])),initialAttendeeOrder:names,teamLineupCache:{}};
+    const state={meetingDate:'2026-09-30',playerDB,teams:[names.slice(0,12),names.slice(12)].map(ns=>ns.map(n=>playerDB[n])),initialAttendeeOrder:order,teamLineupCache:{}};
     const messages=[],questions=[];
-    const context=vm.createContext({...core,quarterCount,preserveInactiveQuarters,applyTrainingRoles,trainingForDate,planDuties,sharedRefereesFromLineups,console,
-        window:{voteMgmt:{getDutyOrder:async()=>order},showNotification:m=>messages.push(m),confirm:m=>{questions.push(m);return confirm;},prompt:m=>{questions.push(m);return confirm?'1':null;}},document:{getElementById:()=>({value:state.meetingDate})}});
+    const context=vm.createContext({...core,quarterCount,preserveInactiveQuarters,applyTrainingRoles,trainingForDate,planDuties,sharedRefereesFromLineups,rosterDutyOrder,console,
+        window:{voteMgmt:{getDutyOrder:async()=>{throw new Error('Live vote lookup must not run');}},showNotification:m=>messages.push(m),confirm:m=>{questions.push(m);return confirm;},prompt:m=>{questions.push(m);return confirm?'1':null;}},document:{getElementById:()=>({value:state.meetingDate})}});
     const source=readFileSync(new URL('../js/modules/lineupGenerator.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/export /g,'').replace(/^\{ executeLineupGeneration \};\r?\n/gm,'');
     vm.runInContext(source+'\nglobalThis.generate=executeLineupGeneration;globalThis.assignState=s=>state=s;',context);context.assignState(state);
     return {names,order,state,context,messages,questions};
 }
 
-test('24-player 11v11: corrected roster names retain original vote order without changing inputs',async()=>{
+test('24-player 11v11: final roster wins over spelling differences without prompts or vote reads',async()=>{
     const f=fixture(),before=JSON.stringify(f.state),orderBefore=JSON.stringify(f.order);
     for(let t=0;t<2;t++) {
         const result=await f.context.generate(f.state.teams[t].map(p=>p.name),Array(6).fill('4-2-3-1'));
         assert.ok(result,'name mismatch must not block confirmed lineup');
         assert.ok(core.validateLineup(result,f.state.teams[t].map(p=>p.name)));
-        const expected=planDuties(f.state.teams.map(ns=>ns.map(p=>p.name)),f.names,[Array(6).fill(11),Array(6).fill(11)]).teams[t];
+        const expected=planDuties(f.state.teams.map(ns=>ns.map(p=>p.name)),f.order,[Array(6).fill(11),Array(6).fill(11)]).teams[t];
         assert.equal(JSON.stringify(result.resters),JSON.stringify(expected.resters));
         assert.equal(JSON.stringify(result.lineups.map(l=>l.GK[0])),JSON.stringify(expected.gks));
     }
     assert.equal(JSON.stringify(f.order),orderBefore);
     assert.equal(JSON.stringify({...f.state,dutyNotes:undefined}),before);
-    assert.equal(f.questions.length,1,'confirmed link is reused only in this page and date');
+    assert.equal(f.questions.length,0,'no vote identity confirmation is needed');
 });
 
-test('cancelled identity confirmation preserves existing assignments and explains the actual name',async()=>{
-    const f=fixture(false);f.state.teamLineupCache={0:{sentinel:'keep original'}};
+test('late arrival added directly to a team generates all quarters and leaves other saved lineup untouched',async()=>{
+    const f=fixture(false),late={name:'No vote late arrival',pos1:['CB'],s1:60};
+    f.state.teams[0].push(late);f.state.teamLineupCache={1:{sentinel:'keep original'}};
     const before=JSON.stringify(f.state),errors=[];
-    assert.equal(await f.context.generate(f.names.slice(0,12),Array(6).fill('4-2-3-1'),false,{onError:m=>errors.push(m)}),null);
-    assert.equal(JSON.stringify(f.state),before);
-    assert.match(errors[0],/Correct Name/);
+    const members=f.state.teams[0].map(p=>p.name);
+    const result=await f.context.generate(members,Array(6).fill('4-2-3-1'),false,{onError:m=>errors.push(m)});
+    assert.ok(result);assert.ok(core.validateLineup(result,members));assert.equal(result.lineups.length,6);
+    assert.equal(JSON.stringify({...f.state,dutyNotes:undefined}),before);
+    assert.equal(f.questions.length,0);assert.deepEqual(errors,[]);
 });
 
-test('missing timestamps are not invented and case-colliding responses are not merged',async()=>{
+test('missing, duplicate and empty vote references cannot prevent final roster generation',async()=>{
     const f=fixture();f.order.splice(13,1);
+    f.order.push('Kei','kei','Someone not in teams');
+    const before=JSON.stringify(f.order);
+    assert.ok(await f.context.generate(f.names.slice(0,12),Array(6).fill('4-2-3-1')));
+    assert.equal(JSON.stringify(f.order),before);
+    assert.equal(f.questions.length,0);
+    f.state.initialAttendeeOrder=[];
+    assert.ok(await f.context.generate(f.names.slice(12),Array(6).fill('4-2-3-1')));
+    f.state.teams[1].push(f.state.teams[0][0]);
     const errors=[];
     assert.equal(await f.context.generate(f.names.slice(0,12),Array(6).fill('4-2-3-1'),false,{onError:m=>errors.push(m)}),null);
-    assert.match(errors[0],/Correct Name/);
-    assert.equal(f.questions.length,0);
-    const g=fixture();g.order[13]='Correct Name';g.order.push('Kei');
-    assert.equal(await g.context.generate(g.names.slice(0,12),Array(6).fill('4-2-3-1')),null);
+    assert.match(errors[0],/중복/,'actual duplicate team members remain invalid');
 });
 
 test('English capitalization recognises registered players and reuses legacy response IDs',()=>{
@@ -69,14 +77,18 @@ test('English capitalization recognises registered players and reuses legacy res
     assert.throws(()=>responseIdentity('Kei',['Kei'],[...rows,{id:'Kei',name:'Kei'}]),/ambiguous-name/);
 });
 
-test('manual spelling links allow multiple corrections but expire with the match date',async()=>{
-    const f=fixture();f.order[2]='Another spelling';
-    f.context.window.prompt=()=>{f.questions.push('choose');return '1';};
-    assert.ok(await f.context.generate(f.names.slice(0,12),Array(6).fill('4-2-3-1')));
-    const confirmed=f.questions.length;
-    assert.ok(await f.context.generate(f.names.slice(12),Array(6).fill('4-2-3-1')));
-    assert.equal(f.questions.length,confirmed);
-    f.state.meetingDate='2026-10-07';
-    assert.ok(await f.context.generate(f.names.slice(0,12),Array(6).fill('4-2-3-1')));
-    assert.ok(f.questions.length>confirmed);
+test('roster moves preserve loaded order; additions append and removed names do not return',()=>{
+    const reference=['A','Kei','B','Removed','A','kei'],before=JSON.stringify(reference);
+    const order=rosterDutyOrder([['B','Late A'],['A','Kei','Late B']],reference);
+    assert.deepEqual(order,['A','Kei','B','Late A','Late B']);
+    assert.equal(JSON.stringify(reference),before);
+    assert.deepEqual(rosterDutyOrder([['Late B','A'],['Kei','B','Late A']],order),order);
+    assert.deepEqual(rosterDutyOrder([['A','Kei']],undefined),['A','Kei']);
+});
+
+test('generation and publishing do not depend on live vote order',()=>{
+    for(const file of ['lineupGenerator.js','shareManagement.js']) {
+        const code=readFileSync(new URL('../js/modules/'+file,import.meta.url),'utf8');
+        assert.equal(code.includes('getDutyOrder'),false,file+' must not revalidate votes');
+    }
 });

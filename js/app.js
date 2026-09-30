@@ -8,7 +8,7 @@ import { createMeetingSession, meetingFingerprint, meetingConflict } from './mod
 import { ensureLibrary } from './modules/optionalLibraries.js?v=1';
 import { roleTip } from './modules/coachCore.js?v=2';
 let matchRecord;
-import { sharedRefereesFromLineups } from './modules/dutyRotation.js?v=3';
+import { sharedRefereesFromLineups } from './modules/dutyRotation.js?v=4';
 
 const firebaseConfig = {
     apiKey: "AIzaSyD_2tm5-hYbCeU8yi0QiWW9Oqm0O7oPBco",
@@ -803,9 +803,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     [playerMgmt,balancer,lineup,accounting,shareMgmt,voteMgmt,lineupStats,matchRecord,coachWorkspace,adminWorkflow]=await Promise.all([
-        import('./modules/playerManagement.js?v=6'),import('./modules/teamBalancer.js?v=11'),
-        import('./modules/lineupGenerator.js?v=13'),import('./modules/accounting.js?v=9'),
-        import('./modules/shareManagement.js?v=14'),import('./modules/voteManagement.js?v=25'),
+        import('./modules/playerManagement.js?v=6'),import('./modules/teamBalancer.js?v=12'),
+        import('./modules/lineupGenerator.js?v=14'),import('./modules/accounting.js?v=9'),
+        import('./modules/shareManagement.js?v=15'),import('./modules/voteManagement.js?v=25'),
         import('./modules/lineupStats.js?v=3'),import('./modules/matchRecord.js?v=3'),
         import('./modules/coachWorkspace.js?v=6'),import('./modules/adminWorkflow.js?v=3')
     ]);

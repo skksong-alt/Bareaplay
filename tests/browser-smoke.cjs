@@ -38,7 +38,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
     try{const body=await readFile(file);res.setHeader('Content-Type',file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.html')?'text/html':'application/octet-stream');res.end(body);}catch{res.writeHead(404);res.end();}
   });await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;
   browser=await chromium.launch({channel:'msedge',headless:true});
-  const context=await browser.newContext({viewport:{width:390,height:844},serviceWorkers:'block'});
+  const context=await browser.newContext({viewport:{width:390,height:844},serviceWorkers:'block',timezoneId:'UTC'});
   await context.addInitScript(f=>{window.__fixture=f;window.__writes=[];window.__reads=[];window.Chart=class{destroy(){}update(){}};},data);
   await context.route('**/*',async route=>{
     const url=route.request().url();
@@ -78,6 +78,12 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
       });
     },names);
     await page.goto(base+'/');await page.waitForSelector('#operator-context');
+    await page.evaluate(today=>changeMeetingDate(today),today);
+    await page.locator('#tab-balancer').click();
+    const loadedOrder=await page.evaluate(async()=>{const {state}=await import('/js/store.js?v=3');return [...state.initialAttendeeOrder];});
+    await page.locator('.team-add-player-input').first().fill('Late arrival without vote');
+    await page.locator('.team-add-player-btn').first().click();
+    assert.deepEqual(await page.evaluate(async()=>{const {state}=await import('/js/store.js?v=3');return [...state.initialAttendeeOrder];}),[...loadedOrder,'Late arrival without vote']);
     await page.locator('#tab-lineup').click();
     const before=await page.evaluate(async()=>{
       const {state}=await import('/js/store.js?v=3');
@@ -87,10 +93,10 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
     await page.evaluate(()=>flushMeetingSave());
     assert.equal(await page.locator('#lineup-generation-error').textContent(),'');
     assert.equal(await page.locator('.quarter-block:visible').count(),6);
-    assert.equal(dialogs.length,1);assert.match(dialogs[0],/Misspelled player/);
+    assert.equal(dialogs.length,0,'manual arrival never needs a matching vote');
     assert.equal(await page.evaluate(async()=>{const {state}=await import('/js/store.js?v=3');return JSON.stringify(state.teamLineupCache[1]);}),before.other);
     assert.equal(await page.evaluate(()=>JSON.stringify(Object.entries(__fixture).filter(([k])=>k.startsWith('votes/')))),before.votes);
-    assert.ok((await page.evaluate(()=>__writes)).every(w=>w.path.startsWith('dailyMeetings/')));
+    assert.ok((await page.evaluate(()=>__writes)).every(w=>w.path.startsWith('dailyMeetings/')||w.path.startsWith('adjustLogs/')));
     // A reload into the public route has a fresh mock fixture, never production data.
     await page.goto(base+'/?voteId=test-vote');await page.waitForSelector('#v-name');
     dialogs.length=0;
@@ -102,7 +108,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
     assert.equal(ballot.saved.guest,false);assert.equal(ballot.duplicate,undefined);
     assert.equal(ballot.writes.length,1);assert.equal(ballot.writes[0].path,'votes/test-vote/responses/test 23');
     assert.deepEqual(errors,[]);
-    console.log('PASS: corrected names generate 6 quarters, other team/vote history untouched; case-only RSVP reuses existing ID and timestamp without Guest prompt.');
+    console.log('PASS: unvoted manual arrival generates 6 quarters without prompts, loaded order/other team/votes preserved; case-only RSVP retains existing ID and timestamp.');
     await context.close();return;
   }
   if(process.argv.includes('--desktop')) {

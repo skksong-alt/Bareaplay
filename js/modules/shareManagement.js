@@ -1,9 +1,9 @@
 import { quarterCount } from './quarters.js?v=1';
 // js/modules/shareManagement.js
 import { doc, setDoc, collection, onSnapshot, addDoc, getDoc, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
-import { getPosCellMap } from './lineupGenerator.js?v=13'; // [정리] 포메이션 좌표 단일화
+import { getPosCellMap } from './lineupGenerator.js?v=14'; // [정리] 포메이션 좌표 단일화
 import { compareResponseTime } from './voteOrder.js?v=2';
-import { sharedRefereesFromLineups } from './dutyRotation.js?v=3';
+import { sharedRefereesFromLineups, rosterDutyOrder } from './dutyRotation.js?v=4';
 import { prepareShareLineups } from './shareLineupValidation.js?v=2';
 
 let db, state;
@@ -95,8 +95,8 @@ async function generateShareableLink() {
         const allTeamLineups = {};
         const lineups = state.teams.map((_,i)=>state.teamLineupCache?.[i]);
         if (lineups.some(l => !l)) throw new Error('모든 팀의 저장된 라인업을 먼저 확인하세요. 기존 공개 결과는 유지됩니다.');
-        const order=await window.voteMgmt.getDutyOrder(selected.info.date);
         const squads=state.teams.map(team=>team.map(p=>normalizeName(String(p.name).replace(' (신규)',''))));
+        const order=rosterDutyOrder(squads,state.initialAttendeeOrder);
         // The public board uses the formation's visible slots. Legacy unused keys
         // must not invalidate or change a fully arranged lineup.
         const readyLineups=prepareShareLineups(lineups,squads,posCellMap,quarterCount(state));
