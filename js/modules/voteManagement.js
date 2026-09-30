@@ -1,8 +1,8 @@
 // js/modules/voteManagement.js
 // 묶음 C: 참석 투표 (로그인 없이 링크로 참여) + 관리자 확정 → 팀 배정 연결
 import { doc, setDoc, getDoc, getDocs, addDoc, deleteDoc, collection, query, where, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
-import { renderVote } from './votePage.js?v=14';
-import { compareResponseTime } from './voteOrder.js?v=1';
+import { renderVote } from './votePage.js?v=15';
+import { compareResponseTime, registeredVoteName } from './voteOrder.js?v=2';
 import { canOpenVote } from './voteTiming.js?v=1';
 
 let db, state;
@@ -223,7 +223,7 @@ function loadAdminVote(voteId) {
     }).catch(() => {});
     if (respUnsub) respUnsub();
     respUnsub = onSnapshot(collection(db, "votes", voteId, "responses"), (snap) => {
-        adminResponses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        adminResponses = snap.docs.map(d => {const r=d.data();return {id:d.id,...r,guest:r.guest&&!registeredVoteName(r.name,Object.keys(state.playerDB || {}))};});
         renderAdminStatus();
     });
 }
@@ -389,7 +389,7 @@ async function adminAdd() {
     const input = document.getElementById('vote-admin-add-name');
     const name = normName(input.value);
     if (!name) return;
-    const known = !!state.playerDB[name] || Object.keys(state.playerDB).some(k => normName(k) === name);
+    const known = !!registeredVoteName(name,Object.keys(state.playerDB));
     await setDoc(doc(db, "votes", activeVoteId, "responses", name), {
         name, status: 'attend', guest: !known,
         attendingSince: serverTimestamp(), createdAt: serverTimestamp(), updatedAt: serverTimestamp()

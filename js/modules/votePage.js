@@ -1,7 +1,7 @@
 import { doc, getDoc, getDocs, collection, query, where, setDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js';
 import { cleanName, escapeHtml as esc, chooseReviewDate } from './coachCore.js?v=2';
 import { lessonHtml, addCoachStyles } from './weeklyContent.js?v=5';
-import { compareResponseTime, confirmGuest } from './voteOrder.js?v=1';
+import { compareResponseTime, confirmGuest, responseIdentity, registeredVoteName } from './voteOrder.js?v=2';
 import { POSITION_SURVEY_ENABLED } from './positionPreferences.js?v=6';
 import { rememberedRatingName, rememberRatingName, ratingRememberEnabled, setRatingRememberEnabled, wasRatingSubmittedHere, markRatingSubmittedHere, ratingConfirmation } from './ratingIdentity.js?v=1';
 import { RATING_SERVICE_ENABLED, requestRating, ratingFailureMessage } from './ratingService.js?v=3';
@@ -99,8 +99,10 @@ export async function renderVote(db, voteId) {
                 const latest=await getDoc(doc(db,'votes',voteId));
                 if(!latest.exists() || latest.data().closed) throw new Error('closed');
                 vote=latest.data();
-                const ref=doc(db,'votes',voteId,'responses',name), old=await getDoc(ref), previous=old.exists()?old.data():null;
-                const payload={name,status,guest:!names.includes(name),updatedAt:serverTimestamp()};
+                const responses=await getDocs(collection(db,'votes',voteId,'responses'));
+                const identity=responseIdentity(name,names,responses.docs.map(d=>({...d.data(),id:d.id})));
+                const ref=doc(db,'votes',voteId,'responses',identity.id), old=await getDoc(ref), previous=old.exists()?old.data():null;
+                const payload={name:identity.name,status,guest:identity.guest,updatedAt:serverTimestamp()};
                 if(status==='attend') {
                     if(previous?.status==='attend' && previous.attendingSince) payload.waitlist=!!previous.waitlist;
                     else { payload.attendingSince=serverTimestamp(); payload.waitlist=!!(vote.deadlineMs && Date.now()>vote.deadlineMs); }
@@ -108,12 +110,12 @@ export async function renderVote(db, voteId) {
                 if(!previous) payload.createdAt=serverTimestamp();
                 await setDoc(ref,payload,{merge:true});
                 message.textContent=`${name}: `+(payload.waitlist?t('대기 신청 완료','Added to waitlist'):t('신청이 저장되었습니다. 다시 선택하면 변경됩니다.','RSVP saved. Select again to update.'));
-            } catch(e) { message.textContent=e.message==='closed'?t('투표가 종료되었습니다.','RSVP has closed.'):t('저장 실패. 다시 시도하세요.','Could not save. Please try again.'); }
+            } catch(e) { message.textContent=e.message==='closed'?t('투표가 종료되었습니다.','RSVP has closed.'):e.message==='ambiguous-name'?t('대소문자만 다른 투표가 중복돼 있습니다. 운영진에게 확인해 주세요. 기존 투표는 변경하지 않았습니다.','Duplicate names with different capitalization exist. Contact the organiser. Existing responses were not changed.'):t('저장 실패. 다시 시도하세요.','Could not save. Please try again.'); }
             finally { saving=false; input.disabled=false; deadline(); }
         });
         cleanups.push(onSnapshot(collection(db,'votes',voteId,'responses'),snap=>{
             if(!alive) return;
-            const all=snap.docs.map(d=>d.data());
+            const all=snap.docs.map(d=>{const r=d.data();return {...r,guest:r.guest&&!registeredVoteName(r.name,names)};});
             const groups=[['attend',t('참석','Going')],['wait',t('대기','Waitlist')],['maybe',t('미정','Maybe')],['absent',t('불참','Not going')]];
             const grouped=groups.map(([status,label])=>{
                 const list=all.filter(r=>status==='wait'?r.status==='attend'&&r.waitlist:r.status===status && (status!=='attend'||!r.waitlist)).sort(compareResponseTime);

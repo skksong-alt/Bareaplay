@@ -70,6 +70,41 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   });
   const page=await context.newPage(), errors=[],dialogs=[];let cancelGuest=false,cancelRating=false;
   page.on('pageerror',e=>{errors.push(e.message);console.error('Isolated browser error:',e.message);});page.on('dialog',d=>{dialogs.push(d.message());return (cancelGuest&&/Guest|guest/.test(d.message()))||cancelRating?d.dismiss():d.accept();});
+  if(process.argv.includes('--lineup-names')) {
+    await context.addInitScript(names=>{
+      names.forEach((name,i)=>{
+        const recorded=i===13?'Misspelled player':i===22?name.toLowerCase():name;
+        __fixture['votes/test-vote/responses/'+recorded]={name:recorded,status:'attend',waitlist:false,guest:i===22,attendingSince:{seconds:i+10},sentinel:'preserve'};
+      });
+    },names);
+    await page.goto(base+'/');await page.waitForSelector('#operator-context');
+    await page.locator('#tab-lineup').click();
+    const before=await page.evaluate(async()=>{
+      const {state}=await import('/js/store.js?v=3');
+      return {other:JSON.stringify(state.teamLineupCache[1]),votes:JSON.stringify(Object.entries(__fixture).filter(([k])=>k.startsWith('votes/')))};
+    });
+    await page.locator('#generateLineupButton').click();await page.waitForFunction(()=>!document.getElementById('generateLineupButton').disabled);
+    await page.evaluate(()=>flushMeetingSave());
+    assert.equal(await page.locator('#lineup-generation-error').textContent(),'');
+    assert.equal(await page.locator('.quarter-block:visible').count(),6);
+    assert.equal(dialogs.length,1);assert.match(dialogs[0],/Misspelled player/);
+    assert.equal(await page.evaluate(async()=>{const {state}=await import('/js/store.js?v=3');return JSON.stringify(state.teamLineupCache[1]);}),before.other);
+    assert.equal(await page.evaluate(()=>JSON.stringify(Object.entries(__fixture).filter(([k])=>k.startsWith('votes/')))),before.votes);
+    assert.ok((await page.evaluate(()=>__writes)).every(w=>w.path.startsWith('dailyMeetings/')));
+    // A reload into the public route has a fresh mock fixture, never production data.
+    await page.goto(base+'/?voteId=test-vote');await page.waitForSelector('#v-name');
+    dialogs.length=0;
+    await page.locator('#v-name').fill('TEST 23');await page.locator('[data-status="attend"]').click();
+    await page.waitForFunction(()=>document.getElementById('v-msg').textContent.includes('저장되었습니다'));
+    const ballot=await page.evaluate(()=>({saved:__fixture['votes/test-vote/responses/test 23'],duplicate:__fixture['votes/test-vote/responses/Test 23'],writes:__writes}));
+    assert.equal(dialogs.length,0,'case-only registered name does not trigger Guest prompt');
+    assert.equal(ballot.saved.attendingSince.seconds,32);assert.equal(ballot.saved.sentinel,'preserve');
+    assert.equal(ballot.saved.guest,false);assert.equal(ballot.duplicate,undefined);
+    assert.equal(ballot.writes.length,1);assert.equal(ballot.writes[0].path,'votes/test-vote/responses/test 23');
+    assert.deepEqual(errors,[]);
+    console.log('PASS: corrected names generate 6 quarters, other team/vote history untouched; case-only RSVP reuses existing ID and timestamp without Guest prompt.');
+    await context.close();return;
+  }
   if(process.argv.includes('--desktop')) {
     await page.goto(base+'/');await page.waitForSelector('#operator-context:visible');
     await page.waitForFunction(()=>[...document.querySelectorAll('style')].some(el=>el.textContent.includes('.w-full')));
