@@ -1,5 +1,5 @@
 // sw.js
-const CACHE_NAME = 'bareaplay-cache-v77';
+const CACHE_NAME = 'bareaplay-cache-v78';
 const urlsToCache = [
     '/', '/index.html', '/share.html', '/css/style.css',
     '/css/match-hub.css?v=5',
@@ -7,7 +7,7 @@ const urlsToCache = [
     '/css/brand.css?v=2',
     '/js/modules/quarters.js?v=1',
     '/js/modules/saveQueue.js?v=1',
-    '/js/app.js?v=33',
+    '/js/app.js?v=34',
     '/js/store.js?v=3',
     '/js/modules/playerManagement.js?v=6',
     '/js/modules/teamBalancer.js?v=12',

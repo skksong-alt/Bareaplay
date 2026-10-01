@@ -200,7 +200,15 @@ window.updatePlayerPref = async function(name, patch) {
 function applyMeetingData(data) {
     state.quarterCount=data?.quarterCount===4?4:6;
     if (data) {
-        state.teams = Object.values(data.teams || {});
+        // Team identity is the saved index, never the map's enumeration order.
+        // Keep missing slots so names and lineup-cache indices cannot shift.
+        const savedTeams = data.teams || {};
+        const teamIndices = Object.keys(savedTeams)
+            .filter(key => /^team_\d+$/.test(key))
+            .map(key => Number(key.slice(5)));
+        state.teams = Array.isArray(savedTeams) ? savedTeams.slice()
+            : Array.from({length: teamIndices.length ? Math.max(...teamIndices) + 1 : 0},
+                (_, index) => savedTeams[`team_${index}`] || []);
         state.teamNames = data.teamNames || []; // [v58] 팀 이름 복원
         state.initialAttendeeOrder = data.initialAttendeeOrder || [];
         state.aceNames = data.aceNames || [];
