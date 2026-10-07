@@ -25,10 +25,11 @@ test('training preserves explicit field locks and is completely opt-in and date 
     assert.deepEqual(trainingForDate({...context,date:'2026-11-18'},'2026-11-18'),[]);
     assert.equal(trainingRole({pos:'CM',y:60}),'DM');
 });
-test('oversubscribed training role distributes available field opportunities across quarters',()=>{
+test('oversubscribed role rotates at three-quarter boundaries, not every quarter',()=>{
     const plan=members.map(p=>({...p,role:'DM',second:'DM'}));
     const result=applyTrainingRoles(original(),plan,map);
-    for(const p of plan)assert.equal(result.lineups.filter(q=>q.MF.slice(0,2).includes(p.name)).length,4);
+    assert.deepEqual(plan.map(p=>result.lineups.filter(q=>q.MF.slice(0,2).includes(p.name)).length).sort(),[3,3,6]);
+    for(const start of [0,3])for(let q=start+1;q<start+3;q++)assert.deepEqual(result.lineups[q],result.lineups[start]);
 });
 test('secondary is a fallback, fewer-sided formations and unknown players retain valid unique slots',()=>{
     for(const size of [9,10,11]){

@@ -2,7 +2,8 @@
 import { state } from '../store.js?v=3'; // [중요] ?v=2를 붙여서 app.js와 주소를 통일함
 import { rolePenalty, effectivePlayer } from './coachCore.js?v=2';
 import { collection, getDocs } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js"; // [추가] 최근 같은팀 조합 조회용
-import { rosterDutyOrder } from './dutyRotation.js?v=4';
+import { rosterDutyOrder } from './dutyRotation.js?v=5';
+import { matchFromCycle, cycleContains } from './teamCycleCore.js?v=2';
 
 let db; // [추가] Firestore 핸들 (최근 조합 반복 방지용)
 let generateButton, attendeesTextarea, teamCountSelect, resultContainer, loadingSpinner, placeholder, loadAllPlayersBtn, acesTextarea, dateInput;
@@ -632,7 +633,9 @@ function executeManualTeamAssignment() {
     if (teams.some(t => t.length === 0)) { window.showNotification('비어 있는 팀이 있습니다. 모든 팀에 최소 1명을 입력해주세요.', 'error'); return; }
     if (!confirmExistingOverwrite()) return; // [v58] 기존 배정 덮어쓰기 경고
 
-    state.initialAttendeeOrder = orderedNames;
+    state.initialAttendeeOrder = rosterDutyOrder(teams.map(team=>team.map(p=>p.name)),[
+        ...(state.initialAttendeeOrder||[]),...(attendeesTextarea?.value||'').split('\n').map(normalizeName)
+    ]);
     if (attendeesTextarea) attendeesTextarea.value = orderedNames.join('\n');
 
     renderResults(teams);
@@ -754,6 +757,21 @@ export function init(dependencies) {
 
     generateButton.addEventListener('click', () => {
         if (!state.isAdmin) { window.promptForAdminPassword(); return; }
+        const cycle=state.trainingCycle;
+        if(cycle?.date===state.meetingDate && cycleContains(cycle,state.meetingDate)){
+            try{
+                if(state.playersReady===false)throw new Error('선수 포지션 정보를 모두 받은 후 생성하세요.');
+                if(teamCountSelect.value!=='2')throw new Error('고정팀은 2팀입니다. 이벤트 경기는 위에서 기존 포지션 배분으로 전환하세요.');
+                const names=attendeesTextarea.value.split('\n').map(normalizeName).filter(Boolean);
+                if(names.length<2)throw new Error('최종 참석자 명단을 먼저 입력하세요.');
+                const preview=matchFromCycle(cycle,names,state.meetingDate,state.playerDB,{fillExtras:true});
+                renderManualTeamInputs();
+                preview.teams.forEach((team,i)=>{document.getElementById(`manual-team-ta-${i}`).value=team.map(p=>p.name).join('\n');});
+                // Reuse the existing confirmation and save pipeline; never apply on reload.
+                executeManualTeamAssignment();
+            }catch(error){window.showNotification(error.message||'고정팀 배정을 완료하지 못했습니다.','error');}
+            return;
+        }
         if (!confirmExistingOverwrite()) return; // [v58] 기존 배정 덮어쓰기 경고
         const inputKey=()=>JSON.stringify([state.meetingDate,state.teams,attendeesTextarea.value,acesTextarea?.value,pinTogetherTextarea?.value,pinApartTextarea?.value,teamCountSelect.value]);
         const requested=inputKey();
@@ -773,6 +791,11 @@ export function init(dependencies) {
             } catch (error) { renderResults(state.teams); resetUI(); window.showNotification(error.message || '배정 실패', 'error'); }
         }, 100);
     });
+    const showAssignmentMode=()=>{
+        if(generateButton.disabled)return;
+        generateButton.textContent=state.trainingCycle?.date===state.meetingDate?'고정팀 기준으로 오늘 팀 만들기':'팀 생성하기!';
+    };
+    document.addEventListener('barea:training',showAssignmentMode);showAssignmentMode();
     
     pageElement.addEventListener('click', (e) => {
         if (pageElement.classList.contains('view-only')) {

@@ -1,39 +1,40 @@
 // sw.js
-const CACHE_NAME = 'bareaplay-cache-v78';
+const CACHE_NAME = 'bareaplay-cache-v79';
 const urlsToCache = [
-    '/', '/index.html', '/share.html', '/css/style.css',
+    '/', '/index.html', '/share.html', '/team-guide.html', '/css/style.css',
+    '/css/team-guide.css?v=1', '/js/modules/teamGuide.js?v=1', '/js/modules/approvedCycle.js?v=1',
     '/css/match-hub.css?v=5',
     '/css/operations.css?v=1',
     '/css/brand.css?v=2',
     '/js/modules/quarters.js?v=1',
     '/js/modules/saveQueue.js?v=1',
-    '/js/app.js?v=34',
+    '/js/app.js?v=35',
     '/js/store.js?v=3',
     '/js/modules/playerManagement.js?v=6',
-    '/js/modules/teamBalancer.js?v=12',
-    '/js/modules/lineupGenerator.js?v=14',
+    '/js/modules/teamBalancer.js?v=13',
+    '/js/modules/lineupGenerator.js?v=15',
     '/js/modules/accounting.js?v=9',
-    '/js/modules/shareManagement.js?v=15',
-    '/js/modules/voteManagement.js?v=25',
+    '/js/modules/shareManagement.js?v=16',
+    '/js/modules/voteManagement.js?v=26',
     '/js/modules/voteTiming.js?v=1',
     '/js/modules/shareLineupValidation.js?v=2',
     '/js/modules/lineupStats.js?v=3',
     '/js/modules/coachCore.js?v=2',
     '/js/modules/voteOrder.js?v=2',
-    '/js/modules/dutyRotation.js?v=4',
+    '/js/modules/dutyRotation.js?v=5',
     '/js/modules/refereeEducation.js?v=2',
     '/js/modules/adminWorkflow.js?v=3',
-    '/js/modules/teamCycles.js?v=3',
-    '/js/modules/teamCycleCore.js?v=1',
-    '/js/modules/trainingLineup.js?v=2',
-    '/js/modules/meetingSession.js?v=1',
+    '/js/modules/teamCycles.js?v=4',
+    '/js/modules/teamCycleCore.js?v=2',
+    '/js/modules/trainingLineup.js?v=3',
+    '/js/modules/meetingSession.js?v=2',
     '/js/modules/optionalLibraries.js?v=1',
     '/js/boot.js?v=1',
     '/js/modules/lineupImage.js?v=2',
     '/js/modules/positionPreferences.js?v=6',
     '/js/modules/positionPreferencesCore.js?v=4',
     '/js/modules/weeklyContent.js?v=5',
-    '/js/modules/votePage.js?v=15',
+    '/js/modules/votePage.js?v=16',
     '/js/modules/ratingIdentity.js?v=1',
     '/js/modules/ratingService.js?v=3',
     '/js/modules/coachWorkspace.js?v=6',
@@ -45,7 +46,7 @@ const urlsToCache = [
 const initialUrls=urlsToCache.filter(url=>!url.startsWith('/js/modules/') || [
     'votePage','voteManagement','voteOrder','voteTiming','weeklyContent','refereeEducation',
     'ratingIdentity','ratingService','coachCore','dutyRotation','positionPreferences',
-    'positionPreferencesCore','meetingSession','optionalLibraries'
+    'positionPreferencesCore','meetingSession','optionalLibraries','approvedCycle','teamGuide'
 ].some(name=>url.startsWith(`/js/modules/${name}.js?`)));
 
 

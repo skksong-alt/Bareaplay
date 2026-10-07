@@ -11,9 +11,16 @@ export function trainingForDate(context, date) {
 export function applyTrainingRoles(result, members, positionMap, players = {}, locks = []) {
     if (!result || !members?.length) return result;
     const copy = JSON.parse(JSON.stringify(result));
-    const roles = new Map(members.map(p => [p.name, p]));
+    const key=name=>String(name||'').normalize('NFC').trim().toLowerCase();
+    const roles = new Map(copy.members.map(name=>{
+        const matches=members.filter(p=>key(p.name)===key(name));
+        return [name,members.find(p=>p.name===name)||(matches.length===1?matches[0]:undefined)];
+    }));
     const primaryUses = new Map();
+    let blockUses=new Map(),blockSlots=new Map();
+    const lastSlots=new Map(),blockSize=copy.lineups.length===4?2:3;
     for (let q = 0; q < copy.lineups.length; q++) {
+        if(q%blockSize===0){blockUses=new Map(primaryUses);blockSlots=new Map();}
         const lineup = copy.lineups[q], counts = {};
         const cells = positionMap[copy.formations[q]];
         if (!cells) throw new Error('훈련 포지션을 적용할 포메이션을 확인해 주세요.');
@@ -28,8 +35,10 @@ export function applyTrainingRoles(result, members, positionMap, players = {}, l
         // Primary matches outrank all secondary matches; secondary outranks fallback fit.
         const score = (name, slot, index) => {
             const role = trainingRole(slot), preferred = roles.get(name), player = players[name] || {};
-            return (preferred?.role === role ? 1000000 - (primaryUses.get(name) || 0) * 1000 : preferred?.second === role ? 10000 : 0)
-                + (player.pos1?.includes(slot.pos) ? 100 : player.pos2?.includes(slot.pos) ? 50 : 0)
+            const seat=slot.pos+':'+slot.index;
+            return (preferred?.role === role ? 1000000000 - (blockUses.get(name) || 0) * 20000 : preferred?.second === role ? 1000000 : 0)
+                + (blockSlots.get(name)===seat?500:0)+(lastSlots.get(name)===seat?200:0)
+                + (player.pos1?.includes(slot.pos) ? 10000 : player.pos2?.includes(slot.pos) ? 5000 : 0)
                 + (names[index] === name ? 1 : 0);
         };
         const size = 1 << names.length, best = new Float64Array(size).fill(-Infinity);
@@ -49,6 +58,9 @@ export function applyTrainingRoles(result, members, positionMap, players = {}, l
         }
         for (const slot of slots) {
             const name=lineup[slot.pos][slot.index];
+            const seat=slot.pos+':'+slot.index;
+            if(!blockSlots.has(name))blockSlots.set(name,seat);
+            lastSlots.set(name,seat);
             if(roles.get(name)?.role===trainingRole(slot))primaryUses.set(name,(primaryUses.get(name)||0)+1);
         }
     }

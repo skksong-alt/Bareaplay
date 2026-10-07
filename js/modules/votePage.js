@@ -3,6 +3,7 @@ import { cleanName, escapeHtml as esc, chooseReviewDate } from './coachCore.js?v
 import { lessonHtml, addCoachStyles } from './weeklyContent.js?v=5';
 import { compareResponseTime, confirmGuest, responseIdentity, registeredVoteName } from './voteOrder.js?v=2';
 import { POSITION_SURVEY_ENABLED } from './positionPreferences.js?v=6';
+import { approvedCycle } from './approvedCycle.js?v=1';
 import { rememberedRatingName, rememberRatingName, ratingRememberEnabled, setRatingRememberEnabled, wasRatingSubmittedHere, markRatingSubmittedHere, ratingConfirmation } from './ratingIdentity.js?v=1';
 import { RATING_SERVICE_ENABLED, requestRating, ratingFailureMessage } from './ratingService.js?v=3';
 let dispose = () => {};
@@ -68,6 +69,7 @@ export async function renderVote(db, voteId) {
           <section class="coach-card match-attendance"><div class="match-card-heading"><h2>${t('참석 현황','Who’s playing')}</h2><span class="match-live" id="v-live">${t('연결 중','Connecting')}</span></div><div id="v-list" aria-label="${t('참석자 명단','RSVP list')}"></div></section>
           <div id="v-lesson" class="match-resources">${lessonHtml(vote.date,{},lang)}</div></div>`;
         const input = document.getElementById('v-name'), message = document.getElementById('v-msg');
+        document.getElementById('v-lesson').insertAdjacentHTML('beforebegin',`<section class="coach-card match-resources"><h2>${t('8주, 같은 동료와 함께 성장하기','Eight weeks, growing together')}</h2><p>${t('고정팀·훈련 역할·공평한 출전 기준을 확인하세요. 8주 후 감독과 상의해 포지션을 재평가합니다.','See our teams, training roles and fair playing policy. Review your position with the coach after eight weeks.')}</p><a class="lineup-link" href="/team-guide.html">${t('고정팀 명단 · 운영·훈련·반칙 안내','Teams · operations · training · fair play')} ↗</a></section>`);
         if(POSITION_SURVEY_ENABLED)document.getElementById('v-name-help').insertAdjacentHTML('afterend',`<a class="coach-link" href="/?preferences=1">${t('내 희망 포지션 · 감독에게 비공개 제출','My position preferences · private to the coach')} ↗</a>`);
         try { input.value=sessionStorage.getItem(draftKey) || ''; } catch { /* optional */ }
         input.addEventListener('input',rememberName);
@@ -122,7 +124,8 @@ export async function renderVote(db, voteId) {
                 return {status,label,list};
             });
             const roster=({status,label,list})=>`<section class="attendance-group ${status}"><h3>${label}<span>${list.length}</span></h3>${list.length?`<ol>${list.map(r=>`<li><span class="roster-name">${esc(r.name)}</span>${r.guest?`<small aria-label="${t('게스트','Guest')}">GUEST</small>`:''}</li>`).join('')}</ol>`:`<p class="attendance-empty">${t('아직 없어요','None yet')}</p>`}</section>`;
-            document.getElementById('v-list').innerHTML=`<div class="attendance-stats">${grouped.filter(g=>g.status!=='wait').map(g=>`<div class="attendance-stat ${g.status}"><strong>${g.list.length}</strong><span>${g.label}</span>${g.status==='attend'&&grouped[1].list.length?`<small class="waitlist-count">${t('대기 '+grouped[1].list.length+'명',grouped[1].list.length+' waitlisted')}</small>`:''}</div>`).join('')}</div><div class="attendance-roster"><div>${roster(grouped[0])}${grouped[1].list.length?roster(grouped[1]):''}</div><div class="attendance-side">${roster(grouped[2])}${roster(grouped[3])}</div></div><p class="attendance-footnote">${t('심판은 전체, 키퍼·휴식은 팀별 늦은 참석 신청순으로 순환합니다. 전담 GK는 예외입니다.','Referees rotate by latest RSVP across all teams; GK/rest rotate within each team. Dedicated goalkeepers are exempt.')}</p>`;
+            const dutyText=approvedCycle(vote.date)?t('8주 운영: 출전 횟수 균등 우선, 같은 휴식 횟수면 늦은 신청순. 심판은 양 팀 휴식자 중 순환 · 전담 GK 예외.','8-week policy: equal playing opportunities first; latest RSVP breaks equal-rest ties. Referees alternate between available resting teams. Dedicated GK exception applies.'):t('심판은 전체, 키퍼·휴식은 팀별 늦은 참석 신청순으로 순환합니다. 전담 GK는 예외입니다.','Referees rotate by latest RSVP across all teams; GK/rest rotate within each team. Dedicated goalkeepers are exempt.');
+            document.getElementById('v-list').innerHTML=`<div class="attendance-stats">${grouped.filter(g=>g.status!=='wait').map(g=>`<div class="attendance-stat ${g.status}"><strong>${g.list.length}</strong><span>${g.label}</span>${g.status==='attend'&&grouped[1].list.length?`<small class="waitlist-count">${t('대기 '+grouped[1].list.length+'명',grouped[1].list.length+' waitlisted')}</small>`:''}</div>`).join('')}</div><div class="attendance-roster"><div>${roster(grouped[0])}${grouped[1].list.length?roster(grouped[1]):''}</div><div class="attendance-side">${roster(grouped[2])}${roster(grouped[3])}</div></div><p class="attendance-footnote">${dutyText}</p>`;
             document.getElementById('v-live').textContent=t('실시간','Live');
         },()=>{ if(alive) { document.getElementById('v-list').textContent=t('명단을 불러오지 못했습니다.','Could not load the list.');document.getElementById('v-live').textContent=t('연결 확인 필요','Connection unavailable'); } }));
         // Independent enhancements must never prevent attendance submission.

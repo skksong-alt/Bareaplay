@@ -70,6 +70,43 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   });
   const page=await context.newPage(), errors=[],dialogs=[];let cancelGuest=false,cancelRating=false;
   page.on('pageerror',e=>{errors.push(e.message);console.error('Isolated browser error:',e.message);});page.on('dialog',d=>{dialogs.push(d.message());return (cancelGuest&&/Guest|guest/.test(d.message()))||cancelRating?d.dismiss():d.accept();});
+  if(process.argv.includes('--cycle2026')) {
+    await page.goto(base+'/');await page.waitForSelector('#operator-context');
+    await page.evaluate(()=>changeMeetingDate('2026-10-07'));
+    await page.locator('#tab-balancer').click();await page.locator('#team-cycle-panel>summary').click();
+    await page.waitForFunction(()=>document.getElementById('team-cycle-training-status').textContent.includes('8주 훈련 포지션 우선'));
+    assert.equal(await page.evaluate(()=>__writes.length),0);
+    const existing=await page.evaluate(async()=>{const {state}=await import('/js/store.js?v=3');return JSON.stringify({teams:state.teams,cache:state.teamLineupCache});});
+    await page.locator('#team-cycle-standard').click();await page.reload();await page.waitForSelector('#operator-context');
+    assert.match(await page.locator('#team-cycle-training-status').textContent(),/꺼짐/);
+    await page.locator('#tab-balancer').click();await page.locator('#team-cycle-panel>summary').click();
+    await page.locator('#team-cycle-training').click();
+    assert.match(await page.locator('#team-cycle-training-status').textContent(),/8주 훈련 포지션 우선/);
+    assert.equal(await page.evaluate(async()=>{const {state}=await import('/js/store.js?v=3');return JSON.stringify({teams:state.teams,cache:state.teamLineupCache});}),existing);
+    await page.evaluate(()=>document.getElementById('attendees').value='최준경\n전성우\n송진호\n김건효\nGuest One');
+    await page.locator('#team-cycle-match').click();await page.locator('#team-cycle-use').click();
+    const b=await page.locator('#manual-team-ta-1').inputValue();assert.match(b,/최준경/);assert.match(b,/전성우/);
+    assert.equal(await page.evaluate(()=>__writes.length),0,'preview and training activation cannot save production-shaped records');
+    await page.locator('#generateButton').click();await page.evaluate(()=>flushMeetingSave());
+    const applied=await page.evaluate(async()=>{const {state}=await import('/js/store.js?v=3');return {teams:state.teams.map(t=>t.map(p=>p.name)),order:state.initialAttendeeOrder};});
+    assert.ok(applied.teams[1].includes('최준경')&&applied.teams[1].includes('전성우'));
+    assert.ok(applied.teams.flat().includes('Guest One'));
+    assert.deepEqual(applied.order,['최준경','전성우','송진호','김건효','Guest One'],'team grouping must not replace RSVP order');
+    assert.ok((await page.evaluate(()=>__writes)).every(w=>w.path.startsWith('dailyMeetings/')));
+    await page.goto(base+'/?vote=current');await page.waitForSelector('a[href="/team-guide.html"]');
+    await page.locator('a[href="/team-guide.html"]').click();await page.waitForSelector('#guide-teams .guide-team');
+    assert.equal(await page.locator('#guide-teams .guide-team').count(),2);
+    assert.match(await page.locator('#guide-teams').textContent(),/전성우/);
+    assert.doesNotMatch(await page.locator('#guide-teams').textContent(),/능력치|평균|고태호|차민수|정우영/);
+    assert.equal(await page.evaluate(()=>__reads.length),0,'public guide makes no Firebase reads');
+    for(const width of [390,1440]){
+      await page.setViewportSize({width,height:960});
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+      await page.screenshot({path:path.join(process.env.TEMP||root,`bareaplay-guide-${width}.png`),fullPage:true});
+    }
+    assert.deepEqual(errors,[]);console.log('PASS: approved plan auto-activation, persistent free mode, old teams/cache preserved, guests included, public guide without Firebase or scores.');
+    await context.close();return;
+  }
   if(process.argv.includes('--lineup-names')) {
     await context.addInitScript(names=>{
       names.forEach((name,i)=>{
@@ -280,8 +317,8 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
     const homeA=saved.value.members.filter(p=>p.team===0),homeB=saved.value.members.filter(p=>p.team===1);
     const present=[...homeA.slice(0,8),...homeB].map(p=>p.name);present.push('Synthetic Guest');
     await page.evaluate(present=>document.getElementById('attendees').value=present.join('\n'),present);await page.locator('#team-cycle-match').click();
-    await page.locator('#team-cycle-use').click();assert.match(await page.locator('#team-cycle-status').textContent(),/임시 소속/);
-    await page.locator('[data-temporary="0"]').selectOption('0');await page.locator('#team-cycle-use').click();
+    assert.match(await page.locator('#team-cycle-match-result').textContent(),/Synthetic Guest.*빈자리/);
+    await page.locator('#team-cycle-use').click();
     const assigned=(await page.locator('#manual-team-ta-0').inputValue()+'\n'+await page.locator('#manual-team-ta-1').inputValue()).split('\n').filter(Boolean).sort();
     assert.deepEqual(assigned,[...present].sort());assert.equal(await page.evaluate(()=>__writes.length),1,'preview does not save daily assignments');
     for(const [key,value] of Object.entries(initial))assert.deepEqual(await page.evaluate(key=>__fixture[key],key),value,`preserve ${key}`);

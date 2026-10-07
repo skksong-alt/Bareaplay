@@ -2,6 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createMeetingSession,meetingFingerprint,meetingConflict} from '../js/modules/meetingSession.js';
 const date='2026-09-30';
+
+test('remote snapshots and committed results cannot mutate the comparison baseline through shared arrays',async()=>{
+    let server={date,teams:{team_0:[{name:'A'}]}};
+    const session=createMeetingSession({delay:60000,commit:async(d,p,expected)=>{
+        assert.equal(meetingFingerprint(expected),meetingFingerprint(server));server=structuredClone(p);return server;
+    }});
+    const loaded=structuredClone(server);session.load(date,loaded);loaded.teams.team_0.push({name:'Guest'});
+    session.schedule(loaded);await session.flush();
+    const remote={date,teams:{team_0:[{name:'A'},{name:'B'}]}};server=structuredClone(remote);
+    assert.equal(session.acceptRemote(remote),true);remote.teams.team_0.push({name:'Late arrival'});
+    session.schedule(remote);await session.flush();assert.equal(session.status,'saved');
+    const returned=server;server=structuredClone(server);returned.teams.team_0.push({name:'Another arrival'});
+    session.schedule(returned);await session.flush();assert.equal(session.status,'saved');
+});
 test('saving captures date and immutable edit, preserves unknown fields, refuses switching while dirty',async()=>{
     let server={date,legacy:{keep:1},teams:{team_2:['old']}};
     const calls=[],session=createMeetingSession({delay:60000,commit:async(d,p,expected)=>{

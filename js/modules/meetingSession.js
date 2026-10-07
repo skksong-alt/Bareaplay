@@ -20,12 +20,12 @@ export function createMeetingSession({commit, changed = () => {}, delay = 1000})
         get date() {return date;},
         load(nextDate, data) {
             if (api.dirty) throw new Error('이전 경기의 저장을 먼저 완료하세요.');
-            clearTimeout(timer);date = nextDate; base = data; error = null;setStatus('saved');
+            clearTimeout(timer);date = nextDate; base = structuredClone(data); error = null;setStatus('saved');
         },
         acceptRemote(data) {
             if (api.dirty) return false;
             if (meetingFingerprint(base) === meetingFingerprint(data)) return false;
-            base = data;error = null;setStatus('saved');return true;
+            base = structuredClone(data);error = null;setStatus('saved');return true;
         },
         schedule(payload) {
             if (!date || payload.date !== date) throw new Error('작업 날짜가 일치하지 않아 저장하지 않았습니다.');
@@ -43,7 +43,7 @@ export function createMeetingSession({commit, changed = () => {}, delay = 1000})
             active = Promise.resolve().then(async () => {
                 setStatus('saving');
                 try {
-                    base = await commit(target, task, expected);
+                    base = structuredClone(await commit(target, task, expected));
                     setStatus(pending ? 'pending' : 'saved');
                 } catch (e) {
                     pending ||= task;error = e;setStatus(e.code === 'meeting-conflict' ? 'conflict' : 'error');throw e;

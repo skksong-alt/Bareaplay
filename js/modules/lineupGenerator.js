@@ -2,8 +2,8 @@
 // [v-매치사이즈 업데이트] 9vs9(3-4-1 고정) / 10vs10(3-4-2 고정) / 11vs11(자유) 경기 인원 선택 지원
 //  - 휴식·심판 로테이션 로직은 기존과 동일 (매 쿼터 휴식 인원 = 명단 − 경기 인원)
 import { roleTip, applyLocks, validateLineup, historyBonus, candidateCost, effectivePlayer } from './coachCore.js?v=2';
-import { planDuties, sharedRefereesFromLineups, rosterDutyOrder } from './dutyRotation.js?v=4';
-import { applyTrainingRoles, trainingForDate } from './trainingLineup.js?v=2';
+import { planDuties, sharedRefereesFromLineups, rosterDutyOrder } from './dutyRotation.js?v=5';
+import { applyTrainingRoles, trainingForDate } from './trainingLineup.js?v=3';
 import { quarterCount, preserveInactiveQuarters } from './quarters.js?v=1';
 let state;
 let generateLineupButton, lineupDisplay, loadingLineupSpinner, placeholderLineup;
@@ -361,7 +361,7 @@ function renderAllQuarters() {
     const sharedReferees = applySharedReferees(); // [수정] 양팀 공동 심판 계산
     const dutyNote=document.createElement('p');dutyNote.className='coach-note';dutyNote.style.gridColumn='1 / -1';
     const isHistorical=document.getElementById('balancer-date')?.value < window.getLocalDate?.();
-    dutyNote.textContent=(isHistorical?'심판: 당시 저장된 배정':'심판: 양 팀 번갈아')+' · 키퍼/휴식: 불러온 신청순 · 수동 추가자는 마지막 순번 · 전담 GK 예외. '+(state.dutyNotes||[]).join(' ');
+    dutyNote.textContent=(isHistorical?'심판: 당시 저장된 배정':'심판: 양 팀 번갈아')+(trainingForDate(state.trainingCycle,state.meetingDate).length?' · 8주 생성 기준: 휴식 횟수 균등 우선, 동률은 늦은 신청순 · 키퍼는 출전으로 계산':' · 키퍼/휴식: 불러온 신청순')+' · 수동 추가자는 마지막 순번 · 전담 GK 예외. '+(state.dutyNotes||[]).join(' ');
     lineupDisplay.append(dutyNote);
 
     for (let qIndex = 0; qIndex < quarterCount(state); qIndex++) {
@@ -482,7 +482,12 @@ async function executeLineupGeneration(members, formations, isSilent = false, op
         });
 
         const localPlayerDB = {};
-        members.forEach(name => { localPlayerDB[name] = effectivePlayer(state.playerDB[name] || { name, pos1: [], s1: 65, pos2: [], s2: 0 }, state.coachProfiles); });
+        const playerFor=name=>{
+            const matches=Object.values(state.playerDB).filter(p=>normalizeName(p.name).toLowerCase()===normalizeName(name).toLowerCase());
+            const player=state.playerDB[name]||(matches.length===1?matches[0]:null)||state.teams?.flat().find(p=>p.name===name)||{name,pos1:[],s1:65,pos2:[],s2:0};
+            return effectivePlayer({...player,name}, state.coachProfiles);
+        };
+        members.forEach(name => {localPlayerDB[name]=playerFor(name);});
 
         const primaryGks = members.filter(m => (localPlayerDB[m].pos1 || []).includes('GK'));
         const secondaryGks = members.filter(m => !(localPlayerDB[m].pos1 || []).includes('GK') && (localPlayerDB[m].pos2 || []).includes('GK'));
@@ -498,11 +503,11 @@ async function executeLineupGeneration(members, formations, isSilent = false, op
             return Math.min(team.length,(posCellMap[f]||[]).length);
         }));
         const allDedicated=squads.flat().filter(n=>{
-            const p=effectivePlayer(state.playerDB[n]||{name:n},state.coachProfiles);
+            const p=playerFor(n);
             return p.pos1?.includes('GK')&&p.pos2?.includes('GK');
         });
         let duties;
-        try { duties=planDuties(squads,initialOrder,counts,allDedicated); }
+        try { duties=planDuties(squads,initialOrder,counts,allDedicated,{fairMinutes:trainingForDate(state.trainingCycle,state.meetingDate).length>0}); }
         catch(e){resolve(fail(e.message));return;}
         const duty=duties.teams[squadIndex];
         state.dutyNotes=duties.notes;
@@ -809,7 +814,9 @@ export function init(dependencies) {
         placeholderLineup.classList.add('hidden');
         generateLineupButton.disabled = true;
         generateLineupButton.textContent = '라인업 생성 중...';
-        const members = lineupMembersTextarea.value.split('\n').map(name => name.trim().replace(' (신규)', '')).filter(Boolean);
+        // The visible final squad is authoritative, even after a late manual addition.
+        const members = (state.teams[activeTeamIndex]||[]).map(p=>normalizeName(String(p.name).replace(' (신규)',''))).filter(Boolean);
+        lineupMembersTextarea.value=members.join('\n');
         const formations = formationSelects().map(s => s.value);
         const locks = state.coachPlan?.lineupLocks?.[activeTeamIndex] || [];
         const original = state.teamLineupCache?.[activeTeamIndex];

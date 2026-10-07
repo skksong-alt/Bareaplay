@@ -76,11 +76,32 @@ export function draftCycle(candidates,startDate,previous=[]) {
     const cycle={schemaVersion:1,startDate,endDateExclusive:cycleEnd(startDate),members:teams.flatMap((team,i)=>team.map(p=>({name:p.name,team:i,role:p.role,second:p.second})))};
     validateCycle(cycle);return cycle;
 }
-export function matchFromCycle(cycle,attendees,date,players={}) {
+export function matchFromCycle(cycle,attendees,date,players={},options={}) {
     validateCycle(cycle);if(!cycleContains(cycle,date))throw new Error('선택한 경기는 이 8주 기간에 포함되지 않습니다.');
-    const present=[...new Set(attendees.map(nameOf).filter(Boolean))],teams=[[],[]],loans=[];
-    for(const member of cycle.members)if(present.includes(member.name))teams[member.team].push({...member});
-    const unassigned=present.filter(n=>!cycle.members.some(p=>p.name===n));
+    const present=[...new Set(attendees.map(nameOf).filter(Boolean))],teams=[[],[]],loans=[],temporary=[];
+    const key=n=>nameOf(n).toLowerCase();
+    if(new Set(present.map(key)).size!==present.length)throw new Error('대소문자만 다른 중복 이름이 있습니다. 최종 참석 명단에서 한 이름으로 정리해 주세요.');
+    const memberFor=name=>cycle.members.find(p=>p.name===name)||cycle.members.filter(p=>key(p.name)===key(name)).length===1&&cycle.members.find(p=>key(p.name)===key(name));
+    for(const name of present){const member=memberFor(name);if(member)teams[member.team].push({...member,name});}
+    let unassigned=present.filter(n=>!memberFor(n));
+    if(options.fillExtras){
+        const rolesOf=name=>{
+            const p=players[name]||Object.values(players).find(p=>key(p.name)===key(name))||{};
+            return [...new Set([...(p.pos1||[]),...(p.pos2||[])].flatMap(r=>r==='MF'?['DM','AM']:r==='CM'?['DM']:CYCLE_ROLES.includes(r)?[r]:[]))];
+        };
+        // Known roles first, unknown guests second. Never use skill to ration appearances.
+        const extras=unassigned.map(name=>({name,roles:rolesOf(name)})).sort((a,b)=>Number(!a.roles.length)-Number(!b.roles.length));
+        const capacity=Math.ceil(present.length/2),target={GK:1,LB:1,CB:2,RB:1,DM:2,AM:1,LW:1,RW:1,FW:1};
+        for(const p of extras){
+            const choices=[0,1].filter(t=>teams[t].length<capacity).flatMap(t=>(p.roles.length?p.roles:Object.keys(target).filter(r=>r!=='GK')).map(role=>({t,role,need:(target[role]||1)-count(teams[t],role)})))
+                .sort((a,b)=>b.need-a.need||teams[a.t].length-teams[b.t].length||a.t-b.t);
+            const c=choices[0];
+            if(!c)continue;
+            const added={name:p.name,team:c.t,role:c.role,second:p.roles.find(r=>r!==c.role)||c.role};
+            teams[c.t].push(added);temporary.push({...added,knownRole:!!p.roles.length});
+        }
+        unassigned=unassigned.filter(n=>!temporary.some(p=>p.name===n));
+    }
     // Never move more players than needed to balance head counts. Role surplus
     // at the donor and shortage at the receiving team outrank ability balance.
     while(Math.abs(teams[0].length-teams[1].length)>1){
@@ -95,5 +116,5 @@ export function matchFromCycle(cycle,attendees,date,players={}) {
         const chosen=candidates[0];teams[from]=teams[from].filter(p=>p.name!==chosen.p.name);teams[to].push({...chosen.p,team:to});
         loans.push({name:chosen.p.name,from,to,role:chosen.p.role,reason:chosen.reason});
     }
-    return {teams,loans,unassigned,absent:cycle.members.filter(p=>!present.includes(p.name)).map(p=>p.name)};
+    return {teams,loans,unassigned,temporary:temporary.map(p=>({...p,team:teams.findIndex(team=>team.some(m=>m.name===p.name))})),absent:cycle.members.filter(p=>!present.some(n=>key(n)===key(p.name))).map(p=>p.name)};
 }

@@ -22,6 +22,25 @@ function fixture(confirm=true) {
     return {names,order,state,context,messages,questions};
 }
 
+test('8-week actual generator: both squads include late guests with equal playing policy, no vote requirement',async()=>{
+    const f=fixture();f.state.meetingDate='2026-10-07';
+    const guests=['Unknown guest A','Unknown guest B'];
+    f.state.teams[0].push({name:guests[0],pos1:[],s1:65});
+    f.state.teams[1].push({name:guests[1],pos1:[],s1:65});
+    f.state.initialAttendeeOrder=[];
+    f.state.trainingCycle={date:'2026-10-07',startDate:'2026-10-07',endDateExclusive:'2026-12-02',members:f.names.map(name=>({name,role:'DM',second:'CB'}))};
+    const before=JSON.stringify(f.state.teams),original={sentinel:'existing B lineup'};f.state.teamLineupCache[1]=original;
+    for(let t=0;t<2;t++){
+        const names=f.state.teams[t].map(p=>p.name),result=await f.context.generate(names,Array(6).fill('4-2-3-1'));
+        assert.ok(result);assert.ok(core.validateLineup(result,names));
+        const counts=names.map(n=>result.lineups.filter(q=>Object.values(q).flat().includes(n)).length);
+        assert.ok(Math.max(...counts)-Math.min(...counts)<=1);
+        assert.ok(counts[names.indexOf(guests[t])]>=Math.min(...counts));
+        assert.equal(f.state.teamLineupCache[1],original);
+    }
+    assert.equal(JSON.stringify(f.state.teams),before);assert.equal(f.questions.length,0);
+});
+
 test('24-player 11v11: final roster wins over spelling differences without prompts or vote reads',async()=>{
     const f=fixture(),before=JSON.stringify(f.state),orderBefore=JSON.stringify(f.order);
     for(let t=0;t<2;t++) {
