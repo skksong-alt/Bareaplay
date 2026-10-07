@@ -30,8 +30,8 @@ export function init(dependencies) {
     if (!pageElement) return;
     pageElement.innerHTML = `
         <div class="bg-white p-6 rounded-2xl shadow-lg">
-            <h2 class="text-2xl font-bold mb-1">🏆 경기 기록 (운영진용)</h2>
-            <p class="text-sm text-gray-500 mb-4">쿼터가 끝날 때 <b>스코어 숫자만</b> 입력하면 됩니다. 팀 명단은 그날의 팀배정에서 자동으로 가져옵니다. 결과는 팀 운영 참고용이며 선수 능력치를 자동 변경하지 않습니다.</p>
+            <h2 class="text-2xl font-bold mb-1">경기 기록 · 선택</h2>
+            <p class="text-sm text-gray-500 mb-4">팀 균형을 돌아보고 싶을 때 <b>쿼터별 스코어만</b> 남기세요. 입력하지 않아도 참석·팀 배정·라인업·회비 운영에 영향이 없습니다. 활약투표도 동료의 좋은 플레이를 인정하는 선택 활동입니다. 두 기록 모두 선수 능력치를 자동 변경하거나 포지션을 결정하지 않습니다.</p>
             <div class="flex flex-wrap items-end gap-3 mb-4">
                 <div><label class="block text-sm font-medium mb-1">📅 경기 날짜</label><input type="date" id="record-date" class="p-2 border rounded-lg"></div>
                 <button id="record-load-btn" class="bg-gray-100 border px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-200">불러오기</button>

@@ -8,18 +8,18 @@ export const TEAM_CYCLE_STORAGE_ENABLED=true;
 const roleOptions=value=>CYCLE_ROLES.map(role=>`<option ${value===role?'selected':''}>${role}</option>`).join('');
 export function init({db,state,auth}) {
     const host=document.getElementById('page-balancer');if(!host)return;
-    const panel=document.createElement('details');panel.id='team-cycle-panel';panel.className='cycle-panel';
-    panel.innerHTML=`<summary>8주 고정팀 운영 <small>선호 확인 → 고정팀 → 당일 결원 보충</small></summary>
-      <p>기존 자동 팀 배정은 그대로 사용할 수 있습니다. 이곳의 미리보기는 기존 선수·설문·경기 배정을 바꾸지 않습니다.</p>
-      <p class="cycle-notice">${TEAM_CYCLE_STORAGE_ENABLED?'저장된 고정팀은 관리자끼리 공유됩니다.':'고정팀 저장은 Firebase 권한 적용 전까지 비활성입니다. 지금은 초안과 당일 미리보기만 사용할 수 있습니다.'}</p>
+    const panel=document.createElement('section');panel.id='team-cycle-panel';panel.className='cycle-panel';
+    panel.innerHTML=`<div class="cycle-heading"><h2>오늘의 배정 방식</h2><a href="/team-guide.html" target="_blank" rel="noopener">고정팀 명단·운영 안내 ↗</a></div>
+      <div class="cycle-mode" role="group" aria-label="배정 방식"><button id="team-cycle-training" type="button">8주 고정팀</button><button id="team-cycle-standard" type="button">자유 배정 · 이벤트</button></div><p id="team-cycle-training-status" role="status"></p>
+      <p class="coach-note">참석자 확인 → 아래에서 팀 만들기 → 라인업·공개. 방식을 바꿔도 지금 팀과 라인업은 그대로이며, 다음 생성에만 적용됩니다.</p>
+      <details id="team-cycle-settings"><summary>계획 관리·당일 미리보기 <small>새 8주를 시작하거나 다른 계획을 쓸 때</small></summary>
       <details><summary>처음 맡은 감독님을 위한 사용 순서</summary><ol><li>최근 3개월 실제 출석 명단과 비공개 설문을 확인합니다.</li><li>미응답·중복 응답은 당사자에게 확인하고 훈련 포지션을 정합니다. 두 지망이 같으면 한 자리 집중 희망입니다.</li><li>실력과 포지션을 고려한 A/B 초안을 확인·수정한 뒤 8주 계획으로 저장합니다.</li><li>매주 참석자 명단을 가져온 뒤 아래 당일 미리보기를 엽니다. 차출은 원소속 변경이 아닙니다.</li><li>당일 명단을 직접 팀 입력칸으로 옮겨 확인 후 적용합니다. 이미 짠 라인업을 다시 만들지 마세요.</li></ol></details>
       <div class="cycle-controls"><label>8주 시작일<input id="team-cycle-start" type="date"></label><button id="team-cycle-roster" type="button">최근 3개월 명단·선호 확인</button><button id="team-cycle-load" type="button" ${TEAM_CYCLE_STORAGE_ENABLED?'':'disabled'}>저장된 고정팀 불러오기</button></div>
       <div id="team-cycle-candidates"></div><div id="team-cycle-draft"></div>
       <label>당일 배정에 사용할 계획<select id="team-cycle-source"><option value="">초안을 만들거나 저장된 계획을 불러오세요</option></select></label>
-      <p>10월 7일 시작 승인 계획은 해당 기간에 자동 선택됩니다. 기존 팀·라인업은 바꾸지 않고 다음 생성부터 훈련 역할을 적용합니다. 이벤트 경기는 ‘기존 포지션 배분’으로 전환하세요. <a href="/team-guide.html" target="_blank" rel="noopener">고정팀 명단·운영 안내 ↗</a></p>
-      <div class="cycle-controls"><button id="team-cycle-training" type="button">선택 계획의 훈련 포지션 적용</button><button id="team-cycle-standard" type="button">기존 포지션 배분으로 전환</button></div><p id="team-cycle-training-status" role="status"></p>
+      <p class="coach-note">조회·초안 편집은 현재 배정 방식을 바꾸지 않습니다. 다른 계획을 선택했다면 위 ‘8주 고정팀’을 눌러 적용하세요. 새 계획 저장은 관리자끼리 공유됩니다.</p>
       <button id="team-cycle-match" type="button">현재 참석자 기준 · 당일 팀 미리보기</button>
-      <div id="team-cycle-match-result"></div><p id="team-cycle-status" role="status" aria-live="polite"></p>`;
+      <div id="team-cycle-match-result"></div></details><p id="team-cycle-status" role="status" aria-live="polite"></p>`;
     host.prepend(panel);
     let candidates=[],draft=null,plans=[approvedCycle('2026-10-07')],preview=null,busy=false;
     const status=panel.querySelector('#team-cycle-status'),source=panel.querySelector('#team-cycle-source');
@@ -45,11 +45,13 @@ export function init({db,state,auth}) {
     const trainingStatus=panel.querySelector('#team-cycle-training-status');
     const showTraining=()=>{
         const active=state.trainingCycle?.date===date() && state.isAdmin;
-        trainingStatus.textContent=active?`${date()} · 8주 훈련 포지션 우선: 1지망 → 2지망 → 빈자리. 1~3 / 4~6쿼터 역할 유지 우선, 출전 횟수 균등(동률은 늦은 투표순). 수동 고정·의무 교대 때문에 일부 역할은 달라질 수 있습니다.`:'이벤트·기존 포지션 배분 · 고정팀 훈련 우선 꺼짐';
+        trainingStatus.textContent=active?`8주 훈련 포지션 우선 · ${state.trainingCycle.startDate} 시작 계획. 1지망 → 2지망 → 빈자리 / 필드 역할 유지 우선 / 출전 기회 균등.`:'자유 배정 · 기존 선수 정보 기준 (고정팀 훈련 우선 꺼짐)';
+        panel.querySelector('#team-cycle-training').setAttribute('aria-pressed',String(!!active));
+        panel.querySelector('#team-cycle-standard').setAttribute('aria-pressed',String(!active));
         document.dispatchEvent(new CustomEvent('barea:training'));
     };
     const clearTraining=()=>{state.trainingCycle=null;showTraining();};
-    source.addEventListener('change',clearTraining);
+    source.addEventListener('change',()=>{preview=null;message('계획을 선택했습니다. 적용하려면 ‘8주 고정팀’을 누르세요. 현재 배정 방식은 유지됩니다.');});
     panel.querySelector('#team-cycle-training').onclick=run(async()=>{
         const cycle=chosen();validateCycle(cycle);
         if(!cycleContains(cycle,date()))throw new Error('현재 경기일을 포함하는 8주 계획을 선택하세요.');
@@ -74,8 +76,8 @@ export function init({db,state,auth}) {
             const members=draft.members.filter(p=>p.team===t);
             return `${t===0?'A':'B'}팀 ${members.length}명 · ${CYCLE_ROLES.map(r=>`${r} ${members.filter(p=>p.role===r).length}`).join(' / ')}`;
         }).join(' | ');};
-        out.querySelectorAll('[data-team]').forEach(el=>el.onchange=()=>{draft.members[Number(el.dataset.team)].team=Number(el.value);preview=null;clearTraining();balance();});
-        out.querySelectorAll('[data-role]').forEach(el=>el.onchange=()=>{draft.members[Number(el.dataset.role)].role=el.value;preview=null;clearTraining();balance();});balance();
+        out.querySelectorAll('[data-team]').forEach(el=>el.onchange=()=>{draft.members[Number(el.dataset.team)].team=Number(el.value);preview=null;balance();});
+        out.querySelectorAll('[data-role]').forEach(el=>el.onchange=()=>{draft.members[Number(el.dataset.role)].role=el.value;preview=null;balance();});balance();
         out.querySelector('#team-cycle-save').onclick=run(async()=>{
             if(!TEAM_CYCLE_STORAGE_ENABLED)throw new Error('권한 적용 전에는 저장하지 않습니다.');
             validateCycle(draft);if(!auth?.currentUser?.uid)throw new Error('다시 로그인해 주세요.');
@@ -85,7 +87,7 @@ export function init({db,state,auth}) {
             if(!state.isAdmin)return;
             plans.unshift(copy);
             if(JSON.stringify(draft)===JSON.stringify(copy))draft=null;
-            clearTraining();drawDraft();refreshSources();message('새 고정팀 계획을 저장했습니다. 오늘 팀·라인업은 아직 변경하지 않았습니다.');
+            drawDraft();refreshSources();message('새 계획만 저장했습니다. 현재 배정 방식은 유지됩니다. 새 계획을 쓰려면 ‘8주 고정팀’을 누르세요.');
         });
     };
     panel.querySelector('#team-cycle-roster').onclick=run(async()=>{
@@ -98,22 +100,26 @@ export function init({db,state,auth}) {
         let snap;try{snap=await getDocs(collection(db,'privatePositionPreferences'));}catch{throw new Error('비공개 설문은 지정된 감독 계정만 조회할 수 있습니다. 권한을 확인해 주세요.');}
         guard();if(panel.querySelector('#team-cycle-start').value!==start)throw new Error('시작일이 바뀌었습니다. 다시 불러오세요.');
         candidates=cycleCandidates(names,snap.docs.map(d=>d.data()),state.playerDB);
-        draft=null;preview=null;clearTraining();drawDraft();refreshSources();
+        draft=null;preview=null;drawDraft();refreshSources();
         const box=panel.querySelector('#team-cycle-candidates');
         box.innerHTML=`<h3>최근 3개월 실제 출석 ${names.length}명</h3><p>미응답·중복 응답·미등록 선수는 임의로 추정하지 않습니다. 해당 선수는 이번 초안에서 제외하고 확인 후 추가해 주세요. 2지망이 같으면 한 포지션에 집중하려는 의사입니다.</p><div class="cycle-table-wrap"><table><thead><tr><th>포함</th><th>선수</th><th>1·2지망 / 확인사항</th></tr></thead><tbody>${candidates.map((p,i)=>`<tr><td><input type="checkbox" data-include="${i}" aria-label="${esc(p.name)} 포함" ${p.issue||p.skill===null?'disabled':'checked'}></td><td>${esc(p.name)}</td><td>${esc(p.issue||`${p.role} / ${p.second}${p.role===p.second?' · 한 자리 집중':''}`)}</td></tr>`).join('')}</tbody></table></div><button id="team-cycle-build" type="button">선택한 인원으로 고정팀 초안 만들기</button>`;
         box.querySelector('#team-cycle-build').onclick=run(async()=>{
             if(panel.querySelector('#team-cycle-start').value!==start)throw new Error('시작일이 바뀌었습니다. 명단부터 다시 확인하세요.');
             const selected=[...box.querySelectorAll('[data-include]:checked')].map(el=>candidates[Number(el.dataset.include)]);
             const previous=plans.filter(p=>p.endDateExclusive<=start).sort((a,b)=>b.startDate.localeCompare(a.startDate))[0];
-            draft=draftCycle(selected,start,previous?.members||[]);preview=null;clearTraining();drawDraft();refreshSources();
+            draft=draftCycle(selected,start,previous?.members||[]);preview=null;drawDraft();refreshSources();
             message('초안만 만들었습니다. 팀과 역할을 확인하세요. 미응답자는 포함하지 않았습니다.');
         });message('원본 설문을 변경하지 않고 불러왔습니다.');
     });
     panel.querySelector('#team-cycle-load').onclick=run(async()=>{
         if(!TEAM_CYCLE_STORAGE_ENABLED)throw new Error('권한 적용 전입니다.');
         const snap=await getDocs(collection(db,'teamCycles'));guard();
+        const selected=chosen();
         plans=[approvedCycle('2026-10-07'),...snap.docs.map(d=>d.data()).filter(p=>{try{return validateCycle(p);}catch{return false;}}).sort((a,b)=>b.startDate.localeCompare(a.startDate))];
-        preview=null;clearTraining();refreshSources();message(`10월 7일 승인 계획과 ${plans.length-1}개 저장된 계획을 불러왔습니다. 기존 배정은 바뀌지 않았습니다.`);
+        preview=null;refreshSources();
+        if(selected===draft&&draft)source.value='draft';
+        else {const i=plans.findIndex(p=>JSON.stringify(p)===JSON.stringify(selected));if(i>=0)source.value=String(i);}
+        message(`저장 계획 ${plans.length-1}개를 확인했습니다. 현재 배정 방식과 기존 라인업은 유지됩니다.`);
     });
     panel.querySelector('#team-cycle-match').onclick=run(async()=>{
         const cycle=chosen(),target=date(),raw=attendees();

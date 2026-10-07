@@ -1,7 +1,7 @@
 import { quarterCount } from './quarters.js?v=1';
 // js/modules/shareManagement.js
 import { doc, setDoc, collection, onSnapshot, addDoc, getDoc, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
-import { getPosCellMap } from './lineupGenerator.js?v=15'; // [정리] 포메이션 좌표 단일화
+import { getPosCellMap } from './lineupGenerator.js?v=16'; // [정리] 포메이션 좌표 단일화
 import { compareResponseTime } from './voteOrder.js?v=2';
 import { sharedRefereesFromLineups, rosterDutyOrder } from './dutyRotation.js?v=5';
 import { prepareShareLineups } from './shareLineupValidation.js?v=2';

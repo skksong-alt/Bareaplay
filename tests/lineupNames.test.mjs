@@ -41,6 +41,24 @@ test('8-week actual generator: both squads include late guests with equal playin
     assert.equal(JSON.stringify(f.state.teams),before);assert.equal(f.questions.length,0);
 });
 
+test('actual 10-a-side generator supports primary RB/AM and equal minutes without touching saved teams',async()=>{
+    const f=fixture();f.state.meetingDate='2026-10-07';
+    f.state.dutyNotes=[];
+    const roles=['GK','RB','CB','CB','LB','DM','RW','AM','LW','FW','RB','CB'];
+    f.state.trainingCycle={date:f.state.meetingDate,startDate:'2026-10-07',endDateExclusive:'2026-12-02',members:f.names.map((name,i)=>({name,role:roles[i%12],second:roles[i%12]}))};
+    const before=JSON.stringify(f.state);
+    for(const count of [4,6]){
+        f.state.quarterCount=count;
+        const result=await f.context.generate(f.names.slice(0,12),Array(count).fill('4-1-3-1'));
+        assert.ok(result);assert.ok(core.validateLineup(result,f.names.slice(0,12)));
+        assert.ok(result.lineups.every(q=>Object.values(q).flat().length===10));
+        for(const i of [1,7,10])assert.ok(result.lineups.some(q=>(i===7?q.MF[1]:q.RB[0])===f.names[i]));
+        const counts=f.names.slice(0,12).map(n=>result.lineups.filter(q=>Object.values(q).flat().includes(n)).length);
+        assert.ok(Math.max(...counts)-Math.min(...counts)<=1);
+    }
+    delete f.state.quarterCount;assert.equal(JSON.stringify(f.state),before);
+});
+
 test('24-player 11v11: final roster wins over spelling differences without prompts or vote reads',async()=>{
     const f=fixture(),before=JSON.stringify(f.state),orderBefore=JSON.stringify(f.order);
     for(let t=0;t<2;t++) {

@@ -1,8 +1,7 @@
 import { doc, getDoc, getDocs, collection, query, where, setDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js';
 import { cleanName, escapeHtml as esc, chooseReviewDate } from './coachCore.js?v=2';
-import { lessonHtml, addCoachStyles } from './weeklyContent.js?v=5';
+import { addCoachStyles } from './weeklyContent.js?v=5';
 import { compareResponseTime, confirmGuest, responseIdentity, registeredVoteName } from './voteOrder.js?v=2';
-import { POSITION_SURVEY_ENABLED } from './positionPreferences.js?v=6';
 import { approvedCycle } from './approvedCycle.js?v=1';
 import { rememberedRatingName, rememberRatingName, ratingRememberEnabled, setRatingRememberEnabled, wasRatingSubmittedHere, markRatingSubmittedHere, ratingConfirmation } from './ratingIdentity.js?v=1';
 import { RATING_SERVICE_ENABLED, requestRating, ratingFailureMessage } from './ratingService.js?v=3';
@@ -67,10 +66,8 @@ export async function renderVote(db, voteId) {
           <p class="coach-note" id="v-name-help">${t('로그인 없이 신청할 수 있어요. 지인 대신 신청할 때는 지인의 이름을, 기존 선수는 명단의 이름을 선택해 주세요.','No login needed. Registering a friend? Use their name. Existing players: please select your name from the list.')}</p>
           <div class="coach-grid"><button data-status="attend" class="coach-primary">${t('참석','Going')}</button><button data-status="maybe">${t('미정','Maybe')}</button><button data-status="absent">${t('불참','Not going')}</button></div><p id="v-msg" class="coach-status" role="status"></p><p id="v-deadline" class="match-deadline"></p></section>
           <section class="coach-card match-attendance"><div class="match-card-heading"><h2>${t('참석 현황','Who’s playing')}</h2><span class="match-live" id="v-live">${t('연결 중','Connecting')}</span></div><div id="v-list" aria-label="${t('참석자 명단','RSVP list')}"></div></section>
-          <div id="v-lesson" class="match-resources">${lessonHtml(vote.date,{},lang)}</div></div>`;
+          <a class="match-resources team-guide-entry" href="/team-guide.html"><span class="guide-entry-badge">BAREA · TEAM HANDBOOK</span><strong>${t('8주, 같은 동료와 함께 성장하기','Eight weeks, growing together')}</strong><span>${t('내 팀과 역할 · 포지션별 플레이 · 정당한 몸싸움과 반칙 기준','My team & role · How to play · Fair contact & fouls')}</span><span class="guide-entry-action">${t('경기 전, 우리 팀의 약속 확인하기','Read our match-day handbook')} <b aria-hidden="true">↗</b></span></a></div>`;
         const input = document.getElementById('v-name'), message = document.getElementById('v-msg');
-        document.getElementById('v-lesson').insertAdjacentHTML('beforebegin',`<section class="coach-card match-resources"><h2>${t('8주, 같은 동료와 함께 성장하기','Eight weeks, growing together')}</h2><p>${t('고정팀·훈련 역할·공평한 출전 기준을 확인하세요. 8주 후 감독과 상의해 포지션을 재평가합니다.','See our teams, training roles and fair playing policy. Review your position with the coach after eight weeks.')}</p><a class="lineup-link" href="/team-guide.html">${t('고정팀 명단 · 운영·훈련·반칙 안내','Teams · operations · training · fair play')} ↗</a></section>`);
-        if(POSITION_SURVEY_ENABLED)document.getElementById('v-name-help').insertAdjacentHTML('afterend',`<a class="coach-link" href="/?preferences=1">${t('내 희망 포지션 · 감독에게 비공개 제출','My position preferences · private to the coach')} ↗</a>`);
         try { input.value=sessionStorage.getItem(draftKey) || ''; } catch { /* optional */ }
         input.addEventListener('input',rememberName);
         let saving=false;
@@ -131,9 +128,9 @@ export async function renderVote(db, voteId) {
         // Independent enhancements must never prevent attendance submission.
         const extras = async () => {
             let weekly={};
-            try { const w=await getDoc(doc(db,'coachWeeks',vote.date)); if(w.exists()) weekly=w.data(); } catch { /* use built-in lesson */ }
+            // Retain the existing review-date override, independent of retired weekly videos.
+            try { const w=await getDoc(doc(db,'coachWeeks',vote.date)); if(w.exists()) weekly=w.data(); } catch { /* use latest eligible match */ }
             if(!alive) return;
-            document.getElementById('v-lesson').innerHTML=lessonHtml(vote.date,weekly,lang);
             let savedMap='';
             try {
                 // Exact existing time + venue, not the global latest meeting from another week.

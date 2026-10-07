@@ -1,7 +1,7 @@
 import { quarterCount, activeQuarters, preserveInactiveQuarters } from './quarters.js?v=1';
 import { collection, doc, getDocs, getDoc, setDoc, serverTimestamp, addDoc } from 'https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js';
 import { cleanName, escapeHtml as esc, recentHistory, ROLES, validateLineup, lineupSummary, locate } from './coachCore.js?v=2';
-import { lessonFor, lessonHtml, addCoachStyles, TEAM_VIDEOS, parseGuidelines } from './weeklyContent.js?v=5';
+import { addCoachStyles } from './weeklyContent.js?v=5';
 let db, state;
 const dateNow = () => document.getElementById('balancer-date')?.value || window.getLocalDate();
 const requireAdmin = () => { if(!state.isAdmin) throw new Error('관리자 로그인이 필요합니다.'); };
@@ -32,53 +32,19 @@ export function init(dependencies) {
     window.coachReason='temporary';
     const share=document.getElementById('page-share'), players=document.getElementById('page-players'), lineup=document.getElementById('page-lineup');
     const make=(parent,id,html)=>{const node=document.createElement(id==='coach-planner'?'details':'section');node.id=id;node.className='coach-card';node.innerHTML=html;if(id==='coach-planner'){const summary=document.createElement('summary');summary.append(node.querySelector('h2'));node.prepend(summary);}parent?.append(node);return node;};
-    const weekly=make(share,'coach-weekly',`<h2>경기 전 참고 영상 · 15분 연습</h2><p class="coach-note">핵심 지침을 누르면 영상이 열립니다. 날짜별로 4~6개를 정리해 주세요. 기본 영상은 감독 제공 모음이며 자동으로 새 영상을 선정하지 않습니다. 기존 참석 투표는 변경하지 않습니다.</p><label>대상 경기 날짜<input type="date" id="coach-week-date"></label><button id="coach-week-load">불러오기</button><div id="coach-week-editor"></div>`);
-    weekly.querySelector('input').value=window.getLocalDate();
-    weekly.querySelector('button').onclick=()=>guard(async()=>{
-        requireAdmin(); const date=weekly.querySelector('input').value;if(!date)throw new Error('날짜를 선택하세요.');
-        const custom=await read('coachWeeks',date), l=lessonFor(date,custom);
-        if(!Object.keys(custom).length){
-            l.segmentKo=TEAM_VIDEOS.map(v=>`[${v.ko}](${v.url})`).join('\n');
-            l.segmentEn=TEAM_VIDEOS.map(v=>`[${v.en}](${v.url})`).join('\n');
-        }
-        const fields=[['segmentKo','영상별 핵심 지침 · 한국어'],['segmentEn','영상별 핵심 지침 · English'],['drillKo','15분 현장 연습 · 한국어'],['drillEn','15분 현장 연습 · English']];
-        const legacyFields=[['ko','단일 자료 제목 · 한국어'],['en','단일 자료 제목 · English'],['actionKo','실천 행동 · 한국어'],['actionEn','실천 행동 · English'],['url','단일 자료 URL']];
-        const box=weekly.querySelector('#coach-week-editor');
-        box.innerHTML=`<p>편집 대상: <b>${esc(date)}</b></p><p class="coach-note">영상은 한 줄에 하나씩 [핵심 지침](영상 주소) 형식으로 입력하세요. YouTube·FIFA HTTPS 링크만 표시하며 최대 6개입니다. 기존 일반 설명도 유지됩니다.</p>${fields.map(([k,label])=>`<label>${label}<textarea data-field="${k}" rows="${k.startsWith('segment')?6:3}" maxlength="6000">${esc(l[k]||'')}</textarea></label>`).join('')}<details><summary>기존 단일 자료 설정</summary>${legacyFields.map(([k,label])=>`<label>${label}<input data-field="${k}" value="${esc(l[k]||'')}" maxlength="600"></label>`).join('')}</details><label>평가할 지난 경기 날짜<input type="date" id="coach-review-date" value="${esc(custom.reviewDate==='none'?'':custom.reviewDate||'')}"></label><label><input type="checkbox" id="coach-review-off" ${custom.reviewDate==='none'?'checked':''}> 지난 경기 투표 숨기기</label><p class="coach-note">날짜가 비어 있으면 현재 경기 이전의 가장 최근 배정일(오늘 제외)을 찾습니다. 취소된 경기라면 실제 진행된 날짜를 지정하세요.</p><button id="coach-week-preview">미리보기</button><button id="coach-week-save" class="coach-primary">이 날짜의 콘텐츠 저장</button><div id="coach-week-sample"></div>`;
-        const payload=()=>Object.fromEntries([...box.querySelectorAll('[data-field]')].map(input=>[input.dataset.field,input.value.trim()]));
-        // Separate title/link inputs; preserve the existing segment fields and plain descriptions.
-        const videoEditor=document.createElement('div');videoEditor.className='video-editor';
-        const rawEditor=document.createElement('details');rawEditor.innerHTML='<summary>영상 원문 편집 · 기존 일반 설명 (선택)</summary>';
-        videoEditor.innerHTML='<h3>영상 제목·링크 입력</h3><p class="coach-note">핵심 지침과 주소를 나눠 입력하세요. 기존 일반 설명은 아래 원문 입력칸에서 유지할 수 있습니다.</p>';
-        for(const [key,label] of [['segmentKo','한국어'],['segmentEn','English']]) {
-            const original=box.querySelector(`[data-field="${key}"]`), list=parseGuidelines(original.value);
-            const details=document.createElement('details');details.innerHTML=`<summary>${label} · 영상 최대 6개</summary>`;
-            details.open=key==='segmentKo';
-            if(list.length===0&&original.value.trim())details.insertAdjacentHTML('beforeend','<p class="coach-note">현재는 일반 설명입니다. 아래에 영상을 입력하면 해당 언어의 설명 대신 영상 목록을 저장합니다.</p>');
-            for(let i=0;i<6;i++) {
-                const row=document.createElement('div');row.className='video-editor-row';
-                row.innerHTML=`<label>${i+1}. 핵심 지침<input data-title maxlength="300" value="${esc(list[i]?.title||'')}"></label><label>영상 링크<input data-url type="url" maxlength="600" value="${esc(list[i]?.url||'')}"></label>`;
-                details.append(row);
-            }
-            details.addEventListener('input',()=>{original.value=[...details.querySelectorAll('.video-editor-row')].map(row=>{const title=row.querySelector('[data-title]').value.trim(),url=row.querySelector('[data-url]').value.trim();return title||url?`[${title}](${url})`:'';}).filter(Boolean).join('\n');});
-            original.addEventListener('input',()=>{const parsed=parseGuidelines(original.value);details.querySelectorAll('.video-editor-row').forEach((row,i)=>{row.querySelector('[data-title]').value=parsed[i]?.title||'';row.querySelector('[data-url]').value=parsed[i]?.url||'';});});
-            videoEditor.append(details);
-            rawEditor.append(original.closest('label'));
-        }
-        videoEditor.append(rawEditor);
-        box.prepend(videoEditor);
-        box.querySelector('#coach-week-preview').onclick=()=>{box.querySelector('#coach-week-sample').innerHTML=lessonHtml(date,payload(),'ko')+lessonHtml(date,payload(),'en');};
-        box.querySelector('#coach-week-save').onclick=()=>guard(async()=>{
-            requireAdmin(); const values=payload(); const {validVideoUrl}=await import('./coachCore.js?v=2');
-            if(!values.ko || !values.en || !values.actionKo || !values.actionEn)throw new Error('한국어·영어 목표와 실천 행동을 입력하세요.');
-            if(values.url && !validVideoUrl(values.url))throw new Error('YouTube 또는 FIFA의 HTTPS 주소를 입력하세요.');
-            for(const field of ['segmentKo','segmentEn']) {
-                const lines=values[field].split('\n').filter(line=>line.trim());
-                if(lines.some(line=>/https?:|\]\(/i.test(line)) && (lines.length>6 || lines.some(line=>parseGuidelines(line).length!==1 || !/^\[[^\]\n]+\]\(https:\/\/[^\s)]+\)$/.test(line.trim()))))throw new Error('영상 목록은 [핵심 지침](HTTPS 주소) 한 줄씩, 최대 6개로 입력하세요.');
-            }
-            const review=box.querySelector('#coach-review-date').value;
-            if(review && review>=date)throw new Error('평가 날짜는 대상 경기보다 이전이어야 합니다.');
-            await setDoc(doc(db,'coachWeeks',date),{...values,date,reviewDate:box.querySelector('#coach-review-off').checked?'none':review,updatedAt:serverTimestamp()},{merge:true});notify('주간 콘텐츠를 저장했습니다.');
+    // Weekly learning lives in the handbook. Keep only the existing review-date override.
+    const review=document.createElement('details');review.id='coach-review-settings';review.className='coach-card';
+    review.innerHTML='<summary>지난 경기 활약투표 · 날짜 조정 (선택)</summary><p class="coach-note">보통 자동으로 최근 경기를 표시합니다. 취소된 경기 등으로 대상 날짜가 잘못됐을 때만 사용하세요.</p><label>참석 투표의 경기 날짜<input type="date" id="coach-week-date"></label><button id="coach-week-load">날짜 설정 확인</button><div id="coach-week-editor"></div>';
+    share?.append(review);review.querySelector('input').value=window.getLocalDate();
+    review.querySelector('button').onclick=()=>guard(async()=>{
+        requireAdmin();const date=review.querySelector('input').value;if(!date)throw new Error('날짜를 선택하세요.');
+        const custom=await read('coachWeeks',date),box=review.querySelector('#coach-week-editor');
+        box.innerHTML=`<label>활약투표 대상 경기<input type="date" id="coach-review-date" value="${esc(custom.reviewDate==='none'?'':custom.reviewDate||'')}"></label><label class="coach-check"><input type="checkbox" id="coach-review-off" ${custom.reviewDate==='none'?'checked':''}> 이 참석 투표에서 활약투표 숨기기</label><p class="coach-note">날짜를 비우면 가장 최근의 지난 경기로 자동 연결합니다.</p><button id="coach-week-save">날짜 설정 저장</button>`;
+        box.querySelector('button').onclick=()=>guard(async()=>{
+            requireAdmin();const target=box.querySelector('#coach-review-date').value;
+            if(target&&target>=date)throw new Error('활약투표 날짜는 참석 투표의 경기보다 이전이어야 합니다.');
+            await setDoc(doc(db,'coachWeeks',date),{date,reviewDate:box.querySelector('#coach-review-off').checked?'none':target,updatedAt:serverTimestamp()},{merge:true});
+            notify('활약투표 날짜 설정을 저장했습니다.');
         });
     });
     const profiles=make(players,'coach-profiles',`<h2>선수 역할·게스트 정보</h2><p class="coach-note">축구 역할만 기록하세요. 민감한 성격 평가나 개인정보는 적지 않습니다. 게스트 정보는 지정한 경기 날짜에만 배정에 사용됩니다.</p><label>이름<input id="coach-profile-name" list="balancer-player-datalist" maxlength="100"></label><button id="coach-profile-load">불러오기</button><div id="coach-profile-editor"></div>`);
@@ -97,7 +63,7 @@ export function init(dependencies) {
             await setDoc(doc(db,'coachPlayers',name),data,{merge:true});notify('역할 정보를 저장했습니다. 다음 배정부터 사용합니다.');
         });
     });
-    const panel=make(lineup,'coach-planner',`<h2>감독 보드 · 최근 이력과 부분 재배정</h2><p class="coach-note">팀 배정 탭에서 선택한 날짜를 사용합니다. 최근 4회는 실제 출전 시간이 아닌 저장된 배정 기록입니다.</p><button id="coach-load">선택 날짜 불러오기</button><label>이번 수동 수정의 이유<select id="coach-reason"><option value="temporary">오늘만 팀 사정</option><option value="condition">컨디션</option><option value="wish">희망 반영</option><option value="learning">역할 학습</option><option value="roleFit">지속적으로 적합한 역할</option></select></label><div id="coach-planner-body"></div>`);
+    const panel=make(lineup,'coach-planner',`<h2>고급 도구 · 일부 자리만 고정하고 다시 짜기</h2><p class="coach-note">일반 운영에는 사용하지 않아도 됩니다. 이미 짠 라인업에서 특정 선수의 자리는 남기고, 나머지만 자동 재배정하고 싶을 때 여세요. 단순 자리 교환은 위 전체 라인업에서 직접 하세요.</p><button id="coach-load">현재 경기의 고정 조건·배정 이력 보기</button><details class="coach-reason-settings"><summary>수동 수정 사유 기록 (선택)</summary><label>이번 수동 수정의 이유<select id="coach-reason"><option value="temporary">오늘만 팀 사정</option><option value="condition">컨디션</option><option value="wish">희망 반영</option><option value="learning">역할 학습</option><option value="roleFit">지속적으로 적합한 역할</option></select></label></details><div id="coach-planner-body"></div>`);
     panel.querySelector('#coach-reason').onchange=e=>window.coachReason=e.target.value;
     const help=document.createElement('details');help.className='coach-help';
     help.innerHTML='<summary>처음이라면 · 감독 보드 사용 순서</summary><ol><li><b>팀 배정 탭</b>에서 경기 날짜를 선택하고 팀·라인업을 먼저 준비합니다.</li><li><b>선택 날짜 불러오기</b>를 누르면 최근 배정 이력, 고정 설정, 팀 비교가 아래에 나타납니다. 불러오기만으로 배정이 바뀌거나 저장되지는 않습니다.</li><li><b>그대로 둘 선수·쿼터</b>를 체크합니다. 예: 1쿼터의 특정 선수 자리는 유지하고 싶다면 그 칸만 체크합니다. 다음 생성에도 유지하려면 포지션 고정 조건을 저장하세요.</li><li><b>고정 유지 · 나머지 재배정 미리보기</b>로 후보를 확인합니다. 마음에 들 때만 <b>이 후보 적용·저장</b>을 누르세요. 미리보기만으로 기존 라인업은 바뀌지 않습니다.</li></ol><p>최근 4회는 실제 경기 출전 시간이 아닌 저장된 배정 기록입니다. 단순히 기존 라인업을 직접 수정할 때는 이 보드를 꼭 사용할 필요는 없습니다.</p>';
@@ -107,8 +73,7 @@ export function init(dependencies) {
     panel.querySelector('#coach-reason').closest('label').after(reasonHelp);
     panel.querySelector('#coach-load').onclick=()=>guard(async()=>{await prepareCoach();renderPlanner(panel);});
     document.addEventListener('barea:quarters',()=>{panel.querySelector('#coach-planner-body').textContent='쿼터 수가 바뀌었습니다. 선택 날짜를 다시 불러와 고정 조건과 비교를 확인하세요.';});
-    // Make the board easy to find, before the six pitches.
-    const display=document.getElementById('lineup-display');if(display)display.before(panel);
+    // Optional advanced tools stay after the main lineup, never above the weekly workflow.
 }
 async function guard(action) { try { await action(); } catch(e) {notify(e.message || '작업 실패. 다시 시도하세요.',true);} }
 function renderPlanner(panel) {

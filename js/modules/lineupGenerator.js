@@ -1,9 +1,9 @@
 // js/modules/lineupGenerator.js
-// [v-매치사이즈 업데이트] 9vs9(3-4-1 고정) / 10vs10(3-4-2 고정) / 11vs11(자유) 경기 인원 선택 지원
+// 9vs9: 3-4-1 / 10vs10: 4-1-3-1 or legacy 3-4-2 / 11vs11: selectable.
 //  - 휴식·심판 로테이션 로직은 기존과 동일 (매 쿼터 휴식 인원 = 명단 − 경기 인원)
 import { roleTip, applyLocks, validateLineup, historyBonus, candidateCost, effectivePlayer } from './coachCore.js?v=2';
 import { planDuties, sharedRefereesFromLineups, rosterDutyOrder } from './dutyRotation.js?v=5';
-import { applyTrainingRoles, trainingForDate } from './trainingLineup.js?v=3';
+import { applyTrainingRoles, trainingForDate, trainingReport } from './trainingLineup.js?v=4';
 import { quarterCount, preserveInactiveQuarters } from './quarters.js?v=1';
 let state;
 let generateLineupButton, lineupDisplay, loadingLineupSpinner, placeholderLineup;
@@ -45,6 +45,7 @@ function applySharedReferees() {
 
 // [기능 1] 9인(3-4-1), 10인(3-4-2) 포메이션 좌표 추가
 const posCellMap = { 
+    '4-1-3-1': [ {pos:'GK',x:50,y:92}, {pos:'RB',x:85,y:78}, {pos:'CB',x:65,y:82}, {pos:'CB',x:35,y:82}, {pos:'LB',x:15,y:78}, {pos:'MF',x:50,y:65}, {pos:'RW',x:80,y:40}, {pos:'MF',x:50,y:45}, {pos:'LW',x:20,y:40}, {pos:'FW',x:50,y:18} ],
     '4-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 75}, {pos: 'CB', x: 65, y: 80}, {pos: 'CB', x: 35, y: 80}, {pos: 'LB', x: 15, y: 75}, {pos: 'RW', x: 85, y: 45}, {pos: 'CM', x: 65, y: 55}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 15, y: 45}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], 
     '4-3-3': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 88, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 12, y: 78}, {pos: 'CM', x: 50, y: 65}, {pos: 'MF', x: 70, y: 50}, {pos: 'MF', x: 30, y: 50}, {pos: 'RW', x: 80, y: 25}, {pos: 'FW', x: 50, y: 18}, {pos: 'LW', x: 20, y: 25} ], 
     '3-5-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 75, y: 80}, {pos: 'CB', x: 50, y: 85}, {pos: 'CB', x: 25, y: 80}, {pos: 'RW', x: 90, y: 50}, {pos: 'CM', x: 65, y: 55}, {pos: 'MF', x: 50, y: 65}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 10, y: 50}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], 
@@ -54,12 +55,12 @@ const posCellMap = {
 };
 
 // [v-매치사이즈] 경기 인원(9vs9 / 10vs10 / 11vs11)별 허용 포메이션
-// - 9vs9·10vs10은 쓰리백 유지: 10vs10 = 3-4-2 고정, 9vs9 = 3-4-1 고정
+// - Preserve existing formations; new 10-a-side training can retain fullbacks and AM.
 // - 11vs11은 기존 4가지 포메이션 자유 선택
 let matchSize = 11;
 const FORMATIONS_BY_SIZE = {
     11: ['4-4-2', '4-3-3', '3-5-2', '4-2-3-1'],
-    10: ['3-4-2'],
+    10: ['4-1-3-1','3-4-2'],
     9: ['3-4-1']
 };
 const DEFAULT_FORMATION_BY_SIZE = { 11: '4-2-3-1', 10: '3-4-2', 9: '3-4-1' };
@@ -94,12 +95,13 @@ function setMatchSize(size, keepFormations = null) {
     if (hint) {
         hint.textContent = size === 11
             ? '11vs11 · 쿼터별 포메이션 자유 선택'
-            : (size === 10 ? '10vs10 · 쓰리백 유지 (3-4-2 고정)' : '9vs9 · 쓰리백 유지 (3-4-1 고정)');
+            : (size === 10 ? '10vs10 · 4-1-3-1: 풀백·공미 유지 / 3-4-2: 풀백·공미 자리 없음' : '9vs9 · 3-4-1: 풀백·공미 자리 없음');
     }
     const opts = FORMATIONS_BY_SIZE[size];
     formationSelects().forEach((sel, qIndex) => {
         const prev = keepFormations ? keepFormations[qIndex] : sel.value;
-        sel.innerHTML = opts.map(f => `<option${f === DEFAULT_FORMATION_BY_SIZE[size] ? ' selected' : ''}>${f}</option>`).join('');
+        const defaultFormation=size===10&&trainingForDate(state.trainingCycle,state.meetingDate).length?'4-1-3-1':DEFAULT_FORMATION_BY_SIZE[size];
+        sel.innerHTML = opts.map(f => `<option${f === defaultFormation ? ' selected' : ''}>${f}</option>`).join('');
         if (opts.includes(prev)) sel.value = prev;
     });
 }
@@ -363,6 +365,16 @@ function renderAllQuarters() {
     const isHistorical=document.getElementById('balancer-date')?.value < window.getLocalDate?.();
     dutyNote.textContent=(isHistorical?'심판: 당시 저장된 배정':'심판: 양 팀 번갈아')+(trainingForDate(state.trainingCycle,state.meetingDate).length?' · 8주 생성 기준: 휴식 횟수 균등 우선, 동률은 늦은 신청순 · 키퍼는 출전으로 계산':' · 키퍼/휴식: 불러온 신청순')+' · 수동 추가자는 마지막 순번 · 전담 GK 예외. '+(state.dutyNotes||[]).join(' ');
     lineupDisplay.append(dutyNote);
+    const training=trainingForDate(state.trainingCycle,state.meetingDate);
+    if(training.length){
+        const result={...state.lineupResults,lineups:state.lineupResults.lineups.slice(0,quarterCount(state)),formations:state.lineupResults.formations.slice(0,quarterCount(state))};
+        const report=trainingReport(result,training,posCellMap,state.coachPlan?.lineupLocks?.[activeTeamIndex]||[]);
+        const missed=report.filter(r=>!r.first),box=document.createElement('details');box.className='training-report';box.style.gridColumn='1 / -1';box.open=missed.length>0;
+        const title=document.createElement('summary');title.textContent=missed.length?`희망 역할 확인 필요 · 1지망 0회 ${missed.length}명`:'훈련 역할 확인 · 전원 1지망 기회 있음';box.append(title);
+        const note=document.createElement('p');note.textContent='현재 표시된 배치를 기준으로 계산합니다. 기존 라인업을 자동 변경하지 않습니다. 1지망 기회 확보를 3+3쿼터 반복보다 우선하며, 인원·고정 조건에 따라 묶음이 나뉠 수 있습니다.';box.append(note);
+        for(const r of report){const row=document.createElement('p');row.textContent=`${r.name} · ${r.role} ${r.first}회 / 2지망 ${r.second}회 / 기타 필드 ${r.other}회 / GK ${r.gk}회 / 휴식·심판 ${r.rest}회${r.reason?' — '+r.reason:''}`;box.append(row);}
+        lineupDisplay.append(box);
+    }
 
     for (let qIndex = 0; qIndex < quarterCount(state); qIndex++) {
         const lineup = state.lineupResults.lineups[qIndex];
@@ -463,8 +475,9 @@ async function executeLineupGeneration(members, formations, isSilent = false, op
         const requiredOnField = Math.max(...formations.map(f => (posCellMap[f] || []).length));
         if (members.length < requiredOnField) {
             if (members.length >= 10) {
-                formations = Array(count).fill('3-4-2');
-                if(!isSilent) window.showNotification("명단이 10명이므로 10vs10(3-4-2) 포메이션으로 자동 전환됩니다.");
+                const smaller=trainingForDate(state.trainingCycle,state.meetingDate).length?'4-1-3-1':'3-4-2';
+                formations = Array(count).fill(smaller);
+                if(!isSilent) window.showNotification(`명단이 10명이므로 10vs10(${smaller}) 포메이션으로 자동 전환됩니다.`);
             } else {
                 formations = Array(count).fill('3-4-1');
                 if(!isSilent) window.showNotification("명단이 9명이므로 9vs9(3-4-1) 포메이션으로 자동 전환됩니다.");

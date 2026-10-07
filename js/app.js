@@ -468,7 +468,7 @@ function renderManual() {
       <details><summary>필요할 때만 쓰는 고급 도구</summary><p>감독 보드의 최근 이력·부분 재배정·고정 조건은 선택 도구입니다. 단순 수동 편집에는 필요하지 않습니다. 이력은 실제 출전시간이 아닌 저장된 배정 기록입니다. 영상·15분 연습 자료는 참석·모임정보에서 날짜별로 편집합니다.</p></details>
       <details><summary>저장 실패·충돌·접속 지연</summary><p>저장 실패나 충돌이 보이면 창을 닫지 마세요. 연결 문제는 ‘저장 다시 시도’, 다른 기기와 충돌했다면 현재 작업을 확인한 후 ‘서버 내용 다시 불러오기’를 선택합니다. 다시 불러올 때 미저장 편집을 버릴지 묻습니다. 다른 기기의 결과를 자동 덮어쓰지 않습니다.</p><p>접속이 오래 걸리면 네트워크를 바꾸거나 카카오톡 밖의 브라우저로 열어 보세요. 활약투표에서 한도 오류가 나면 재투표를 반복하지 말고 운영자에게 알려 주세요. 선택 원본을 공개하거나 권한을 완화해서 해결하면 안 됩니다.</p></details>
       <details><summary>삭제·엑셀 업로드와 감독 계정 인계</summary><p>선수 엑셀 업로드는 기존 선수 목록을 통째로 교체하는 기능입니다. 일반적인 수정에는 개별 선수 편집을 사용하세요. 출석 체크 저장은 이제 추가만 합니다. 체크 해제·중복 기록은 삭제하지 않습니다. 행별 삭제·범위 삭제·지난 투표 삭제는 여전히 영구 삭제이므로 확인과 별도 승인이 필요합니다.</p><p>새 감독에게 관리자 권한을 주는 것과 비공개 설문 전체 조회 권한을 주는 것은 별도입니다. 계정을 공유하지 말고 소유자의 승인 아래 인계하세요. Firebase 설정·Rules·배포는 저장소 운영 문서를 기준으로 별도 승인 후 진행합니다.</p></details>
-      <details><summary>경기 인원·4/6쿼터를 바꿀 때</summary><p>9인제는 3-4-1, 10인제는 3-4-2, 11인제는 포메이션을 선택합니다. 인원 수와 쿼터 수는 다릅니다. 4쿼터로 바꾸면 보관된 5·6쿼터는 공개·집계에 포함되지 않습니다. 다시 6쿼터로 바꾼 뒤 명단·포메이션·빈자리를 확인하고 공개하세요. 쿼터 선택만으로 필드 배치를 다시 만들지 않습니다.</p><p>팀별 탭에서 모든 쿼터를 보며 선수를 이동합니다. ‘라인업 생성’은 해당 팀의 배치를 다시 만들므로 수동으로 완성한 뒤에는 누르지 마세요. 마지막으로 양 팀 심판·키퍼·휴식을 함께 확인합니다.</p></details>
+      <details><summary>경기 인원·4/6쿼터를 바꿀 때</summary><p>9인제는 3-4-1, 10인제는 4-1-3-1 또는 3-4-2, 11인제는 포메이션을 선택합니다. 3-4-2에는 풀백·공미 자리가 없습니다. 그 역할의 훈련을 유지하려면 10인제에서 4-1-3-1을 선택하세요. 1지망 기회를 위해 필요하면 3+3쿼터 묶음을 나눕니다. 인원 수와 쿼터 수는 다릅니다. 4쿼터로 바꾸면 보관된 5·6쿼터는 공개·집계에 포함되지 않습니다. 다시 6쿼터로 바꾼 뒤 명단·포메이션·빈자리를 확인하고 공개하세요. 쿼터 선택만으로 필드 배치를 다시 만들지 않습니다.</p><p>팀별 탭에서 모든 쿼터를 보며 선수를 이동합니다. ‘라인업 생성’은 해당 팀의 배치를 다시 만들므로 수동으로 완성한 뒤에는 누르지 마세요. 마지막으로 양 팀 심판·키퍼·휴식을 함께 확인합니다.</p></details>
       <details><summary>현장 출석·수금: 한 명씩 눌러도 저장되나요?</summary><p>참석 투표를 실제 출석으로 간주하지 마세요. 경기 날짜와 실제 도착자를 확인해 출석에 추가한 뒤 수금 체크를 사용합니다. 완납은 정해진 회비를 자동 채우고, 일부 납부는 실제 받은 금액과 납부방식을 입력합니다. 일부 납부자는 미수금 목록에 계속 남습니다.</p><p>일반·학생·운영진 구분과 천연잔디 여부를 먼저 확인하세요. 기록을 추가한 뒤 선수의 회비유형을 바꾸어도 과거 금액을 일괄 변경하지 않습니다. 비고는 해당 날짜 기록과 다음 모임용 선수 비고에 각각 저장됩니다. 과거 비고를 자동 고치지 않습니다.</p><p>회계 상단의 ‘모든 변경 저장됨’을 확인합니다. 실패 시 창을 닫지 않고 ‘다시 저장’을 누르세요. 입력은 기기 메모리에만 남아 있으므로 새로고침하면 잃을 수 있습니다. 불참 처리는 단순 체크 해제가 아니라 해당 날짜의 실제 기록을 검토해 결정하세요.</p></details>
       <details><summary>새 감독에게 인계: 앱 권한과 서비스 소유권은 다릅니다</summary><p><b>비밀번호를 넘기지 말고 새 감독 본인 계정을 초대하세요.</b> ① 앱 운영자 권한 ② 비공개 포지션 설문 전체 조회 권한 ③ Firebase/Google Cloud 운영·청구 권한 ④ GitHub 저장소 권한 ⑤ Vercel 프로젝트 권한을 각각 확인해야 합니다.</p><p>Firebase는 기존 프로젝트의 담당자를 인계하는 것이 기본입니다. 새 프로젝트로 데이터를 옮기는 작업은 필요하지 않습니다. 기존 담당자는 새 담당자의 접근과 비용 책임이 확인될 때까지 남아 있어야 합니다. 앱 관리자 등록만으로 Firebase Console 권한이나 비공개 설문 권한이 생기지는 않습니다.</p><p>GitHub·Vercel은 먼저 공동 접근을 설정하고, 소유권을 실제로 옮길 필요가 있을 때 별도 승인 후 이전하세요. 저장소 이름·연결·운영 브랜치 master·도메인·배포 설정을 확인합니다. Vercel 팀을 바꾸면 Firebase 서버 연결에 사용 중인 OIDC 신뢰 조건도 재검토해야 합니다. 설정값과 토큰은 카톡이나 문서에 붙이지 마세요.</p><p>상세 체크리스트는 저장소 <b>docs/HANDOVER.md</b>에 있습니다. 새 담당자 확인 → 승인된 변경 → 운영 읽기 확인 → 기존 담당자 권한 정리 순서를 지킵니다. 코드를 이전 배포로 돌려도 이미 저장된 운영 데이터가 자동 복구되지는 않습니다.</p></details>
     </article>`;
@@ -584,6 +584,7 @@ const BP_I18N = {
 
 function renderSharePageView(shareData) {
     const POS_MAP = { '4-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 75}, {pos: 'CB', x: 65, y: 80}, {pos: 'CB', x: 35, y: 80}, {pos: 'LB', x: 15, y: 75}, {pos: 'RW', x: 85, y: 45}, {pos: 'CM', x: 65, y: 55}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 15, y: 45}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-3-3': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 88, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 12, y: 78}, {pos: 'CM', x: 50, y: 65}, {pos: 'MF', x: 70, y: 50}, {pos: 'MF', x: 30, y: 50}, {pos: 'RW', x: 80, y: 25}, {pos: 'FW', x: 50, y: 18}, {pos: 'LW', x: 20, y: 25} ], '3-5-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 75, y: 80}, {pos: 'CB', x: 50, y: 85}, {pos: 'CB', x: 25, y: 80}, {pos: 'RW', x: 90, y: 50}, {pos: 'CM', x: 65, y: 55}, {pos: 'MF', x: 50, y: 65}, {pos: 'CM', x: 35, y: 55}, {pos: 'LW', x: 10, y: 50}, {pos: 'FW', x: 60, y: 20}, {pos: 'FW', x: 40, y: 20} ], '4-2-3-1': [ {pos: 'GK', x: 50, y: 92}, {pos: 'RB', x: 85, y: 78}, {pos: 'CB', x: 65, y: 82}, {pos: 'CB', x: 35, y: 82}, {pos: 'LB', x: 15, y: 78}, {pos: 'MF', x: 60, y: 65}, {pos: 'MF', x: 40, y: 65}, {pos: 'RW', x: 80, y: 40}, {pos: 'MF', x: 50, y: 45}, {pos: 'LW', x: 20, y: 40}, {pos: 'FW', x: 50, y: 18} ], '3-4-2': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 80, y: 80}, {pos: 'CB', x: 50, y: 82}, {pos: 'CB', x: 20, y: 80}, {pos: 'RW', x: 85, y: 50}, {pos: 'CM', x: 60, y: 60}, {pos: 'CM', x: 40, y: 60}, {pos: 'LW', x: 15, y: 50}, {pos: 'FW', x: 65, y: 25}, {pos: 'FW', x: 35, y: 25} ], '3-4-1': [ {pos: 'GK', x: 50, y: 92}, {pos: 'CB', x: 80, y: 80}, {pos: 'CB', x: 50, y: 82}, {pos: 'CB', x: 20, y: 80}, {pos: 'RW', x: 85, y: 50}, {pos: 'CM', x: 60, y: 60}, {pos: 'CM', x: 40, y: 60}, {pos: 'LW', x: 15, y: 50}, {pos: 'FW', x: 50, y: 20} ] };
+    POS_MAP['4-1-3-1']=[{pos:'GK',x:50,y:92},{pos:'RB',x:85,y:78},{pos:'CB',x:65,y:82},{pos:'CB',x:35,y:82},{pos:'LB',x:15,y:78},{pos:'MF',x:50,y:65},{pos:'RW',x:80,y:40},{pos:'MF',x:50,y:45},{pos:'LW',x:20,y:40},{pos:'FW',x:50,y:18}];
     const T = BP_I18N[__bpLang]; // [v55] 현재 언어 사전
     const { meetingInfo = {}, teams: teamsObject = {}, lineups = {}, attendance = null } = shareData || {};
     // [v58] 🏷️ 팀 이름: 공유 데이터에 저장된 이름(Team A/B 또는 커스텀) → 없으면 언어별 '팀 N/TEAM N'
@@ -778,7 +779,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const __voteId = __p.get('voteId');
         const __shareId = __p.get('shareId');
         const __voteCurrent = __p.get('vote'); // 고정 링크 ?vote=current
-        if (__voteCurrent || __voteId) voteMgmt=await import('./modules/voteManagement.js?v=26');
+        if (__voteCurrent || __voteId) voteMgmt=await import('./modules/voteManagement.js?v=27');
         if (__voteCurrent) {
             window.__db = db;
             if (loadingOverlay) loadingOverlay.style.display = 'none';
@@ -812,10 +813,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     [playerMgmt,balancer,lineup,accounting,shareMgmt,voteMgmt,lineupStats,matchRecord,coachWorkspace,adminWorkflow]=await Promise.all([
         import('./modules/playerManagement.js?v=6'),import('./modules/teamBalancer.js?v=13'),
-        import('./modules/lineupGenerator.js?v=15'),import('./modules/accounting.js?v=9'),
-        import('./modules/shareManagement.js?v=16'),import('./modules/voteManagement.js?v=26'),
-        import('./modules/lineupStats.js?v=3'),import('./modules/matchRecord.js?v=3'),
-        import('./modules/coachWorkspace.js?v=6'),import('./modules/adminWorkflow.js?v=3')
+        import('./modules/lineupGenerator.js?v=16'),import('./modules/accounting.js?v=9'),
+        import('./modules/shareManagement.js?v=17'),import('./modules/voteManagement.js?v=27'),
+        import('./modules/lineupStats.js?v=3'),import('./modules/matchRecord.js?v=4'),
+        import('./modules/coachWorkspace.js?v=7'),import('./modules/adminWorkflow.js?v=3')
     ]);
     const modules = { playerMgmt, balancer, lineup, accounting, shareMgmt, voteMgmt, lineupStats, matchRecord, coachWorkspace, adminWorkflow };
     const dependencies = { db, state, auth };
@@ -835,7 +836,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const {mountPreferenceAdmin}=await import('./modules/positionPreferences.js?v=6');
     mountPreferenceAdmin(db,state);
     // Do not add the cycle-planning bundle to public RSVP, survey or lineup loads.
-    try { const cycles=await import('./modules/teamCycles.js?v=4');cycles.init(dependencies); }
+    try { const cycles=await import('./modules/teamCycles.js?v=5');cycles.init(dependencies); }
     catch { window.showNotification('고정팀 도구를 불러오지 못했습니다. 기존 팀 배정은 계속 사용할 수 있습니다.','error'); }
     
     const urlParams = new URLSearchParams(window.location.search);

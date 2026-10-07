@@ -70,18 +70,88 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   });
   const page=await context.newPage(), errors=[],dialogs=[];let cancelGuest=false,cancelRating=false;
   page.on('pageerror',e=>{errors.push(e.message);console.error('Isolated browser error:',e.message);});page.on('dialog',d=>{dialogs.push(d.message());return (cancelGuest&&/Guest|guest/.test(d.message()))||cancelRating?d.dismiss():d.accept();});
+  if(process.argv.includes('--training10')) {
+    await page.goto(base+'/');await page.waitForSelector('#operator-context');
+    await page.evaluate(async()=>{const {state}=await import('/js/store.js?v=3');const roles=['GK','RB','CB','CB','LB','DM','RW','AM','LW','FW','RB','CB'];state.trainingCycle={date:state.meetingDate,startDate:'2026-01-01',endDateExclusive:'2099-12-31',members:state.teams.flatMap(team=>team.map((p,i)=>({name:p.name,role:roles[i],second:roles[i]})))};document.dispatchEvent(new CustomEvent('barea:training'));});
+    await page.locator('#tab-lineup').click();
+    const untouched=await page.evaluate(async()=>JSON.stringify((await import('/js/store.js?v=3')).state.teamLineupCache[1]));
+    for(const t of [0,1]){
+      await page.locator(`.team-tab-btn[data-team-index="${t}"]`).click();
+      await page.locator('.match-size-btn[data-size="10"]').click();
+      await page.locator('#generateLineupButton').click();await page.waitForFunction(()=>!document.getElementById('generateLineupButton').disabled);
+      await page.evaluate(()=>flushMeetingSave());
+      const result=await page.evaluate(async t=>(await import('/js/store.js?v=3')).state.teamLineupCache[t],t);
+      assert.ok(result.formations.every(f=>f==='4-1-3-1'));
+      assert.ok(result.lineups.every(q=>Object.values(q).flat().length===10));
+      if(!t)assert.equal(await page.evaluate(async()=>JSON.stringify((await import('/js/store.js?v=3')).state.teamLineupCache[1])),untouched);
+      assert.equal(await page.locator('.training-report').count(),1);
+    }
+    await page.locator('#tab-share').click();await page.waitForSelector('#vote-status-panel button');
+    await page.locator('#tab-lineup').click();await page.locator('#generate-share-btn').click();
+    await page.waitForFunction(()=>__writes.some(w=>w.path.startsWith('shares/')));
+    const published=await page.evaluate(()=>__writes.find(w=>w.path.startsWith('shares/')));
+    await context.addInitScript(p=>{__fixture[p.path]=p.value;},published);
+    await page.goto(base+'/share.html?shareId='+published.path.split('/')[1]);await page.waitForSelector('.bp-quarter');
+    assert.equal(await page.locator('.bp-quarter').count(),12);
+    assert.equal(await page.locator('.bp-quarter').first().locator('.bp-marker').count(),10);
+    await page.locator('#bp-image-open').click();await page.getByRole('button',{name:'이미지 만들기',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('img[alt*="6쿼터"]')?.naturalWidth===1500);
+    assert.equal(await page.evaluate(()=>__writes.length),0);
+    assert.deepEqual(errors,[]);console.log('PASS: 10-a-side mode, both squads generated, other lineup preserved, primary report, publication and image export (mock Firebase only).');
+    await context.close();return;
+  }
+  if(process.argv.includes('--tidy')) {
+    await page.goto(base+'/');await page.waitForSelector('#operator-context');
+    await page.evaluate(()=>changeMeetingDate('2026-10-07'));await page.locator('#tab-balancer').click();
+    assert.equal(await page.locator('#team-cycle-settings').getAttribute('open'),null);
+    assert.equal(await page.locator('#team-cycle-training').getAttribute('aria-pressed'),'true');
+    for(const width of [390,1440]){
+      await page.setViewportSize({width,height:960});
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+      await page.locator('#team-cycle-panel').screenshot({path:path.join(process.env.TEMP||root,`bareaplay-tidy-mode-${width}.png`)});
+    }
+    await page.locator('#tab-lineup').click();
+    assert.equal(await page.locator('#coach-planner').getAttribute('open'),null);
+    assert.ok(await page.evaluate(()=>!!(document.getElementById('lineup-display').compareDocumentPosition(document.getElementById('coach-planner'))&Node.DOCUMENT_POSITION_FOLLOWING)));
+    assert.equal(await page.evaluate(()=>__writes.length),0);
+    await page.locator('#tab-share').click();await page.locator('#coach-review-settings>summary').click();
+    await page.locator('#coach-week-date').fill(next);
+    await page.evaluate(next=>__fixture['coachWeeks/'+next]={segmentKo:'preserved legacy video',extraSentinel:42},next);
+    await page.locator('#coach-week-load').click();await page.waitForSelector('#coach-week-save');
+    assert.equal(await page.locator('.video-editor').count(),0);
+    await page.locator('#coach-review-date').fill(past);await page.locator('#coach-week-save').click();
+    await page.waitForFunction(()=>__writes.length===1);
+    assert.deepEqual(await page.evaluate(next=>[__fixture['coachWeeks/'+next].segmentKo,__fixture['coachWeeks/'+next].extraSentinel,__fixture['coachWeeks/'+next].reviewDate],next),['preserved legacy video',42,past]);
+    await page.goto(base+'/?vote=current');await page.waitForSelector('.team-guide-entry');
+    assert.equal(await page.locator('#v-lesson,a[href="/?preferences=1"]').count(),0);
+    for(const width of [390,1440]){await page.setViewportSize({width,height:960});await page.locator('.team-guide-entry').screenshot({path:path.join(process.env.TEMP||root,`bareaplay-tidy-entry-${width}.png`)});}
+    await page.locator('.team-guide-entry').click();await page.waitForSelector('#guide-teams .guide-team');
+    for(const width of [390,1440]){await page.setViewportSize({width,height:960});await page.locator('#teams').screenshot({path:path.join(process.env.TEMP||root,`bareaplay-tidy-roster-${width}.png`)});}
+    for(const section of ['learn','rules']){await page.locator('#'+section+' details').evaluateAll(nodes=>nodes.forEach(n=>n.open=true));await page.setViewportSize({width:390,height:960});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);}
+    assert.equal(await page.evaluate(()=>__reads.length),0);assert.deepEqual(errors,[]);
+    console.log('PASS: simplified desktop/mobile controls, advanced tools below lineups, hidden surveys/videos, preserved review overrides and legacy fields, no automatic writes.');
+    await context.close();return;
+  }
   if(process.argv.includes('--cycle2026')) {
     await page.goto(base+'/');await page.waitForSelector('#operator-context');
     await page.evaluate(()=>changeMeetingDate('2026-10-07'));
-    await page.locator('#tab-balancer').click();await page.locator('#team-cycle-panel>summary').click();
+    await page.locator('#tab-balancer').click();
     await page.waitForFunction(()=>document.getElementById('team-cycle-training-status').textContent.includes('8주 훈련 포지션 우선'));
     assert.equal(await page.evaluate(()=>__writes.length),0);
     const existing=await page.evaluate(async()=>{const {state}=await import('/js/store.js?v=3');return JSON.stringify({teams:state.teams,cache:state.teamLineupCache});});
     await page.locator('#team-cycle-standard').click();await page.reload();await page.waitForSelector('#operator-context');
     assert.match(await page.locator('#team-cycle-training-status').textContent(),/꺼짐/);
-    await page.locator('#tab-balancer').click();await page.locator('#team-cycle-panel>summary').click();
+    await page.locator('#tab-balancer').click();
     await page.locator('#team-cycle-training').click();
     assert.match(await page.locator('#team-cycle-training-status').textContent(),/8주 훈련 포지션 우선/);
+    await page.locator('#team-cycle-settings>summary').click();
+    const activeBefore=await page.evaluate(async()=>JSON.stringify((await import('/js/store.js?v=3')).state.trainingCycle));
+    await page.locator('#team-cycle-load').click();
+    await page.waitForFunction(()=>document.getElementById('team-cycle-status').textContent.includes('확인했습니다'));
+    assert.equal(await page.evaluate(async()=>JSON.stringify((await import('/js/store.js?v=3')).state.trainingCycle)),activeBefore,'reading plans must not disable training');
+    await page.locator('#team-cycle-source').selectOption('');
+    assert.equal(await page.evaluate(async()=>JSON.stringify((await import('/js/store.js?v=3')).state.trainingCycle)),activeBefore,'browsing plans must not disable training');
+    await page.locator('#team-cycle-source').selectOption('0');
     assert.equal(await page.evaluate(async()=>{const {state}=await import('/js/store.js?v=3');return JSON.stringify({teams:state.teams,cache:state.teamLineupCache});}),existing);
     await page.evaluate(()=>document.getElementById('attendees').value='최준경\n전성우\n송진호\n김건효\nGuest One');
     await page.locator('#team-cycle-match').click();await page.locator('#team-cycle-use').click();
@@ -94,10 +164,13 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
     assert.deepEqual(applied.order,['최준경','전성우','송진호','김건효','Guest One'],'team grouping must not replace RSVP order');
     assert.ok((await page.evaluate(()=>__writes)).every(w=>w.path.startsWith('dailyMeetings/')));
     await page.goto(base+'/?vote=current');await page.waitForSelector('a[href="/team-guide.html"]');
+    assert.equal(await page.locator('#v-lesson, a[href="/?preferences=1"]').count(),0,'retired video and survey entries hidden, data untouched');
     await page.locator('a[href="/team-guide.html"]').click();await page.waitForSelector('#guide-teams .guide-team');
     assert.equal(await page.locator('#guide-teams .guide-team').count(),2);
     assert.match(await page.locator('#guide-teams').textContent(),/전성우/);
-    assert.doesNotMatch(await page.locator('#guide-teams').textContent(),/능력치|평균|고태호|차민수|정우영/);
+    assert.doesNotMatch(await page.locator('#guide-teams').textContent(),/능력치|평균|고태호|차민수|정우영|비정기|대체/);
+    assert.match(await page.locator('#guide-teams').textContent(),/정명일 \(2지망: 공격수\)/);
+    assert.match(await page.locator('#guide-teams').textContent(),/송진호 \(부족 포지션 담당\)/);
     assert.equal(await page.evaluate(()=>__reads.length),0,'public guide makes no Firebase reads');
     for(const width of [390,1440]){
       await page.setViewportSize({width,height:960});
@@ -304,7 +377,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
     const initial=await page.evaluate(()=>structuredClone(__fixture));
     assert.equal(await page.evaluate(()=>__writes.length),0);
     assert.equal(await page.evaluate(()=>__reads.some(p=>p==='privatePositionPreferences'||p==='teamCycles')),false);
-    await page.locator('#team-cycle-panel>summary').click();await page.locator('#team-cycle-start').fill(today);
+    await page.locator('#team-cycle-settings>summary').click();await page.locator('#team-cycle-start').fill(today);
     await page.locator('#team-cycle-roster').click();await page.locator('#team-cycle-build').click();
     assert.equal(await page.locator('#team-cycle-draft [data-team]').count(),24);assert.equal(await page.evaluate(()=>__writes.length),0);
     await page.locator('#team-cycle-save').click();await page.waitForFunction(()=>__writes.length===1);
@@ -410,12 +483,12 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   }
   await page.goto(base+'/?vote=current');await page.waitForSelector('.match-review-link');
   assert.equal(await page.locator('#review-name').count(),0,'ratings must have a separate screen');
-  assert.equal(await page.locator('.preparation-card').getAttribute('open'),null,'resources start collapsed');
-  assert.equal(await page.locator('.video-guideline a').count(),6);
+  assert.equal(await page.locator('.preparation-card').count(),0,'weekly videos replaced by one handbook entry');
+  assert.equal(await page.locator('.team-guide-entry').count(),1);
   assert.equal(await page.locator('.attendance-stat').count(),3,'only going/maybe/absent summary cards');
   assert.equal(await page.locator('.attendance-stat.wait').count(),0);
   assert.equal(await page.locator('.waitlist-count').count(),0,'hide waiting badge when empty');
-  assert.match(await page.locator('.attendance-footnote').textContent(),/심판은 전체, 키퍼·휴식은 팀별/);
+  assert.match(await page.locator('.attendance-footnote').textContent(),/심판은 전체, 키퍼·휴식은 팀별|8주 운영: 출전 횟수 균등 우선/);
   assert.doesNotMatch(await page.locator('.attendance-footnote').textContent(),/GUEST/);
   assert.equal(await page.locator('#v-board a').getAttribute('href'),'/share.html?shareId=test-share');
   await page.locator('#v-map a').waitFor();
@@ -520,7 +593,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
       await page.waitForFunction(n=>__writes.some(w=>w.path==='votes/test-vote/responses/'+n),name);
       assert.equal(await page.evaluate(n=>typeof __fixture['votes/test-vote/responses/'+n].updatedAt.seconds,name),'number');
     }
-    await page.locator('.preparation-card>summary').click();assert.equal(await page.locator('.referee-lesson').count(),1);
+    assert.equal(await page.locator('.team-guide-entry').count(),1);
     await page.goto(base+'/');await page.waitForSelector('#operator-context:visible');
     assert.equal(await page.evaluate(()=>__writes.length),0,'operator dashboard must not auto-save');
     assert.equal(await page.locator('#avoid-repeat').isChecked(),false);
@@ -529,11 +602,11 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
     assert.equal(await page.locator('.lineup-view-bar').count(),0);
     assert.equal(await page.locator('#coach-planner').getAttribute('open'),null,'advanced coach controls start collapsed');
     assert.equal(await page.locator('.operator-steps').count(),0,'no duplicate navigation');
-    await page.locator('#tab-balancer').click();await page.locator('#team-cycle-panel>summary').click();
-    assert.equal(await page.locator('#team-cycle-load').isDisabled(),true,'cycle storage gated until Rules approval');
+    await page.locator('#tab-balancer').click();await page.locator('#team-cycle-settings>summary').click();
+    assert.equal(await page.locator('#team-cycle-load').isDisabled(),false,'cycle Rules were approved in the previous release');
     assert.equal(await page.evaluate(()=>__writes.length),0,'cycle tools must not save on load');
-    await page.locator('#tab-share').click();await page.locator('#coach-week-load').click();await page.waitForSelector('.video-editor');
-    assert.equal(await page.locator('.video-editor-row').count(),12);
+    await page.locator('#tab-share').click();await page.locator('#coach-review-settings>summary').click();await page.locator('#coach-week-load').click();await page.waitForSelector('#coach-review-date');
+    assert.equal(await page.locator('.video-editor-row').count(),0);
     assert.equal(await page.evaluate(()=>__writes.length),0);
     await page.goto(base+'/?preferences=1');await page.waitForSelector('#preference-body');
     assert.equal(await page.locator('#preference-save').count(),0,'private survey stays closed until Rules deployment approval');
@@ -548,7 +621,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
     assert.equal(await page.locator('#preference-name').isDisabled(),true);
     assert.ok(await page.evaluate(()=>__reads.filter(p=>p.startsWith('privatePositionPreferences')).every(p=>p==='privatePositionPreferences/test-admin')),'public survey reads only the signed-in account');
     assert.deepEqual(await page.evaluate(()=>__fixture['players/Test 01']),data['players/Test 01'],'survey never overwrites a player profile');
-    assert.deepEqual(errors,[]);console.log('PASS: targeted operations checks — guest cancel/confirm, RSVP timestamps/order, ballot UI privacy, referee lesson, read-only operator workflow and video editor.');
+    assert.deepEqual(errors,[]);console.log('PASS: targeted operations checks — guest cancel/confirm, RSVP timestamps/order, ballot privacy, handbook entry, optional review-date settings and private survey access.');
     await context.close();return;
   }
   // A past deadline must retain an existing attendee's place but waitlist a new guest.
@@ -571,8 +644,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   assert.deepEqual(positions,{sameRow:true,separate:true});
   await page.locator('#v-lang').click();await page.waitForSelector('.match-review-link');
   await page.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-vote-desktop.png'),fullPage:true});
-  await page.locator('.preparation-card>summary').click();
-  assert.equal(await page.locator('.practice-instructions p').count(),5);
+  assert.equal(await page.locator('.team-guide-entry').count(),1);
   await page.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-vote-resources.png'),fullPage:true});
   await page.setViewportSize({width:320,height:740});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'320px expanded overflow');
@@ -596,7 +668,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   await page.locator('#coach-partial-preview').click();await page.locator('#coach-apply').waitFor();
   assert.equal(await page.evaluate(()=>__writes.filter(w=>w.path.startsWith('dailyMeetings/')).length),0,'preview must not save lineups');
   await page.locator('#coach-apply').click();await page.waitForFunction(()=>__writes.some(w=>w.path.startsWith('dailyMeetings/')));
-  await page.locator('#tab-share').click();await page.locator('#coach-week-date').fill(next);await page.locator('#coach-week-load').click();await page.locator('#coach-week-save').waitFor();
+  await page.locator('#tab-share').click();await page.locator('#coach-review-settings>summary').click();await page.locator('#coach-week-date').fill(next);await page.locator('#coach-week-load').click();await page.locator('#coach-week-save').waitFor();
   await page.locator('#coach-week-save').click();await page.waitForFunction(()=>__writes.some(w=>w.path.startsWith('coachWeeks/')));
   await page.locator('#tab-players').click();await page.locator('#coach-profile-name').fill('Guest X');await page.locator('#coach-profile-load').click();await page.locator('#coach-profile-save').waitFor();await page.locator('[data-role="mentor"]').check();await page.locator('#coach-profile-save').click();await page.waitForFunction(()=>__writes.some(w=>w.path.startsWith('coachPlayers/')));
   await page.locator('#tab-lineup').click();await page.locator('#coach-load').click();await page.locator('[data-lock-name="Test 02"][data-q="0"]').uncheck();await page.locator('#coach-save-locks').click();
@@ -641,7 +713,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   await page.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-vote-mobile-preview.png'),fullPage:true});
   await page.setViewportSize({width:1440,height:1080});
   await page.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-vote-desktop.png'),fullPage:true});
-  await page.locator('.preparation-card>summary').click();
+  assert.equal(await page.locator('.team-guide-entry').count(),1);
   await page.screenshot({path:path.join(process.env.TEMP||root,'bareaplay-vote-resources.png'),fullPage:true});
   await page.locator('.match-review-link').click();await page.waitForSelector('#review-match-video');
   await page.setViewportSize({width:390,height:844});
