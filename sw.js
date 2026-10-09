@@ -1,21 +1,21 @@
 // sw.js
-const CACHE_NAME = 'bareaplay-cache-v80';
+const CACHE_NAME = 'bareaplay-cache-v81';
 const urlsToCache = [
-    '/', '/index.html', '/share.html', '/team-guide.html', '/css/style.css',
-    '/css/team-guide.css?v=2', '/js/modules/teamGuide.js?v=2', '/js/modules/approvedCycle.js?v=1',
+    '/', '/index.html', '/share.html', '/team-guide.html', '/team-guide-en.html', '/css/style.css',
+    '/css/team-guide.css?v=3', '/js/modules/teamGuide.js?v=3', '/js/modules/approvedCycle.js?v=1',
     '/css/match-hub.css?v=6',
     '/css/operations.css?v=2',
     '/css/brand.css?v=2',
     '/js/modules/quarters.js?v=1',
     '/js/modules/saveQueue.js?v=1',
-    '/js/app.js?v=36',
+    '/js/app.js?v=37',
     '/js/store.js?v=3',
     '/js/modules/playerManagement.js?v=6',
     '/js/modules/teamBalancer.js?v=13',
     '/js/modules/lineupGenerator.js?v=16',
     '/js/modules/accounting.js?v=9',
     '/js/modules/shareManagement.js?v=17',
-    '/js/modules/voteManagement.js?v=27',
+    '/js/modules/voteManagement.js?v=28',
     '/js/modules/voteTiming.js?v=1',
     '/js/modules/shareLineupValidation.js?v=2',
     '/js/modules/lineupStats.js?v=3',
@@ -34,11 +34,11 @@ const urlsToCache = [
     '/js/modules/positionPreferences.js?v=6',
     '/js/modules/positionPreferencesCore.js?v=4',
     '/js/modules/weeklyContent.js?v=5',
-    '/js/modules/votePage.js?v=17',
+    '/js/modules/votePage.js?v=18',
     '/js/modules/ratingIdentity.js?v=1',
     '/js/modules/ratingService.js?v=3',
     '/js/modules/coachWorkspace.js?v=7',
-    '/js/modules/matchRecord.js?v=4',
+    '/js/modules/matchRecord.js?v=5',
     '/manifest.json', '/favicon.ico', '/assets/icon-512.png'
 ];
 // Keep versioned URLs above as the cache manifest. Public visits need not download

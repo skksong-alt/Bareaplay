@@ -6,9 +6,10 @@
 //  ④ 시즌 요약: 쌓인 기록에서 개인별 쿼터 승률·활약점수를 자동 파생 (추가 입력 없음)
 //  ※ 출석(attendance)·회비(expenses) 데이터는 전혀 건드리지 않는다. 새 컬렉션(matchRecords, ratings)만 사용.
 import { doc, getDoc, getDocs, runTransaction, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+import { meetingFingerprint } from './meetingSession.js?v=2';
 
 let db, state;
-let dateInput, teamsInfoEl, scoreRowsEl, eloBox, rateBox, seasonBox;
+let dateInput, teamsInfoEl, scoreRowsEl, eloBox, rateBox, seasonBox, saveStatus;
 let currentTeams = [];     // 선택 날짜의 팀 명단 [[이름,...], ...]
 let currentTeamNames = []; // [v58] 선택 날짜의 팀 이름 (dailyMeetings.teamNames)
 let currentRecord = null;  // matchRecords/{date} 문서 데이터
@@ -21,6 +22,25 @@ let currentQuarterCount=6, loadVersion=0, loadedDate='', saving=false;
 
 function localToday() { return window.getLocalDate ? window.getLocalDate() : new Date().toISOString().split('T')[0]; }
 function cleanName(s) { return String(s == null ? '' : s).replace(' (신규)', '').normalize('NFC').trim(); }
+function scoreStatus(message, failed=false) {
+    saveStatus.textContent=message;
+    saveStatus.className=`mt-3 text-sm ${failed?'text-red-600':'text-emerald-700'}`;
+}
+function scoreFailure(error) {
+    const code=String(error?.code||'').replace('firestore/','');
+    if(code==='record-conflict')return error.message;
+    if(code==='resource-exhausted')return 'Firebase 사용량 한도로 저장하지 못했습니다. 입력은 유지됩니다. 한도가 회복된 후 다시 저장하세요.';
+    if(code==='permission-denied'||code==='unauthenticated')return '저장 권한을 확인할 수 없습니다. 관리자 로그인 상태를 확인하세요. 입력은 유지됩니다.';
+    if(code==='unavailable'||code==='deadline-exceeded')return '서버 응답을 확인하지 못했습니다. 입력은 유지됩니다. 연결을 확인한 뒤 다시 저장하세요.';
+    return '스코어 저장에 실패했습니다. 입력은 유지됩니다. 다시 저장해 주세요.';
+}
+function setSaving(value) {
+    saving=value;
+    document.getElementById('record-save-btn').disabled=value||loadedDate!==dateInput.value;
+    document.getElementById('record-save-btn').textContent=value?'저장 중…':'💾 스코어 저장';
+    dateInput.disabled=value;document.getElementById('record-load-btn').disabled=value;
+    scoreRowsEl.querySelectorAll('input,select').forEach(input=>input.disabled=value);
+}
 
 export function init(dependencies) {
     db = dependencies.db;
@@ -39,12 +59,13 @@ export function init(dependencies) {
             <div id="record-teams-info" class="text-sm text-gray-600 mb-3"></div>
             <div id="record-score-rows" class="space-y-2 mb-4"></div>
             <button id="record-save-btn" class="w-full md:w-auto bg-indigo-600 text-white font-bold py-2.5 px-6 rounded-lg hover:bg-indigo-700">💾 스코어 저장</button>
+            <p id="record-save-status" class="mt-3 text-sm" role="status" aria-live="polite"></p>
         </div>
         <div id="record-elo-box" class="bg-white p-6 rounded-2xl shadow-lg mt-6"></div>
         <div id="record-rate-box" class="bg-white p-6 rounded-2xl shadow-lg mt-6"></div>
         <div class="bg-white p-6 rounded-2xl shadow-lg mt-6">
             <div class="flex items-center justify-between mb-2"><h3 class="text-xl font-bold">📈 시즌 요약</h3><button id="season-refresh-btn" class="text-sm text-indigo-600 hover:underline">집계 새로고침</button></div>
-            <p class="text-xs text-gray-400 mb-3">선택된 4·6쿼터의 팀 결과를 당시 팀 명단에 집계합니다. 휴식·심판을 제외한 실제 개인 출전 승률은 아니며 능력치 평가에 직접 사용하지 않습니다.</p>
+            <p class="text-sm text-gray-500 mb-3">스코어는 팀 결과, 활약투표는 동료가 기억한 좋은 플레이입니다. 팀 패배로 개인 능력치나 활약점수가 깎이지 않습니다. 아래는 이름순 참고 기록이며 개인 실력 순위가 아닙니다. 소속 팀 결과에는 휴식·심판 쿼터도 포함됩니다.</p>
             <div id="season-box" class="overflow-x-auto"><p class="text-sm text-gray-400">[집계 새로고침]을 누르면 계산됩니다.</p></div>
         </div>`;
 
@@ -54,6 +75,7 @@ export function init(dependencies) {
     eloBox = document.getElementById('record-elo-box');
     rateBox = document.getElementById('record-rate-box');
     seasonBox = document.getElementById('season-box');
+    saveStatus = document.getElementById('record-save-status');
 
     dateInput.value = localToday();
     dateInput.addEventListener('change', loadDate);
@@ -70,8 +92,10 @@ export function onShow() {
 }
 
 async function loadDate() {
+    if(saving)return;
     const date = dateInput.value || localToday(), version=++loadVersion;
     loadedDate='';document.getElementById('record-save-btn').disabled=true;
+    scoreStatus('경기 기록을 불러오는 중…');
     teamsInfoEl.innerHTML = '<p class="text-gray-400">불러오는 중...</p>';
     scoreRowsEl.innerHTML = '';
     currentTeams = []; currentTeamNames = []; currentRecord = null;
@@ -91,8 +115,9 @@ async function loadDate() {
             const teamsObj = mSnap.data().teams || {};
             currentTeams = Object.keys(teamsObj).sort().map(k => (teamsObj[k] || []).map(p => cleanName(p.name)).filter(Boolean));
         }
-    } catch (e) { if(version!==loadVersion)return; teamsInfoEl.textContent='경기 정보를 불러오지 못했습니다. 다시 불러오기를 눌러 주세요.';return; }
+    } catch (e) { if(version!==loadVersion)return; teamsInfoEl.textContent='경기 정보를 불러오지 못했습니다. 다시 불러오기를 눌러 주세요.';scoreStatus('기록 조회에 실패했습니다. 불러오기를 다시 눌러 주세요.',true);return; }
     document.getElementById('record-save-btn').disabled=saving;
+    scoreStatus(currentTeams.length>=2?`${date} 기록을 불러왔습니다. 양 팀 점수를 입력한 뒤 저장하세요.`:'선택한 날짜에 팀 기록이 없습니다. 경기 날짜를 확인하세요.');
     renderTeamsInfo();
     renderScoreRows();
     renderEloBox();
@@ -138,12 +163,13 @@ async function saveScores() {
     if (currentTeams.length < 2) { window.showNotification('팀배정이 없어 저장할 수 없습니다.', 'error'); return; }
     const date = dateInput.value || localToday();
     const quarters = {};
-    let invalid=false;
+    let invalid=false,incomplete=false;
     scoreRowsEl.querySelectorAll('[data-q]').forEach(row => {
         const q = parseInt(row.dataset.q, 10);
         const sa = row.querySelector('.rq-sa').value;
         const sb = row.querySelector('.rq-sb').value;
-        if (sa === '' || sb === '') return; // 미입력 쿼터는 저장 안 함
+        if (sa === '' && sb === '') return; // 양쪽 빈칸은 기존 기록 보존
+        if (sa === '' || sb === '') {incomplete=true;return;}
         if(!Number.isInteger(Number(sa))||!Number.isInteger(Number(sb))||Number(sa)<0||Number(sb)<0||row.querySelector('.rq-a').value===row.querySelector('.rq-b').value){invalid=true;return;}
         quarters[`q_${q}`] = {
             a: parseInt(row.querySelector('.rq-a').value, 10),
@@ -152,30 +178,34 @@ async function saveScores() {
             sb: Math.max(0, parseInt(sb, 10) || 0)
         };
     });
-    if(invalid){window.showNotification('서로 다른 두 팀과 0 이상의 정수 점수를 입력하세요.','error');return;}
+    if(incomplete){scoreStatus('한쪽 점수만 입력된 쿼터가 있습니다. 양 팀 점수를 모두 입력하세요. 입력은 유지됩니다.',true);return;}
+    if(invalid){scoreStatus('서로 다른 두 팀과 0 이상의 정수 점수를 입력하세요.',true);return;}
+    if(!Object.keys(quarters).length){scoreStatus('저장할 점수가 없습니다. 최소 한 쿼터의 양 팀 점수를 입력하세요.',true);return;}
     const teamsSnapshot = {};
     currentTeams.forEach((t, i) => { teamsSnapshot[`team_${i}`] = t; });
-    saving=true;document.getElementById('record-save-btn').disabled=true;
-    const expected=JSON.stringify(currentRecord),count=currentQuarterCount;
+    setSaving(true);scoreStatus(`${date} 스코어를 저장하는 중…`);
+    const expected=meetingFingerprint(currentRecord),count=currentQuarterCount;
     try {
         const value=await runTransaction(db,async tx=>{
             const ref=doc(db,'matchRecords',date), snap=await tx.get(ref), existing=snap.exists()?snap.data():null;
-            if(JSON.stringify(existing)!==expected)throw new Error('다른 기기에서 기록을 수정했습니다. 덮어쓰지 않았습니다. 다시 불러와 확인하세요.');
+            if(meetingFingerprint(existing)!==expected){const error=new Error('다른 기기에서 경기 기록을 수정했습니다. 입력은 유지되며 덮어쓰지 않았습니다. 점수를 메모한 뒤 다시 불러와 확인하세요.');error.code='record-conflict';throw error;}
             const value={...existing,
             date,
-            teamsSnapshot,                                     // 저장 당시 팀 명단 (이후 팀배정이 바뀌어도 기록은 그대로)
+            teamsSnapshot:existing?.teamsSnapshot||teamsSnapshot, // 최초 기록의 팀 명단 보존
             quarterCount:count,
             quarters:{...existing?.quarters,...Object.fromEntries(Object.entries(quarters).map(([key,value])=>[key,{...existing?.quarters?.[key],...value}]))},
             eloApplied: !!existing?.eloApplied, // 이미 보정했으면 플래그 유지
             lastUpdatedAt: serverTimestamp()
             };tx.set(ref,value);return value;
         });
-        if(dateInput.value===date) {currentRecord=value;await loadDate();}
-        window.showNotification(`${date} 스코어 ${Object.keys(quarters).length}개 쿼터 저장 완료!`);
+        if(dateInput.value===date) currentRecord=value;
+        scoreStatus(`${date} 스코어 ${Object.keys(quarters).length}개 쿼터 저장 완료. 개인 능력치와 활약점수는 변경되지 않습니다.`);
+        window.showNotification(`${date} 스코어 저장 완료!`);
         renderEloBox();
     } catch (e) {
-        window.showNotification('저장 실패: ' + e.message, 'error');
-    } finally {saving=false;document.getElementById('record-save-btn').disabled=loadedDate!==dateInput.value;}
+        scoreStatus(scoreFailure(e),true);
+        window.showNotification('스코어 저장 실패. 버튼 아래 안내를 확인하세요.', 'error');
+    } finally {setSaving(false);}
 }
 
 // Team results cannot establish individual skill: do not write players here.
@@ -250,12 +280,7 @@ async function renderSeason() {
             Object.values(votes).forEach(v => ((v && v.picks) || []).forEach((n, i) => { ensure(n).pts += (3 - i); }));
         });
 
-        const names = Object.keys(stats).sort((a, b) => {
-            const sa = stats[a], sb = stats[b];
-            const ra = (sa.w + sa.d + sa.l) ? sa.w / (sa.w + sa.d + sa.l) : 0;
-            const rb = (sb.w + sb.d + sb.l) ? sb.w / (sb.w + sb.d + sb.l) : 0;
-            return (rb - ra) || (sb.pts - sa.pts);
-        });
+        const names = Object.keys(stats).sort((a,b)=>a.localeCompare(b,'ko'));
         if (names.length === 0) {
             seasonBox.innerHTML = '<p class="text-sm text-gray-400">아직 집계할 기록이 없습니다. 쿼터 스코어를 저장하면 여기에 쌓입니다.</p>';
             return;

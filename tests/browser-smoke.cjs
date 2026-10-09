@@ -23,7 +23,7 @@ export const onSnapshot=(p,options,callback,error)=>{const cb=typeof options==='
 const emit=p=>listeners.slice().filter(f=>f.path===p || (p.startsWith(f.path+'/') && p.split('/').length===f.path.split('/').length+1)).forEach(f=>f());
 function merge(a,b){for(const [k,v]of Object.entries(b)){if(v&&typeof v==='object'&&!Array.isArray(v)){a[k]||={};merge(a[k],v);}else a[k]=structuredClone(v);}return a;}
 export const setDoc=async(p,v,o)=>{globalThis.__writes.push({path:p,value:structuredClone(v),merge:!!o?.merge});data[p]=o?.merge?merge(data[p]||{},v):structuredClone(v);emit(p);};
-export const runTransaction=async(_,fn)=>{if(globalThis.__failSave)throw new Error('simulated offline');const writes=[];const value=await fn({get:getDoc,set:(p,v,o)=>writes.push([p,v,o])});for(const [p,v,o] of writes)await setDoc(p,v,o);return value;};
+export const runTransaction=async(_,fn)=>{if(globalThis.__failSave){const error=new Error('simulated offline');error.code=globalThis.__saveErrorCode||'unavailable';throw error;}const writes=[];const value=await fn({get:getDoc,set:(p,v,o)=>writes.push([p,v,o])});for(const [p,v,o] of writes)await setDoc(p,v,o);return value;};
 export const updateDoc=async(p,v)=>{globalThis.__writes.push({path:p,value:structuredClone(v),update:true});Object.assign(data[p],structuredClone(v));emit(p);};
 export const addDoc=async(p,v)=>{const id='new-'+globalThis.__writes.length;await setDoc(p+'/'+id,v);return{id};};
 export const deleteDoc=async()=>{throw new Error('DELETE FORBIDDEN IN TEST');};`;
@@ -59,6 +59,10 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
       const source=await readFile(path.join(root,'js/modules/positionPreferences.js'),'utf8');
       return route.fulfill({contentType:'text/javascript',body:source.replace(/POSITION_SURVEY_ENABLED=(?:true|false)/,`POSITION_SURVEY_ENABLED=${enableSurveyForTest}`)});
     }
+    if(url.startsWith(base)&&url.includes('/js/modules/matchRecord.js')&&process.argv.includes('--score-baseline')) {
+      const source=require('node:child_process').execFileSync('git',['show','db24b69:js/modules/matchRecord.js'],{cwd:root,encoding:'utf8'});
+      return route.fulfill({contentType:'text/javascript',body:source});
+    }
     if(url.startsWith(base))return route.continue();
     if(url.includes('firebase-firestore.js'))return route.fulfill({contentType:'text/javascript',body:firestore});
     if(url.includes('firebase-app.js'))return route.fulfill({contentType:'text/javascript',body:'export const initializeApp=()=>({});'});
@@ -70,6 +74,71 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   });
   const page=await context.newPage(), errors=[],dialogs=[];let cancelGuest=false,cancelRating=false;
   page.on('pageerror',e=>{errors.push(e.message);console.error('Isolated browser error:',e.message);});page.on('dialog',d=>{dialogs.push(d.message());return (cancelGuest&&/Guest|guest/.test(d.message()))||cancelRating?d.dismiss():d.accept();});
+  if(process.argv.includes('--scores')) {
+    await context.addInitScript(({today,names})=>{
+      __fixture['matchRecords/'+today]={date:today,teamsSnapshot:{team_0:names.slice(0,12),team_1:names.slice(12)},quarters:{q_0:{a:0,b:1,sa:0,sb:1},q_4:{a:0,b:1,sa:2,sb:1},q_5:{a:0,b:1,sa:3,sb:3}},eloApplied:true,lastUpdatedAt:{seconds:100},sentinel:'preserve'};
+    },{today,names});
+    await page.goto(base+'/');await page.waitForSelector('#operator-context');
+    const protectedBefore=await page.evaluate(()=>Object.fromEntries(Object.entries(__fixture).filter(([key])=>!key.startsWith('matchRecords/'))));
+    await page.locator('#tab-record').click();await page.waitForSelector('#record-score-rows [data-q]');
+    // Firestore map order and timestamp resolution must not create a false conflict.
+    await page.evaluate(today=>{const p='matchRecords/'+today;__fixture[p]=Object.fromEntries(Object.entries(__fixture[p]).reverse());__fixture[p].lastUpdatedAt={seconds:200};},today);
+    await page.locator('[data-q="1"] .rq-sa').fill('2');await page.locator('[data-q="1"] .rq-sb').fill('2');await page.locator('#record-save-btn').click();
+    await page.waitForFunction(()=>!document.getElementById('record-save-btn').disabled);
+    assert.deepEqual(await page.evaluate(today=>__fixture['matchRecords/'+today].quarters.q_1,today),{a:0,b:1,sa:2,sb:2},'score save must accept identical content with reordered fields/resolved timestamps');
+    assert.match(await page.locator('#record-save-status').textContent(),/저장 완료/);
+    assert.equal(await page.locator('[data-q="1"] .rq-sa').inputValue(),'2');
+    let writes=await page.evaluate(()=>__writes.length);
+    // A real score edit from another device is still a conflict, with local input retained.
+    await page.evaluate(today=>__fixture['matchRecords/'+today].quarters.q_0.sa=5,today);
+    await page.locator('[data-q="1"] .rq-sa').fill('3');await page.locator('#record-save-btn').click();await page.waitForFunction(()=>!document.getElementById('record-save-btn').disabled);
+    assert.match(await page.locator('#record-save-status').textContent(),/다른 기기/);
+    assert.equal(await page.locator('[data-q="1"] .rq-sa').inputValue(),'3');
+    assert.equal(await page.evaluate(()=>__writes.length),writes);
+    await page.locator('#record-load-btn').click();await page.waitForFunction(()=>!document.getElementById('record-save-btn').disabled);
+    await page.locator('[data-q="1"] .rq-sa').fill('3');
+    await page.evaluate(()=>{__failSave=true;__saveErrorCode='resource-exhausted';});
+    await page.locator('#record-save-btn').click();await page.waitForFunction(()=>!document.getElementById('record-save-btn').disabled);
+    assert.match(await page.locator('#record-save-status').textContent(),/사용량 한도/);assert.equal(await page.locator('[data-q="1"] .rq-sa').inputValue(),'3');
+    await page.evaluate(()=>__failSave=false);await page.locator('#record-save-btn').click();await page.waitForFunction(()=>!document.getElementById('record-save-btn').disabled);
+    assert.equal(await page.evaluate(today=>__fixture['matchRecords/'+today].quarters.q_1.sa,today),3);
+    const record=await page.evaluate(today=>__fixture['matchRecords/'+today],today);
+    assert.equal(record.eloApplied,true);assert.equal(record.sentinel,'preserve');assert.deepEqual(record.quarters.q_5,{a:0,b:1,sa:3,sb:3});
+    // Empty or half-filled rows must not silently save zero quarters.
+    for(const input of await page.locator('#record-score-rows input').all())await input.fill('');
+    writes=await page.evaluate(()=>__writes.length);await page.locator('#record-save-btn').click();
+    assert.match(await page.locator('#record-save-status').textContent(),/저장할 점수가 없습니다/);assert.equal(await page.evaluate(()=>__writes.length),writes);
+    await page.locator('[data-q="0"] .rq-sa').fill('1');await page.locator('#record-save-btn').click();
+    assert.match(await page.locator('#record-save-status').textContent(),/한쪽 점수/);assert.equal(await page.evaluate(()=>__writes.length),writes);
+    await page.locator('#season-refresh-btn').click();await page.waitForSelector('#season-box tbody tr');
+    assert.equal(await page.locator('#season-box tbody tr').first().locator('td').first().textContent(),'Test 01');
+    assert.deepEqual(await page.evaluate(()=>Object.fromEntries(Object.entries(__fixture).filter(([key])=>!key.startsWith('matchRecords/')))),protectedBefore);
+    assert.ok((await page.evaluate(()=>__writes)).every(w=>w.path.startsWith('matchRecords/')));assert.deepEqual(errors,[]);
+    console.log('PASS: score save/retry, real conflict protection, preserved input/history/ratings/players, alphabetical non-ranking summary. Mock Firebase only.');
+    await context.close();return;
+  }
+  if(process.argv.includes('--guide-en')) {
+    for(const width of [390,1440]){
+      await page.setViewportSize({width,height:1000});await page.goto(base+'/team-guide.html');await page.waitForSelector('#guide-teams .guide-team');
+      const roster=await page.locator('#guide-teams dd strong').allTextContents();
+      await page.getByRole('link',{name:'English',exact:true}).click();await page.waitForSelector('#guide-teams .guide-team');
+      assert.equal(await page.locator('html').getAttribute('lang'),'en');
+      assert.deepEqual(await page.locator('#guide-teams dd strong').allTextContents(),roster);
+      assert.equal(await page.locator('#learn details').count(),8);assert.equal(await page.locator('#rules details').count(),9);
+      assert.equal(await page.locator('#guide-teams').getByText('Right-back',{exact:false}).count()>0,true);
+      assert.equal(await page.evaluate(()=>localStorage.getItem('bp_lang')),'en');
+      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'English handbook has no horizontal overflow');
+      await page.screenshot({path:path.join(process.env.TEMP||root,`bareaplay-guide-en-${width}.png`),fullPage:false});
+      await page.getByRole('link',{name:'← Match RSVP',exact:true}).click();await page.waitForSelector('.team-guide-entry');
+      assert.equal(await page.locator('.team-guide-entry').getAttribute('href'),'/team-guide-en.html');
+      await page.locator('.team-guide-entry').click();await page.waitForSelector('#guide-teams .guide-team');
+      await page.getByRole('link',{name:'한국어',exact:true}).click();await page.waitForSelector('#guide-teams .guide-team');
+      assert.equal(await page.locator('html').getAttribute('lang'),'ko');assert.equal(await page.evaluate(()=>localStorage.getItem('bp_lang')),'ko');
+      assert.equal(await page.evaluate(()=>__writes.length),0);
+    }
+    assert.deepEqual(errors,[]);console.log('PASS: complete Korean/English handbook, same roster, 390/1440px, language switch and English RSVP link, no Firebase writes.');
+    await context.close();return;
+  }
   if(process.argv.includes('--training10')) {
     await page.goto(base+'/');await page.waitForSelector('#operator-context');
     await page.evaluate(async()=>{const {state}=await import('/js/store.js?v=3');const roles=['GK','RB','CB','CB','LB','DM','RW','AM','LW','FW','RB','CB'];state.trainingCycle={date:state.meetingDate,startDate:'2026-01-01',endDateExclusive:'2099-12-31',members:state.teams.flatMap(team=>team.map((p,i)=>({name:p.name,role:roles[i],second:roles[i]})))};document.dispatchEvent(new CustomEvent('barea:training'));});

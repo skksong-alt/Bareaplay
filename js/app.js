@@ -779,7 +779,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const __voteId = __p.get('voteId');
         const __shareId = __p.get('shareId');
         const __voteCurrent = __p.get('vote'); // 고정 링크 ?vote=current
-        if (__voteCurrent || __voteId) voteMgmt=await import('./modules/voteManagement.js?v=27');
+        if (__voteCurrent || __voteId) voteMgmt=await import('./modules/voteManagement.js?v=28');
         if (__voteCurrent) {
             window.__db = db;
             if (loadingOverlay) loadingOverlay.style.display = 'none';
@@ -814,8 +814,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     [playerMgmt,balancer,lineup,accounting,shareMgmt,voteMgmt,lineupStats,matchRecord,coachWorkspace,adminWorkflow]=await Promise.all([
         import('./modules/playerManagement.js?v=6'),import('./modules/teamBalancer.js?v=13'),
         import('./modules/lineupGenerator.js?v=16'),import('./modules/accounting.js?v=9'),
-        import('./modules/shareManagement.js?v=17'),import('./modules/voteManagement.js?v=27'),
-        import('./modules/lineupStats.js?v=3'),import('./modules/matchRecord.js?v=4'),
+        import('./modules/shareManagement.js?v=17'),import('./modules/voteManagement.js?v=28'),
+        import('./modules/lineupStats.js?v=3'),import('./modules/matchRecord.js?v=5'),
         import('./modules/coachWorkspace.js?v=7'),import('./modules/adminWorkflow.js?v=3')
     ]);
     const modules = { playerMgmt, balancer, lineup, accounting, shareMgmt, voteMgmt, lineupStats, matchRecord, coachWorkspace, adminWorkflow };
