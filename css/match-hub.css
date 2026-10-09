@@ -27,7 +27,7 @@
 .match-shell{max-width:1160px;margin:auto;padding:32px 32px 24px}
 .match-header{display:flex;align-items:center;justify-content:space-between;gap:20px;padding-bottom:25px;border-bottom:1px solid #dbe4de;margin-bottom:32px}
 .match-brand{display:flex;align-items:center;gap:12px}
-.match-crest{display:grid;place-items:center;width:44px;height:48px;background:#123f33;color:#e4edbd;clip-path:polygon(0 0,100% 0,100% 74%,50% 100%,0 74%);font-size:22px;font-weight:800;font-style:italic}
+.match-crest{display:block;width:48px;height:48px;flex:none;background:#fffdf7 url('/assets/barea-crest-96.png') center/contain no-repeat;border-radius:10px;font-size:0;color:transparent}
 .match-brand strong{display:block;font-size:23px;letter-spacing:-1px;line-height:1.1}
 .match-brand small{display:block;font-size:9px;letter-spacing:2px;margin-top:6px;color:#60766a}
 .match-page .language-button{border:1px solid #c9d7ce;border-radius:30px;background:transparent;padding:9px 16px;font-size:12px;font-weight:600;cursor:pointer;min-height:40px;color:#294b3e}

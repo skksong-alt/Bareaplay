@@ -74,6 +74,30 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   });
   const page=await context.newPage(), errors=[],dialogs=[];let cancelGuest=false,cancelRating=false;
   page.on('pageerror',e=>{errors.push(e.message);console.error('Isolated browser error:',e.message);});page.on('dialog',d=>{dialogs.push(d.message());return (cancelGuest&&/Guest|guest/.test(d.message()))||cancelRating?d.dismiss():d.accept();});
+  if(process.argv.includes('--brand')) {
+    for(const width of [390,1440]){
+      await page.setViewportSize({width,height:960});
+      for(const url of ['/','/?vote=current','/share.html?shareId=test-share']){
+        await page.goto(base+url);await page.waitForSelector('.match-crest');
+        const crest=await page.locator('.match-crest').first().evaluate(el=>({background:getComputedStyle(el).backgroundImage,font:getComputedStyle(el).fontSize,clip:getComputedStyle(el).clipPath}));
+        assert.match(crest.background,/barea-crest-96\.png/);assert.equal(crest.font,'0px');assert.equal(crest.clip,'none');
+        const image=await page.evaluate(async()=>{const img=new Image();img.src='/assets/barea-crest-96.png';await img.decode();return img.naturalWidth;});
+        assert.equal(image,96);assert.equal(await page.evaluate(()=>__writes.length),0);
+      }
+      for(const lang of ['','-en']){
+        await page.goto(base+`/team-guide${lang}.html`);await page.waitForSelector('#guide-teams .guide-team');
+        await page.waitForFunction(()=>document.querySelector('.guide-brand img').naturalWidth===96);
+        const roster=await page.locator('#guide-teams').textContent();assert.doesNotMatch(roster,/김우주/);assert.match(roster,/송진호/);
+        const chan=await page.evaluate(()=>{const row=[...document.querySelectorAll('#guide-teams dd')].find(el=>el.querySelector('strong')?.textContent==='이찬희');let heading=row.previousElementSibling;while(heading.tagName!=='DT')heading=heading.previousElementSibling;return {role:heading.textContent,choice:row.textContent};});
+        assert.match(chan.role,/CB/);assert.match(chan.choice,lang?/Right-back/:/오른쪽 풀백/);
+        assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+        await page.screenshot({path:path.join(process.env.TEMP||root,`bareaplay-brand${lang}-${width}.png`),fullPage:false});
+        assert.equal(await page.evaluate(()=>__writes.length),0);assert.equal(await page.evaluate(()=>__reads.length),0);
+      }
+    }
+    assert.deepEqual(errors,[]);console.log('PASS: approved clean logo in admin/vote/share/KO/EN, correct roster, 390/1440px; no Firebase writes.');
+    await context.close();return;
+  }
   if(process.argv.includes('--scores')) {
     await context.addInitScript(({today,names})=>{
       __fixture['matchRecords/'+today]={date:today,teamsSnapshot:{team_0:names.slice(0,12),team_1:names.slice(12)},quarters:{q_0:{a:0,b:1,sa:0,sb:1},q_4:{a:0,b:1,sa:2,sb:1},q_5:{a:0,b:1,sa:3,sb:3}},eloApplied:true,lastUpdatedAt:{seconds:100},sentinel:'preserve'};
@@ -209,6 +233,9 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
     assert.equal(await page.evaluate(()=>__writes.length),0);
     const existing=await page.evaluate(async()=>{const {state}=await import('/js/store.js?v=3');return JSON.stringify({teams:state.teams,cache:state.teamLineupCache});});
     await page.locator('#team-cycle-standard').click();await page.reload();await page.waitForSelector('#operator-context');
+    // Free mode is date-specific; reload can initially open the actual current day.
+    await page.evaluate(()=>changeMeetingDate('2026-10-07'));
+    await page.waitForFunction(()=>document.getElementById('team-cycle-training-status').textContent.includes('꺼짐'));
     assert.match(await page.locator('#team-cycle-training-status').textContent(),/꺼짐/);
     await page.locator('#tab-balancer').click();
     await page.locator('#team-cycle-training').click();
@@ -239,7 +266,8 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
     assert.match(await page.locator('#guide-teams').textContent(),/전성우/);
     assert.doesNotMatch(await page.locator('#guide-teams').textContent(),/능력치|평균|고태호|차민수|정우영|비정기|대체/);
     assert.match(await page.locator('#guide-teams').textContent(),/정명일 \(2지망: 공격수\)/);
-    assert.match(await page.locator('#guide-teams').textContent(),/송진호 \(부족 포지션 담당\)/);
+    assert.match(await page.locator('#guide-teams').textContent(),/송진호\(감독\) · 당일 부족한 자리 보충/);
+    assert.doesNotMatch(await page.locator('#guide-teams').textContent(),/김우주/);
     assert.equal(await page.evaluate(()=>__reads.length),0,'public guide makes no Firebase reads');
     for(const width of [390,1440]){
       await page.setViewportSize({width,height:960});

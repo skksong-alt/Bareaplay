@@ -1,5 +1,6 @@
 // Pure planning only. No Firebase, global state, or automatic assignment writes.
 import { surveyRoleCode } from './positionPreferencesCore.js?v=4';
+import { cycleSupporters } from './approvedCycle.js?v=2';
 export const CYCLE_ROLES=['GK','LB','CB','RB','DM','AM','LW','RW','FW'];
 const nameOf=n=>String(n||'').normalize('NFC').trim();
 const day=d=>/^\d{4}-\d{2}-\d{2}$/.test(d||'')&&new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;
@@ -83,7 +84,12 @@ export function matchFromCycle(cycle,attendees,date,players={},options={}) {
     if(new Set(present.map(key)).size!==present.length)throw new Error('대소문자만 다른 중복 이름이 있습니다. 최종 참석 명단에서 한 이름으로 정리해 주세요.');
     const memberFor=name=>cycle.members.find(p=>p.name===name)||cycle.members.filter(p=>key(p.name)===key(name)).length===1&&cycle.members.find(p=>key(p.name)===key(name));
     for(const name of present){const member=memberFor(name);if(member)teams[member.team].push({...member,name});}
-    let unassigned=present.filter(n=>!memberFor(n));
+    const supporters=cycleSupporters(cycle),supportNames=new Set();
+    for(const name of present){
+        const support=supporters.find(p=>key(p.name)===key(name));
+        if(support&&!memberFor(name)){teams[support.team].push({...support,name});supportNames.add(name);}
+    }
+    let unassigned=present.filter(n=>!memberFor(n)&&!supportNames.has(n));
     if(options.fillExtras){
         const rolesOf=name=>{
             const p=players[name]||Object.values(players).find(p=>key(p.name)===key(name))||{};
@@ -108,10 +114,10 @@ export function matchFromCycle(cycle,attendees,date,players={},options={}) {
         const from=teams[0].length>teams[1].length?0:1,to=1-from;
         const candidates=teams[from].map(p=>{
             const donor=count(teams[from],p.role),receiver=count(teams[to],p.role);
-            const priority=(donor>1&&receiver<donor-1?1000:0)+(donor-receiver)*100;
+            const priority=supportNames.has(p.name)?10000:(donor>1&&receiver<donor-1?1000:0)+(donor-receiver)*100;
             const strength=t=>t.reduce((s,p)=>s+(Number(players[p.name]?.s1)||0),0);
             const difference=Math.abs(strength(teams[from])-2*(Number(players[p.name]?.s1)||0)-strength(teams[to]));
-            return {p,priority,difference,reason:donor>1&&receiver<donor-1?`${p.role} 부족 보충 · 보내는 팀에 같은 역할 유지`:'인원 균형 · 같은 역할 여유 부족, 감독 확인 필요'};
+            return {p,priority,difference,reason:supportNames.has(p.name)?'운영진 부족 포지션 보충 · 원소속 유지':donor>1&&receiver<donor-1?`${p.role} 부족 보충 · 보내는 팀에 같은 역할 유지`:'인원 균형 · 같은 역할 여유 부족, 감독 확인 필요'};
         }).sort((a,b)=>b.priority-a.priority||a.difference-b.difference||a.p.name.localeCompare(b.p.name,'ko'));
         const chosen=candidates[0];teams[from]=teams[from].filter(p=>p.name!==chosen.p.name);teams[to].push({...chosen.p,team:to});
         loans.push({name:chosen.p.name,from,to,role:chosen.p.role,reason:chosen.reason});

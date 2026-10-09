@@ -1,7 +1,7 @@
 import { collection, getDocs, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js';
 import { escapeHtml as esc } from './coachCore.js?v=2';
-import { CYCLE_ROLES, recentParticipants, cycleCandidates, draftCycle, validateCycle, matchFromCycle, cycleContains } from './teamCycleCore.js?v=2';
-import { approvedCycle } from './approvedCycle.js?v=1';
+import { CYCLE_ROLES, recentParticipants, cycleCandidates, draftCycle, validateCycle, matchFromCycle, cycleContains } from './teamCycleCore.js?v=3';
+import { approvedCycle, cycleSupporters } from './approvedCycle.js?v=2';
 
 // Admin-only create/read Rules verified against the approved version, 2026-09-24.
 export const TEAM_CYCLE_STORAGE_ENABLED=true;
@@ -38,7 +38,7 @@ export function init({db,state,auth}) {
     const guard=()=>{if(!state.isAdmin)throw new Error('관리자 로그인이 필요합니다.');};
     const run=fn=>async()=>{if(busy)return;busy=true;try{guard();await fn();}catch(error){message(error.message||'요청을 완료하지 못했습니다.');}finally{busy=false;}};
     const refreshSources=()=>{
-        source.innerHTML=`<option value="">계획 선택</option>${draft?'<option value="draft">방금 만든 초안 · 미저장</option>':''}`+plans.map((p,i)=>`<option value="${i}">${esc(p.startDate)}부터 8주 · ${p.members.length}명${JSON.stringify(p)===JSON.stringify(approvedCycle('2026-10-07'))?' · 감독 승인안 (앱 내장)':''}</option>`).join('');
+        source.innerHTML=`<option value="">계획 선택</option>${draft?'<option value="draft">방금 만든 초안 · 미저장</option>':''}`+plans.map((p,i)=>`<option value="${i}">${esc(p.startDate)}부터 8주 · ${p.members.length+cycleSupporters(p).length}명${JSON.stringify(p)===JSON.stringify(approvedCycle('2026-10-07'))?' · 감독 승인안 (앱 내장)':''}</option>`).join('');
         if(draft)source.value='draft';else if(plans.length)source.value='0';
     };
     const chosen=()=>source.value==='draft'?draft:source.value!==''?plans[Number(source.value)]:null;

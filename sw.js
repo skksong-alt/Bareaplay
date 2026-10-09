@@ -1,21 +1,21 @@
 // sw.js
-const CACHE_NAME = 'bareaplay-cache-v81';
+const CACHE_NAME = 'bareaplay-cache-v82';
 const urlsToCache = [
     '/', '/index.html', '/share.html', '/team-guide.html', '/team-guide-en.html', '/css/style.css',
-    '/css/team-guide.css?v=3', '/js/modules/teamGuide.js?v=3', '/js/modules/approvedCycle.js?v=1',
-    '/css/match-hub.css?v=6',
+    '/css/team-guide.css?v=4', '/js/modules/teamGuide.js?v=4', '/js/modules/approvedCycle.js?v=2',
+    '/css/match-hub.css?v=7',
     '/css/operations.css?v=2',
     '/css/brand.css?v=2',
     '/js/modules/quarters.js?v=1',
     '/js/modules/saveQueue.js?v=1',
-    '/js/app.js?v=37',
+    '/js/app.js?v=38',
     '/js/store.js?v=3',
     '/js/modules/playerManagement.js?v=6',
-    '/js/modules/teamBalancer.js?v=13',
+    '/js/modules/teamBalancer.js?v=14',
     '/js/modules/lineupGenerator.js?v=16',
     '/js/modules/accounting.js?v=9',
     '/js/modules/shareManagement.js?v=17',
-    '/js/modules/voteManagement.js?v=28',
+    '/js/modules/voteManagement.js?v=29',
     '/js/modules/voteTiming.js?v=1',
     '/js/modules/shareLineupValidation.js?v=2',
     '/js/modules/lineupStats.js?v=3',
@@ -24,8 +24,8 @@ const urlsToCache = [
     '/js/modules/dutyRotation.js?v=5',
     '/js/modules/refereeEducation.js?v=2',
     '/js/modules/adminWorkflow.js?v=3',
-    '/js/modules/teamCycles.js?v=5',
-    '/js/modules/teamCycleCore.js?v=2',
+    '/js/modules/teamCycles.js?v=6',
+    '/js/modules/teamCycleCore.js?v=3',
     '/js/modules/trainingLineup.js?v=4',
     '/js/modules/meetingSession.js?v=2',
     '/js/modules/optionalLibraries.js?v=1',
@@ -34,12 +34,14 @@ const urlsToCache = [
     '/js/modules/positionPreferences.js?v=6',
     '/js/modules/positionPreferencesCore.js?v=4',
     '/js/modules/weeklyContent.js?v=5',
-    '/js/modules/votePage.js?v=18',
+    '/js/modules/votePage.js?v=19',
     '/js/modules/ratingIdentity.js?v=1',
     '/js/modules/ratingService.js?v=3',
     '/js/modules/coachWorkspace.js?v=7',
     '/js/modules/matchRecord.js?v=5',
-    '/manifest.json', '/favicon.ico', '/assets/icon-512.png'
+    '/manifest.json', '/favicon.ico', '/assets/icon-512.png',
+    '/assets/barea-crest-64.png', '/assets/barea-crest-96.png',
+    '/assets/barea-crest-192.png', '/assets/barea-crest-512.png'
 ];
 // Keep versioned URLs above as the cache manifest. Public visits need not download
 // every admin bundle; other same-origin files are cached when actually requested.

@@ -2,7 +2,7 @@ import { doc, getDoc, getDocs, collection, query, where, setDoc, onSnapshot, ser
 import { cleanName, escapeHtml as esc, chooseReviewDate } from './coachCore.js?v=2';
 import { addCoachStyles } from './weeklyContent.js?v=5';
 import { compareResponseTime, confirmGuest, responseIdentity, registeredVoteName } from './voteOrder.js?v=2';
-import { approvedCycle } from './approvedCycle.js?v=1';
+import { approvedCycle } from './approvedCycle.js?v=2';
 import { rememberedRatingName, rememberRatingName, ratingRememberEnabled, setRatingRememberEnabled, wasRatingSubmittedHere, markRatingSubmittedHere, ratingConfirmation } from './ratingIdentity.js?v=1';
 import { RATING_SERVICE_ENABLED, requestRating, ratingFailureMessage } from './ratingService.js?v=3';
 let dispose = () => {};

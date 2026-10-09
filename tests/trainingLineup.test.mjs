@@ -13,8 +13,22 @@ test('approved AM priority overrides assessed FW on a published-shaped October 7
     const result=applyTrainingRoles(input,plan.members,map,{'김해식':{pos1:['FW'],pos2:['CM']}});
     assert.equal(JSON.stringify(input),before,'inspection never overwrites the existing lineup');
     for(const quarter of result.lineups)assert.equal(quarter.MF[2],'김해식');
-    for(const name of ['김대근','이찬희'])assert.equal(result.lineups.filter(q=>q.RB[0]===name).length,3);
+    assert.equal(result.lineups.filter(q=>q.RB[0]==='김대근').length,6);
+    assert.equal(result.lineups.filter(q=>q.CB.includes('이찬희')).length,6);
     assert.deepEqual(result.resters,input.resters);assert.deepEqual(result.referees,input.referees);
+});
+test('coach fills the remaining field gap after trainees, without a CB/RW preference or duty changes',()=>{
+    const field={GK:['Keeper'],RB:['김대근'],CB:['송진호','김건효'],LB:['김경윤'],MF:['정명일','지승현','김해식'],RW:['윤중부'],LW:['Kei'],FW:['이찬희']};
+    const input={members:Object.values(field).flat(),formations:Array(6).fill('4-2-3-1'),lineups:Array.from({length:6},()=>structuredClone(field)),resters:Array.from({length:6},()=>[]),referees:Array(6).fill(null)};
+    const before=JSON.stringify(input),plan=approvedCycle('2026-10-07');
+    const result=applyTrainingRoles(input,plan.members,map,{'송진호':{pos1:['CB'],pos2:['RW']}});
+    for(const quarter of result.lineups){
+        assert.ok(quarter.CB.includes('이찬희'));assert.ok(quarter.CB.includes('김건효'));
+        assert.equal(quarter.FW[0],'송진호','remaining FW vacancy, not his previously assessed CB');
+        assert.equal(new Set(Object.values(quarter).flat()).size,11);
+    }
+    assert.ok(trainingReport(result,plan.members,map).every(p=>p.name!=='송진호'));
+    assert.equal(JSON.stringify(input),before);assert.deepEqual(result.resters,input.resters);assert.deepEqual(result.referees,input.referees);
 });
 test('training assignment distinguishes double pivot and attacking midfielder without changing duties or originals',()=>{
     const input=original(),before=JSON.stringify(input),planBefore=JSON.stringify(members);

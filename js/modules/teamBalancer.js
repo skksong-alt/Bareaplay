@@ -3,7 +3,7 @@ import { state } from '../store.js?v=3'; // [중요] ?v=2를 붙여서 app.js와
 import { rolePenalty, effectivePlayer } from './coachCore.js?v=2';
 import { collection, getDocs } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js"; // [추가] 최근 같은팀 조합 조회용
 import { rosterDutyOrder } from './dutyRotation.js?v=5';
-import { matchFromCycle, cycleContains } from './teamCycleCore.js?v=2';
+import { matchFromCycle, cycleContains } from './teamCycleCore.js?v=3';
 
 let db; // [추가] Firestore 핸들 (최근 조합 반복 방지용)
 let generateButton, attendeesTextarea, teamCountSelect, resultContainer, loadingSpinner, placeholder, loadAllPlayersBtn, acesTextarea, dateInput;
