@@ -2,7 +2,7 @@
 // 라인업 포지션 집계표 (운영진 전용) — 당일 라인업에서 각 선수가
 // 공격/미들/수비/GK/휴식을 각각 몇 번 맡는지 표시. 드래그로 바뀌면 자동 갱신.
 
-import { positionGroup } from './coachCore.js?v=2';
+import { positionGroup, effectivePlayer } from './coachCore.js?v=2';
 let state;
 let statsContainer = null;
 let observer = null;
@@ -74,6 +74,9 @@ function renderStats() {
 
         const rows = names.map(n => {
             const c = counts[n];
+            const raw=state.playerDB?.[n] || state.teams?.flat().find(p=>p.name===n) || {name:n};
+            const player=effectivePlayer(raw,state.coachProfiles);
+            const dedicated=player.pos1?.includes('GK')&&player.pos2?.includes('GK');
             return `<tr>
                 <td class="py-1.5 px-3 font-medium text-gray-900 whitespace-nowrap">${n}</td>
                 <td class="py-1.5 px-3 text-center">${c.FWD || ''}</td>
@@ -81,7 +84,8 @@ function renderStats() {
                 <td class="py-1.5 px-3 text-center">${c.DEF || ''}</td>
                 <td class="py-1.5 px-3 text-center">${c.GK || ''}</td>
                 <td class="py-1.5 px-3 text-center text-gray-400">${c.REST || ''}</td>
-                <td class="py-1.5 px-3 text-center font-bold">${c.total}</td>
+                <td class="py-1.5 px-3 text-center">${dedicated?'전담 GK':c.REST+c.GK}</td>
+                <td class="py-1.5 px-3 text-center font-bold">${c.total-c.GK}</td>
             </tr>`;
         }).join('');
 
@@ -89,7 +93,7 @@ function renderStats() {
         statsContainer.innerHTML = `
             <details class="lineup-stats-details" ${expanded?'open':''}>
                 <summary>선수별 역할 횟수 · ${quarters}쿼터 집계</summary>
-                <p class="text-xs text-gray-400 mb-2">실제 출전 시간이 아닌 배정 횟수입니다. 한 포지션을 꾸준히 훈련하는 것은 정상이며, 선수 의견과 팀 상황을 함께 확인하세요. 휴식에는 심판이 포함됩니다.</p>
+                <p class="text-xs text-gray-400 mb-2">실제 시간이 아닌 배정 횟수입니다. 필드는 GK를 제외한 출전이며, 휴식 산정은 GK·심판·벤치 휴식의 합계입니다(전담 GK 제외). 기존 저장 배치는 변경하지 않습니다.</p>
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm text-left">
                         <thead class="text-xs text-gray-600 uppercase bg-gray-50">
@@ -99,8 +103,9 @@ function renderStats() {
                                 <th class="py-2 px-3 text-center">미들</th>
                                 <th class="py-2 px-3 text-center">수비</th>
                                 <th class="py-2 px-3 text-center">GK</th>
-                                <th class="py-2 px-3 text-center">휴식</th>
-                                <th class="py-2 px-3 text-center">출전</th>
+                                <th class="py-2 px-3 text-center">휴식·심판</th>
+                                <th class="py-2 px-3 text-center">휴식 산정</th>
+                                <th class="py-2 px-3 text-center">필드</th>
                             </tr>
                         </thead>
                         <tbody>${rows}</tbody>

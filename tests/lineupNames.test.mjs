@@ -33,9 +33,14 @@ test('8-week actual generator: both squads include late guests with equal playin
     for(let t=0;t<2;t++){
         const names=f.state.teams[t].map(p=>p.name),result=await f.context.generate(names,Array(6).fill('4-2-3-1'));
         assert.ok(result);assert.ok(core.validateLineup(result,names));
-        const counts=names.map(n=>result.lineups.filter(q=>Object.values(q).flat().includes(n)).length);
+        const counts=names.map(n=>result.lineups.filter(q=>Object.entries(q).some(([pos,ns])=>pos!=='GK'&&ns.includes(n))).length);
         assert.ok(Math.max(...counts)-Math.min(...counts)<=1);
         assert.ok(counts[names.indexOf(guests[t])]>=Math.min(...counts));
+        for(let q=1;q<6;q++){
+            const nonField=[...result.resters[q],...result.lineups[q].GK];
+            const previous=[...result.resters[q-1],...result.lineups[q-1].GK];
+            assert.ok(nonField.every(n=>!previous.includes(n)),'actual training optimizer must preserve combined duty gaps');
+        }
         assert.equal(f.state.teamLineupCache[1],original);
     }
     assert.equal(JSON.stringify(f.state.teams),before);assert.equal(f.questions.length,0);
@@ -53,8 +58,9 @@ test('actual 10-a-side generator supports primary RB/AM and equal minutes withou
         assert.ok(result);assert.ok(core.validateLineup(result,f.names.slice(0,12)));
         assert.ok(result.lineups.every(q=>Object.values(q).flat().length===10));
         for(const i of [1,7,10])assert.ok(result.lineups.some(q=>(i===7?q.MF[1]:q.RB[0])===f.names[i]));
-        const counts=f.names.slice(0,12).map(n=>result.lineups.filter(q=>Object.values(q).flat().includes(n)).length);
+        const counts=f.names.slice(0,12).map(n=>result.lineups.filter(q=>Object.entries(q).some(([pos,ns])=>pos!=='GK'&&ns.includes(n))).length);
         assert.ok(Math.max(...counts)-Math.min(...counts)<=1);
+        for(let q=1;q<count;q++)assert.ok([...result.resters[q],...result.lineups[q].GK].every(n=>![...result.resters[q-1],...result.lineups[q-1].GK].includes(n)));
     }
     delete f.state.quarterCount;assert.equal(JSON.stringify(f.state),before);
 });

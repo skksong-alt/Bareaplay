@@ -64,7 +64,7 @@ test('referees alternate teams; GK/rest follow team queues, with no same-quarter
     const p=planDuties(teams,order,[Array(6).fill(11),Array(6).fill(11)]);
     assert.equal(p.teams[0].referees[0],'B12');assert.equal(p.teams[1].gks[0],'B11');assert.deepEqual(p.teams[1].resters[0],['B12']);
     assert.equal(p.teams[0].gks[0],'A12');assert.deepEqual(p.teams[0].resters[0],['A11']);
-    assert.equal(p.teams[0].referees[1],'A12');
+    assert.equal(p.teams[0].referees[1],'A10','Q1 keeper A12 must return to the field, not referee Q2');
     for(let q=0;q<6;q++)for(let t=0;t<2;t++){assert.equal(p.teams[t].resters[q].length,1);assert.ok(!p.teams[t].resters[q].includes(p.teams[t].gks[q]));assert.equal(p.teams[t].referees[q],p.teams[0].referees[q]);assert.ok(p.teams[q%2===0?1:0].resters[q].includes(p.teams[t].referees[q]));}
     const dedicated=planDuties(teams,order,[Array(6).fill(11),Array(6).fill(11)],['A12','B12']);
     assert.ok(dedicated.teams[0].gks.every(n=>n==='A12'));assert.ok(dedicated.teams[1].gks.every(n=>n==='B12'));

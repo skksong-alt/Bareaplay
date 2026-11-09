@@ -45,7 +45,7 @@ export function init({db,state,auth}) {
     const trainingStatus=panel.querySelector('#team-cycle-training-status');
     const showTraining=()=>{
         const active=state.trainingCycle?.date===date() && state.isAdmin;
-        trainingStatus.textContent=active?`8주 훈련 포지션 우선 · ${state.trainingCycle.startDate} 시작 계획. 1지망 → 2지망 → 빈자리 / 필드 역할 유지 우선 / 출전 기회 균등.`:'자유 배정 · 기존 선수 정보 기준 (고정팀 훈련 우선 꺼짐)';
+        trainingStatus.textContent=active?`8주 훈련 포지션 우선 · ${state.trainingCycle.startDate} 시작 계획. 1지망 → 2지망 → 빈자리 / 필드 역할 유지 우선 / GK·심판·휴식 통합 순환으로 필드 출전 균등.`:'자유 배정 · 기존 선수 정보 기준 (고정팀 훈련 우선 꺼짐)';
         panel.querySelector('#team-cycle-training').setAttribute('aria-pressed',String(!!active));
         panel.querySelector('#team-cycle-standard').setAttribute('aria-pressed',String(!active));
         document.dispatchEvent(new CustomEvent('barea:training'));

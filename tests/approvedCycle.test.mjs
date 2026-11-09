@@ -50,7 +50,7 @@ test('fair cycle duty allocation includes all guests, preserves GK/ref constrain
         const teams=[0,1].map(t=>Array.from({length:n},(_,i)=>`${t}-Guest${i}`)),keepers=dedicated?teams.map(t=>t[0]):[];
         const input=JSON.stringify(teams),r=planDuties(teams,teams.flat(),teams.map(()=>Array(count).fill(11)),keepers,{fairMinutes:true});
         for(const [t,d]of r.teams.entries()){
-            const rests=teams[t].filter(n=>!keepers.includes(n)).map(n=>d.resters.filter(row=>row.includes(n)).length);
+            const rests=teams[t].filter(n=>!keepers.includes(n)).map(n=>d.resters.filter(row=>row.includes(n)).length+d.gks.filter(gk=>gk===n).length);
             assert.ok(Math.max(...rests)-Math.min(...rests)<=1,`${n} players ${count} quarters dedicated=${dedicated}`);
             for(let q=0;q<count;q++){
                 assert.equal(d.resters[q].length,n-11);assert.equal(new Set(d.resters[q]).size,n-11);

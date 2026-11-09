@@ -12,7 +12,10 @@ export function rosterDutyOrder(teams, reference=[]) {
     return ordered.concat(all.filter(name=>!used.has(name)));
 }
 
-// Shared referee and team-specific GK/rest queues use this complete roster order.
+// GK (unless dedicated), referee and bench all consume one non-outfield turn.
+// One circular queue per team gives counts differing by at most one and the
+// minimum possible overlap with the previous quarter, even with mixed formations.
+// The legacy options argument remains accepted; both match modes use this policy.
 export function planDuties(teams, earlyFirst, fieldCounts, dedicatedNames=[], options={}) {
     const all=teams.flat(), dedicated=new Set(dedicatedNames);
     if(new Set(all).size!==all.length)throw new Error('팀 명단에 중복 선수가 있습니다.');
@@ -20,21 +23,34 @@ export function planDuties(teams, earlyFirst, fieldCounts, dedicatedNames=[], op
     const queues=teams.map(team=>lateFirst.filter(n=>team.includes(n)&&!dedicated.has(n)));
     const refQueue=lateFirst.filter(n=>!dedicated.has(n));
     const result=teams.map(()=>({gks:[],resters:[],referees:[]})), notes=[];
-    const offCounts=new Map(all.map(n=>[n,0]));
-    const leastRest=names=>options.fairMinutes?[...names].sort((a,b)=>offCounts.get(a)-offCounts.get(b)||lateFirst.indexOf(a)-lateFirst.indexOf(b)):names;
     const rotate=(queue,name)=>{const i=queue.indexOf(name);if(i>=0){queue.splice(i,1);queue.push(name);}};
+    const keepers=teams.map(team=>lateFirst.find(n=>team.includes(n)&&dedicated.has(n)));
+    const previous=teams.map(()=>[]);
     let lastRefTeam=-1;
     const count=fieldCounts[0]?.length;
-    if(![4,6].includes(count)||fieldCounts.some(row=>row.length!==count))throw new Error('쿼터 수를 확인해 주세요.');
+    if(fieldCounts.length!==teams.length||![4,6].includes(count)||fieldCounts.some(row=>row.length!==count))throw new Error('쿼터 수를 확인해 주세요.');
     for(let q=0;q<count;q++) {
+        if(fieldCounts.some(row=>!Number.isInteger(row[q])||row[q]<1))throw new Error('출전 인원을 확인해 주세요.');
         const spaces=teams.map((team,t)=>team.length-fieldCounts[t][q]);
         if(spaces.some(n=>n<0))throw new Error('팀 인원보다 출전 인원이 많습니다.');
+        // Choose combined non-outfield groups BEFORE assigning individual duties.
+        // Never rotate separately for GK/ref: doing so reselects last quarter's GK.
+        const groups=teams.map((team,t)=>{
+            const needed=spaces[t]+(keepers[t]?0:1),queue=queues[t];
+            if(needed>queue.length)throw new Error('전담 GK를 제외하면 교대 인원이 부족합니다. 팀 인원을 확인해 주세요.');
+            const group=queue.slice(0,needed);
+            for(const name of group)rotate(queue,name);
+            const repeated=group.filter(n=>previous[t].includes(n));
+            if(repeated.length)notes.push(`${q+1}쿼터 · ${String.fromCharCode(65+t)}팀: 인원·포메이션상 ${repeated.length}명의 연속 필드 미출전이 불가피합니다(GK·심판·휴식 합산).`);
+            previous[t]=group;
+            return group;
+        });
         // Alternate the referee's team whenever both teams have an off-field player.
-        const available=teams.map((team,t)=>t).filter(t=>spaces[t]>0&&refQueue.some(n=>teams[t].includes(n)));
+        const available=teams.map((team,t)=>t).filter(t=>spaces[t]>0&&groups[t].length>0);
         const nextTeam=lastRefTeam<0?null:available.find(t=>t!==lastRefTeam);
-        const nextName=leastRest(refQueue.filter(n=>available.some(t=>teams[t].includes(n))))[0];
+        const nextName=refQueue.find(n=>available.some(t=>groups[t].includes(n)));
         const refTeam=nextTeam??(nextName?teams.findIndex(team=>team.includes(nextName)):-1);
-        const ref=refTeam<0?null:leastRest(refQueue.filter(n=>teams[refTeam].includes(n)))[0]||null;
+        const ref=refTeam<0?null:refQueue.find(n=>groups[refTeam].includes(n))||null;
         if(!ref)notes.push(`${q+1}쿼터: 휴식 가능 인원이 없어 별도 심판이 필요합니다.`);
         else {
             if(lastRefTeam===refTeam&&available.length>1)notes.push(`${q+1}쿼터: 반대 팀에 심판 가능 인원이 없어 같은 팀이 다시 맡았습니다.`);
@@ -42,28 +58,12 @@ export function planDuties(teams, earlyFirst, fieldCounts, dedicatedNames=[], op
             lastRefTeam=refTeam;
         }
         teams.forEach((team,t)=>{
-            const queue=queues[t], reserved=team.includes(ref)?[ref]:[];
-            if(reserved.length)rotate(queue,ref);
-            if(options.fairMinutes){
-                // Reserve equal off-field opportunities first; GK is a played quarter.
-                while(reserved.length<spaces[t]){
-                    const next=leastRest(queue.filter(n=>!reserved.includes(n)))[0];
-                    if(!next)throw new Error('휴식 인원을 배정할 수 없습니다. 전담 GK와 팀 인원을 확인하세요.');
-                    reserved.push(next);rotate(queue,next);
-                }
-            }
-            const keepers=lateFirst.filter(n=>team.includes(n)&&dedicated.has(n));
-            const gk=keepers[0]||queue.find(n=>!reserved.includes(n));
+            const gk=keepers[t]||groups[t].find(n=>n!==ref);
             if(!gk)throw new Error('키퍼를 배정할 선수가 없습니다.');
-            if(!keepers.length)rotate(queue,gk);
-            while(reserved.length<spaces[t]) {
-                const next=queue.find(n=>n!==gk&&!reserved.includes(n));
-                if(!next)throw new Error('전담 GK를 제외하면 휴식 인원이 부족합니다. 팀 인원을 확인해 주세요.');
-                reserved.push(next);rotate(queue,next);
-            }
+            // Preserve the stored schema: resters is BENCH/ref only, never GK.
+            const reserved=groups[t].filter(n=>n!==gk);
             result[t].gks.push(gk);result[t].resters.push(reserved);
             result[t].referees.push(ref);
-            reserved.forEach(n=>offCounts.set(n,offCounts.get(n)+1));
         });
     }
     return {teams:result,notes};

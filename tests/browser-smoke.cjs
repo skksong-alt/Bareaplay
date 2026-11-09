@@ -74,6 +74,43 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   });
   const page=await context.newPage(), errors=[],dialogs=[];let cancelGuest=false,cancelRating=false;
   page.on('pageerror',e=>{errors.push(e.message);console.error('Isolated browser error:',e.message);});page.on('dialog',d=>{dialogs.push(d.message());return (cancelGuest&&/Guest|guest/.test(d.message()))||cancelRating?d.dismiss():d.accept();});
+  if(process.argv.includes('--duties')) {
+    await page.goto(base+'/');await page.waitForSelector('#operator-context');
+    assert.equal(await page.evaluate(()=>__writes.length),0,'opening existing records must not regenerate or save them');
+    await page.locator('#tab-lineup').click();
+    const beforeB=await page.evaluate(async()=>JSON.stringify((await import('/js/store.js?v=3')).state.teamLineupCache[1]));
+    for(const t of [0,1]){
+      await page.locator(`.team-tab-btn[data-team-index="${t}"]`).click();
+      await page.locator('#generateLineupButton').click();await page.waitForFunction(()=>!document.getElementById('generateLineupButton').disabled);
+      await page.evaluate(()=>flushMeetingSave());
+      const result=await page.evaluate(async t=>(await import('/js/store.js?v=3')).state.teamLineupCache[t],t);
+      assert.equal(result.lineups.length,6);
+      for(const name of result.members){
+        assert.equal(result.lineups.filter(q=>Object.entries(q).some(([pos,ns])=>pos!=='GK'&&ns.includes(name))).length,5);
+      }
+      for(let q=1;q<6;q++)assert.ok([...result.resters[q],...result.lineups[q].GK].every(n=>![...result.resters[q-1],...result.lineups[q-1].GK].includes(n)));
+      if(!t)assert.equal(await page.evaluate(async()=>JSON.stringify((await import('/js/store.js?v=3')).state.teamLineupCache[1])),beforeB);
+    }
+    await page.waitForFunction(()=>document.getElementById('lineup-stats-container').textContent.includes('휴식 산정'));
+    const rows=await page.locator('#lineup-stats-container tbody tr').allTextContents();assert.equal(rows.length,12);
+    for(const row of await page.locator('#lineup-stats-container tbody tr').all()){
+      const values=await row.locator('td').allTextContents();assert.equal(values.at(-2).trim(),'1');assert.equal(values.at(-1).trim(),'5');
+    }
+    // Existing dedicated-GK detection stays unchanged: both assessed roles include GK.
+    await page.evaluate(async()=>{const {state}=await import('/js/store.js?v=3');for(const team of state.teams){const name=team[0].name;state.playerDB[name].pos1=['GK'];state.playerDB[name].pos2=['GK'];}});
+    for(const t of [0,1]){
+      await page.locator(`.team-tab-btn[data-team-index="${t}"]`).click();await page.locator('#generateLineupButton').click();
+      await page.waitForFunction(()=>!document.getElementById('generateLineupButton').disabled);await page.evaluate(()=>flushMeetingSave());
+      const keeper=names[t*12],result=await page.evaluate(async t=>(await import('/js/store.js?v=3')).state.teamLineupCache[t],t);
+      assert.ok(result.lineups.every(q=>q.GK[0]===keeper));assert.ok(result.resters.every(q=>!q.includes(keeper)));
+      await page.waitForFunction(()=>document.getElementById('lineup-stats-container').textContent.includes('전담 GK'));
+      const keeperRow=page.locator('#lineup-stats-container tbody tr').filter({hasText:keeper});
+      assert.equal((await keeperRow.locator('td').allTextContents()).at(-2).trim(),'전담 GK');
+    }
+    assert.ok((await page.evaluate(()=>__writes)).every(w=>w.path.startsWith('dailyMeetings/')));assert.deepEqual(errors,[]);
+    console.log('PASS: unified GK/ref/bench rotation, equal field appearances, no consecutive non-field quarters, dedicated GK exemption, truthful stats; other saved team preserved. Mock Firebase only.');
+    await context.close();return;
+  }
   if(process.argv.includes('--brand')) {
     for(const width of [390,1440]){
       await page.setViewportSize({width,height:960});
@@ -585,7 +622,7 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   assert.equal(await page.locator('.attendance-stat').count(),3,'only going/maybe/absent summary cards');
   assert.equal(await page.locator('.attendance-stat.wait').count(),0);
   assert.equal(await page.locator('.waitlist-count').count(),0,'hide waiting badge when empty');
-  assert.match(await page.locator('.attendance-footnote').textContent(),/심판은 전체, 키퍼·휴식은 팀별|8주 운영: 출전 횟수 균등 우선/);
+  assert.match(await page.locator('.attendance-footnote').textContent(),/GK·심판·휴식 통합 순환/);
   assert.doesNotMatch(await page.locator('.attendance-footnote').textContent(),/GUEST/);
   assert.equal(await page.locator('#v-board a').getAttribute('href'),'/share.html?shareId=test-share');
   await page.locator('#v-map a').waitFor();

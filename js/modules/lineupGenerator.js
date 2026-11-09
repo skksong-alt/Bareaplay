@@ -1,8 +1,8 @@
 // js/modules/lineupGenerator.js
 // 9vs9: 3-4-1 / 10vs10: 4-1-3-1 or legacy 3-4-2 / 11vs11: selectable.
-//  - 휴식·심판 로테이션 로직은 기존과 동일 (매 쿼터 휴식 인원 = 명단 − 경기 인원)
+//  - GK/심판/벤치를 통합 순환. 저장 resters는 기존처럼 벤치/심판만 포함.
 import { roleTip, applyLocks, validateLineup, historyBonus, candidateCost, effectivePlayer } from './coachCore.js?v=2';
-import { planDuties, sharedRefereesFromLineups, rosterDutyOrder } from './dutyRotation.js?v=5';
+import { planDuties, sharedRefereesFromLineups, rosterDutyOrder } from './dutyRotation.js?v=6';
 import { applyTrainingRoles, trainingForDate, trainingReport } from './trainingLineup.js?v=4';
 import { quarterCount, preserveInactiveQuarters } from './quarters.js?v=1';
 let state;
@@ -363,7 +363,7 @@ function renderAllQuarters() {
     const sharedReferees = applySharedReferees(); // [수정] 양팀 공동 심판 계산
     const dutyNote=document.createElement('p');dutyNote.className='coach-note';dutyNote.style.gridColumn='1 / -1';
     const isHistorical=document.getElementById('balancer-date')?.value < window.getLocalDate?.();
-    dutyNote.textContent=(isHistorical?'심판: 당시 저장된 배정':'심판: 양 팀 번갈아')+(trainingForDate(state.trainingCycle,state.meetingDate).length?' · 8주 생성 기준: 휴식 횟수 균등 우선, 동률은 늦은 신청순 · 키퍼는 출전으로 계산':' · 키퍼/휴식: 불러온 신청순')+' · 수동 추가자는 마지막 순번 · 전담 GK 예외. '+(state.dutyNotes||[]).join(' ');
+    dutyNote.textContent=(isHistorical?'심판: 당시 저장된 배정':'심판: 양 팀 번갈아')+' · 새 생성 기준: GK·심판·휴식 통합 순환 / 필드 출전 균등 / 연속 필드 미출전 최소화 / 동률은 늦은 신청순 · 수동 추가자는 마지막 순번 · 전담 GK 예외. '+(state.dutyNotes||[]).join(' ');
     lineupDisplay.append(dutyNote);
     const training=trainingForDate(state.trainingCycle,state.meetingDate);
     if(training.length){
@@ -372,7 +372,7 @@ function renderAllQuarters() {
         const missed=report.filter(r=>!r.first),box=document.createElement('details');box.className='training-report';box.style.gridColumn='1 / -1';box.open=missed.length>0;
         const title=document.createElement('summary');title.textContent=missed.length?`희망 역할 확인 필요 · 1지망 0회 ${missed.length}명`:'훈련 역할 확인 · 전원 1지망 기회 있음';box.append(title);
         const note=document.createElement('p');note.textContent='현재 표시된 배치를 기준으로 계산합니다. 기존 라인업을 자동 변경하지 않습니다. 1지망 기회 확보를 3+3쿼터 반복보다 우선하며, 인원·고정 조건에 따라 묶음이 나뉠 수 있습니다.';box.append(note);
-        for(const r of report){const row=document.createElement('p');row.textContent=`${r.name} · ${r.role} ${r.first}회 / 2지망 ${r.second}회 / 기타 필드 ${r.other}회 / GK ${r.gk}회 / 휴식·심판 ${r.rest}회${r.reason?' — '+r.reason:''}`;box.append(row);}
+        for(const r of report){const row=document.createElement('p');row.textContent=`${r.name} · ${r.role} ${r.first}회 / 2지망 ${r.second}회 / 기타 필드 ${r.other}회 / GK ${r.gk}회(전담 외 휴식 산정) / 휴식·심판 ${r.rest}회${r.reason?' — '+r.reason:''}`;box.append(row);}
         lineupDisplay.append(box);
     }
 
@@ -574,7 +574,7 @@ async function executeLineupGeneration(members, formations, isSilent = false, op
                 const slots = posCellMap[formation]?.map(c => c.pos) || [];
                 const numToRest = members.length - slots.length;
 
-                // ---- 휴식 선정: 누적 휴식 수가 적은 사람 우선, 동률이면 늦은 투표(아래)부터. 직전 키퍼(전담 제외)는 이번 휴식 제외 ----
+                // ---- Unified duty plan already balances GK/ref/bench and avoids consecutive non-field turns. ----
                 const quarterResters = [...duty.resters[q]];
                 quarterResters.forEach(m => restCount[m]++);
                 resters.push(quarterResters);

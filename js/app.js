@@ -8,7 +8,7 @@ import { createMeetingSession, meetingFingerprint, meetingConflict } from './mod
 import { ensureLibrary } from './modules/optionalLibraries.js?v=1';
 import { roleTip } from './modules/coachCore.js?v=2';
 let matchRecord;
-import { sharedRefereesFromLineups } from './modules/dutyRotation.js?v=5';
+import { sharedRefereesFromLineups } from './modules/dutyRotation.js?v=6';
 
 const firebaseConfig = {
     apiKey: "AIzaSyD_2tm5-hYbCeU8yi0QiWW9Oqm0O7oPBco",
@@ -779,7 +779,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const __voteId = __p.get('voteId');
         const __shareId = __p.get('shareId');
         const __voteCurrent = __p.get('vote'); // 고정 링크 ?vote=current
-        if (__voteCurrent || __voteId) voteMgmt=await import('./modules/voteManagement.js?v=29');
+        if (__voteCurrent || __voteId) voteMgmt=await import('./modules/voteManagement.js?v=30');
         if (__voteCurrent) {
             window.__db = db;
             if (loadingOverlay) loadingOverlay.style.display = 'none';
@@ -812,10 +812,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     [playerMgmt,balancer,lineup,accounting,shareMgmt,voteMgmt,lineupStats,matchRecord,coachWorkspace,adminWorkflow]=await Promise.all([
-        import('./modules/playerManagement.js?v=6'),import('./modules/teamBalancer.js?v=14'),
-        import('./modules/lineupGenerator.js?v=16'),import('./modules/accounting.js?v=9'),
-        import('./modules/shareManagement.js?v=17'),import('./modules/voteManagement.js?v=29'),
-        import('./modules/lineupStats.js?v=3'),import('./modules/matchRecord.js?v=5'),
+        import('./modules/playerManagement.js?v=6'),import('./modules/teamBalancer.js?v=15'),
+        import('./modules/lineupGenerator.js?v=17'),import('./modules/accounting.js?v=9'),
+        import('./modules/shareManagement.js?v=18'),import('./modules/voteManagement.js?v=30'),
+        import('./modules/lineupStats.js?v=4'),import('./modules/matchRecord.js?v=5'),
         import('./modules/coachWorkspace.js?v=7'),import('./modules/adminWorkflow.js?v=3')
     ]);
     const modules = { playerMgmt, balancer, lineup, accounting, shareMgmt, voteMgmt, lineupStats, matchRecord, coachWorkspace, adminWorkflow };
@@ -836,7 +836,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const {mountPreferenceAdmin}=await import('./modules/positionPreferences.js?v=6');
     mountPreferenceAdmin(db,state);
     // Do not add the cycle-planning bundle to public RSVP, survey or lineup loads.
-    try { const cycles=await import('./modules/teamCycles.js?v=6');cycles.init(dependencies); }
+    try { const cycles=await import('./modules/teamCycles.js?v=7');cycles.init(dependencies); }
     catch { window.showNotification('고정팀 도구를 불러오지 못했습니다. 기존 팀 배정은 계속 사용할 수 있습니다.','error'); }
     
     const urlParams = new URLSearchParams(window.location.search);
