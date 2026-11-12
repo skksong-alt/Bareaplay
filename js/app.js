@@ -109,7 +109,7 @@ window.hasUnsavedMeeting = () => meetingSession.dirty || !!window.hasUnsavedAcco
 window.addEventListener('beforeunload', event => {
     if (window.hasUnsavedMeeting()) {event.preventDefault();event.returnValue = '';}
 });
-function saveDailyMeetingData() {
+function saveDailyMeetingData(options={}) {
     if (!state.isAdmin || applyingMeeting) return;
     const today = selectedMeetingDate;
     if (meetingLoading || !today || meetingSession.date !== today) {
@@ -123,7 +123,7 @@ function saveDailyMeetingData() {
 
     const transformedCache = {};
     // Do not silently rewrite historical referee records during an unrelated edit.
-    const sharedReferees = today >= window.getLocalDate()
+    const sharedReferees = !options?.preserveReferees && today >= window.getLocalDate()
         ? sharedRefereesFromLineups(state.teamLineupCache || {}, state.initialAttendeeOrder || [],state.quarterCount===4?4:6) : [];
     Object.keys(state.teamLineupCache || {}).forEach(teamIndex => {
         const originalLineup = state.teamLineupCache[teamIndex];
@@ -813,8 +813,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     [playerMgmt,balancer,lineup,accounting,shareMgmt,voteMgmt,lineupStats,matchRecord,coachWorkspace,adminWorkflow]=await Promise.all([
         import('./modules/playerManagement.js?v=6'),import('./modules/teamBalancer.js?v=16'),
-        import('./modules/lineupGenerator.js?v=17'),import('./modules/accounting.js?v=9'),
-        import('./modules/shareManagement.js?v=18'),import('./modules/voteManagement.js?v=30'),
+        import('./modules/lineupGenerator.js?v=18'),import('./modules/accounting.js?v=9'),
+        import('./modules/shareManagement.js?v=19'),import('./modules/voteManagement.js?v=30'),
         import('./modules/lineupStats.js?v=4'),import('./modules/matchRecord.js?v=5'),
         import('./modules/coachWorkspace.js?v=7'),import('./modules/adminWorkflow.js?v=3')
     ]);

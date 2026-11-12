@@ -74,6 +74,48 @@ data['shares/test-share']={meetingInfo:{time:today+' 20:00',location:'Test pitch
   });
   const page=await context.newPage(), errors=[],dialogs=[];let cancelGuest=false,cancelRating=false;
   page.on('pageerror',e=>{errors.push(e.message);console.error('Isolated browser error:',e.message);});page.on('dialog',d=>{dialogs.push(d.message());return (cancelGuest&&/Guest|guest/.test(d.message()))||cancelRating?d.dismiss():d.accept();});
+  if(process.argv.includes('--duty-override')) {
+    await page.goto(base+'/');await page.waitForSelector('#operator-context');
+    const saved=()=>page.evaluate(today=>structuredClone(__fixture['dailyMeetings/'+today]),today);
+    const compare=(before,after)=>{
+      assert.deepEqual(after.teams,before.teams);
+      for(const t of [0,1])for(const k of ['lineups','resters','referees'])assert.deepEqual(after.teamLineupCache[t][k],before.teamLineupCache[t][k]);
+    };
+    await page.locator('#tab-lineup').click();
+    const before=await saved();assert.equal(await page.evaluate(()=>__writes.length),0);
+    await page.locator('#lineup-duty-order summary').click();
+    await page.locator('#lineup-duty-player').selectOption('Test 12');
+    await page.locator('#lineup-duty-promote').click();await page.evaluate(()=>flushMeetingSave());
+    const promoted=await saved();
+    assert.deepEqual(promoted.initialAttendeeOrder,['Test 12',...before.initialAttendeeOrder.filter(n=>n!=='Test 12')]);
+    compare(before,promoted);
+    const first=page.locator('.quarter-block[data-q="0"]');
+    const keeper=first.locator('.player-marker[data-pos="GK"]');
+    const field=first.locator('.player-marker[data-pos="RB"]');
+    cancelRating=true;
+    await keeper.click();await field.click();
+    await page.waitForFunction(()=>!document.querySelector('.selected-for-swap'));
+    compare(promoted,await saved());
+    cancelRating=false;
+    await keeper.click();await field.click();
+    await page.waitForFunction(()=>document.querySelector('.quarter-block[data-q="0"] .player-marker[data-pos="GK"]')?.dataset.name==='Test 02');
+    await page.evaluate(()=>flushMeetingSave());
+    const changed=await saved();
+    assert.deepEqual(changed.teams,promoted.teams);
+    assert.deepEqual(changed.teamLineupCache[1],promoted.teamLineupCache[1]);
+    assert.deepEqual(changed.teamLineupCache[0].resters,promoted.teamLineupCache[0].resters);
+    assert.deepEqual(changed.teamLineupCache[0].referees,promoted.teamLineupCache[0].referees);
+    assert.deepEqual(changed.teamLineupCache[0].lineups.slice(1),promoted.teamLineupCache[0].lineups.slice(1));
+    assert.deepEqual(changed.teamLineupCache[0].lineups[0],{...promoted.teamLineupCache[0].lineups[0],GK:['Test 02'],RB:['Test 01']});
+    assert.ok((await page.evaluate(()=>__writes)).every(w=>w.path.startsWith('dailyMeetings/')));
+    await page.locator('#generateLineupButton').click();
+    await page.waitForFunction(()=>!document.getElementById('generateLineupButton').disabled);
+    await page.evaluate(()=>flushMeetingSave());
+    const generated=(await saved()).teamLineupCache[0].lineups[0];
+    assert.ok(Object.entries(generated).some(([pos,ns])=>pos!=='GK'&&ns.includes('Test 12')));
+    assert.deepEqual(errors,[]);console.log('PASS: priority repair preserves saved teams and duties; confirmed keeper swap changes only one quarter; new generation respects corrected order.');
+    await context.close();return;
+  }
   if(process.argv.includes('--duties')) {
     await page.goto(base+'/');await page.waitForSelector('#operator-context');
     assert.equal(await page.evaluate(()=>__writes.length),0,'opening existing records must not regenerate or save them');
