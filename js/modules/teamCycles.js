@@ -1,7 +1,7 @@
 import { collection, getDocs, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js';
 import { escapeHtml as esc } from './coachCore.js?v=2';
-import { CYCLE_ROLES, recentParticipants, cycleCandidates, draftCycle, validateCycle, matchFromCycle, cycleContains } from './teamCycleCore.js?v=3';
-import { approvedCycle, cycleSupporters } from './approvedCycle.js?v=2';
+import { CYCLE_ROLES, recentParticipants, cycleCandidates, draftCycle, validateCycle, matchFromCycle, cycleContains } from './teamCycleCore.js?v=4';
+import { approvedCycle, cycleSupporters } from './approvedCycle.js?v=3';
 
 // Admin-only create/read Rules verified against the approved version, 2026-09-24.
 export const TEAM_CYCLE_STORAGE_ENABLED=true;

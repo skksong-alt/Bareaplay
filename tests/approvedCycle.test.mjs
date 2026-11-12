@@ -6,7 +6,7 @@ import {planDuties} from '../js/modules/dutyRotation.js';
 
 test('approved roster preserves coach overrides, exclusions and fullback partnership; no skills/private fields',()=>{
     const c=approvedCycle('2026-10-07');validateCycle(c);
-    assert.deepEqual([0,1].map(t=>c.members.filter(p=>p.team===t).length),[16,17]);
+    assert.deepEqual([0,1].map(t=>c.members.filter(p=>p.team===t).length),[20,20]);
     const member=n=>c.members.find(p=>p.name===n);
     assert.equal(member('전성우').team,member('최준경').team);assert.equal(member('전성우').role,'LB');
     assert.equal(member('송진호'),undefined);assert.deepEqual(cycleSupporters(c),[{name:'송진호',team:0}]);
@@ -15,6 +15,14 @@ test('approved roster preserves coach overrides, exclusions and fullback partner
     for(const n of ['고태호','정우영','차민수','김우주'])assert.equal(member(n),undefined);
     assert.ok(c.members.every(p=>Object.keys(p).sort().join(',')==='name,role,second,team'));
     assert.equal(approvedCycle('2026-10-06'),null);assert.equal(approvedCycle('2026-12-02'),null);
+});
+test('seven additions keep their home teams and requested roles on new generation',()=>{
+    const expected=[['김지후',0,'LW','RW'],['장진우',0,'RW','CB'],['장원준',0,'FW','LW'],['Takumi',0,'DM','CB'],['박범수',1,'DM','CB'],['Vincent',1,'LB','DM'],['조홍',1,'CB','RB']];
+    const date='2026-11-12',plan=approvedCycle(date),before=JSON.stringify(plan);
+    const match=matchFromCycle(plan,expected.map(([name])=>name),date,{}, {fillExtras:true});
+    for(const [name,team,role,second] of expected)assert.deepEqual(match.teams[team].find(p=>p.name===name),{name,team,role,second});
+    assert.deepEqual(match.temporary,[]);assert.deepEqual(match.loans,[]);
+    assert.equal(JSON.stringify(plan),before);
 });
 test('coach support preserves membership, has no fixed preference and covers a short team before fixed trainees',()=>{
     const cycle=approvedCycle('2026-10-07'),before=JSON.stringify(cycle);

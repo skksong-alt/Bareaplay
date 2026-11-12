@@ -1,4 +1,4 @@
-import { approvedCycle, cycleSupporters, CYCLE_ROLE_LABELS } from './approvedCycle.js?v=2';
+import { approvedCycle, cycleSupporters, CYCLE_ROLE_LABELS } from './approvedCycle.js?v=3';
 // Public approved plan only. This page never initializes Firebase or reads surveys.
 const cycle=approvedCycle('2026-10-07'),host=document.getElementById('guide-teams');
 const en=document.documentElement.lang==='en';

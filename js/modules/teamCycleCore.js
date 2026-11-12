@@ -1,6 +1,6 @@
 // Pure planning only. No Firebase, global state, or automatic assignment writes.
 import { surveyRoleCode } from './positionPreferencesCore.js?v=4';
-import { cycleSupporters } from './approvedCycle.js?v=2';
+import { cycleSupporters } from './approvedCycle.js?v=3';
 export const CYCLE_ROLES=['GK','LB','CB','RB','DM','AM','LW','RW','FW'];
 const nameOf=n=>String(n||'').normalize('NFC').trim();
 const day=d=>/^\d{4}-\d{2}-\d{2}$/.test(d||'')&&new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;

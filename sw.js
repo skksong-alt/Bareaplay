@@ -1,17 +1,17 @@
 // sw.js
-const CACHE_NAME = 'bareaplay-cache-v83';
+const CACHE_NAME = 'bareaplay-cache-v84';
 const urlsToCache = [
     '/', '/index.html', '/share.html', '/team-guide.html', '/team-guide-en.html', '/css/style.css',
-    '/css/team-guide.css?v=4', '/js/modules/teamGuide.js?v=4', '/js/modules/approvedCycle.js?v=2',
+    '/css/team-guide.css?v=4', '/js/modules/teamGuide.js?v=5', '/js/modules/approvedCycle.js?v=3',
     '/css/match-hub.css?v=7',
     '/css/operations.css?v=2',
     '/css/brand.css?v=2',
     '/js/modules/quarters.js?v=1',
     '/js/modules/saveQueue.js?v=1',
-    '/js/app.js?v=39',
+    '/js/app.js?v=40',
     '/js/store.js?v=3',
     '/js/modules/playerManagement.js?v=6',
-    '/js/modules/teamBalancer.js?v=15',
+    '/js/modules/teamBalancer.js?v=16',
     '/js/modules/lineupGenerator.js?v=17',
     '/js/modules/accounting.js?v=9',
     '/js/modules/shareManagement.js?v=18',
@@ -24,8 +24,8 @@ const urlsToCache = [
     '/js/modules/dutyRotation.js?v=6',
     '/js/modules/refereeEducation.js?v=2',
     '/js/modules/adminWorkflow.js?v=3',
-    '/js/modules/teamCycles.js?v=7',
-    '/js/modules/teamCycleCore.js?v=3',
+    '/js/modules/teamCycles.js?v=8',
+    '/js/modules/teamCycleCore.js?v=4',
     '/js/modules/trainingLineup.js?v=4',
     '/js/modules/meetingSession.js?v=2',
     '/js/modules/optionalLibraries.js?v=1',
